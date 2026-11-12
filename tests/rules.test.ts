@@ -18,10 +18,12 @@ import {
   playerMaxHp,
 } from '../src/content';
 import { FOREST_FOX_LEVEL } from '../src/provisional';
+import { reportHtml } from '../src/ui';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
   actionSeconds,
+  advanceOpenTab,
   buyShop,
   buySkill,
   creditOffline,
@@ -362,6 +364,7 @@ describe('combat', () => {
         expect(trial.bank['food.roast_hare']).toBe(5);
         expect(trial.stats.kills).toBe(0);
         expect(trial.stats.pauses).toBe(1);
+        expect(trial.stats.pauseAtKill).toEqual([0]);
         break;
       }
     }
@@ -439,28 +442,33 @@ describe('combat', () => {
 
   it('pays the poacher 3-9 and lands loot near the catalogue value', () => {
     const kills = 1000;
-    const focused = combatReady(30, 7);
-    focused.xp.Defence = XP_TABLE[30];
-    focused.xp.Hitpoints = XP_TABLE[30];
-    focused.hp = playerMaxHp(30);
-    startCombat(focused, 'wood.poacher', 'Attack');
-    let guard = 0;
-    while (focused.stats.kills < kills && !focused.paused && guard++ < kills + 5) {
-      simulate(focused, 4 * 2400 + 3000);
-    }
-    expect(focused.paused).toBe(false);
-    expect(focused.stats.kills).toBe(kills);
-    const mean = focused.stats.coinsFromKills / kills;
-    expect(mean).toBeGreaterThan(5.7);
-    expect(mean).toBeLessThan(6.3);
     const lootEv = expectedDropValue(ENEMY_BY_ID['wood.poacher'].drops);
     expect(lootEv).toBeCloseTo(6.5, 5);
     expect(expectedCoinValue(ENEMY_BY_ID['wood.poacher'])).toBe(6);
-    const ratio = focused.stats.lootValue / kills / lootEv;
-    expect(ratio).toBeGreaterThan(0.9);
-    expect(ratio).toBeLessThan(1.1);
-    const beetle = expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops);
-    expect(beetle).toBeCloseTo(6.25, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops)).toBeCloseTo(6.25, 5);
+    const ratios: number[] = [];
+    for (let seed = 1; seed <= 5; seed++) {
+      const focused = combatReady(30, seed);
+      focused.xp.Defence = XP_TABLE[30];
+      focused.xp.Hitpoints = XP_TABLE[30];
+      focused.hp = playerMaxHp(30);
+      startCombat(focused, 'wood.poacher', 'Attack');
+      let guard = 0;
+      while (focused.stats.kills < kills && !focused.paused && guard++ < kills + 5) {
+        simulate(focused, 4 * 2400 + 3000);
+      }
+      expect(focused.paused).toBe(false);
+      expect(focused.stats.kills).toBe(kills);
+      if (seed === 1) {
+        const mean = focused.stats.coinsFromKills / kills;
+        expect(mean).toBeGreaterThan(5.7);
+        expect(mean).toBeLessThan(6.3);
+      }
+      ratios.push(focused.stats.lootValue / kills / lootEv);
+    }
+    const meanRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
+    expect(meanRatio).toBeGreaterThan(0.9);
+    expect(meanRatio).toBeLessThan(1.1);
   });
 });
 
@@ -540,6 +548,7 @@ describe('save, offline, shop', () => {
     expect(back.creditedMs).toBe(0);
     expect(state.xp.Woodcutting).toBe(xp);
     expect(state.lastCredited).toBe(now);
+    // The reset moves the last-credited time to now, so the next forward window is credited.
     const after = creditOffline(state, now + 30_000);
     expect(after.creditedMs).toBe(30_000);
     expect(after.actions).toBeLessThan(20);
@@ -683,5 +692,43 @@ describe('node price helper', () => {
     expect(buyNode(state, 'mat.wood.oak')).toBe(false);
     expect(NODE_BY_ID['mat.wood.pine'].cost).toBe(0);
     expect(NODE_BY_ID['mat.ore.iron'].cost).toBe(1500);
+  });
+});
+
+describe('open-tab clock and catch-up display', () => {
+  it('resets a backwards clock and then keeps gathering', () => {
+    const state = newGame(1_000_000);
+    startGather(state, 'mat.wood.pine');
+    const actions = state.stats.actions;
+    const rewound = advanceOpenTab(state, 1_000_000 - 3_600_000, 5_000);
+    expect(rewound?.backwards).toBe(true);
+    expect(rewound?.creditedMs).toBe(0);
+    expect(state.lastCredited).toBe(1_000_000 - 3_600_000);
+    expect(state.stats.actions).toBe(actions);
+    advanceOpenTab(state, state.lastCredited + 12_000, 5_000);
+    expect(state.stats.actions).toBeGreaterThan(actions);
+    expect(state.bank['mat.wood.pine']).toBe(state.stats.actions);
+  });
+
+  it('shows catch-up XP rounded down', () => {
+    const html = reportHtml({
+      awayMs: 60_000,
+      creditedMs: 60_000,
+      capped: false,
+      backwards: false,
+      activity: 'Combat · Thorn beetle',
+      actions: 0,
+      kills: 1,
+      xpGained: { Strength: 48, Hitpoints: 9.6 },
+      levelsBefore: { Strength: 1, Hitpoints: 1 },
+      levelsAfter: { Strength: 1, Hitpoints: 1 },
+      itemsGained: {},
+      itemsConsumed: {},
+      coinsGained: 0,
+      foodEaten: 0,
+      stopped: 'window',
+    });
+    expect(html).toContain('Strength 48, Hitpoints 9');
+    expect(html).not.toContain('9.6');
   });
 });

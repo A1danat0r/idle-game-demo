@@ -75,6 +75,11 @@ function timeLabel(state: Save, id: string, base: number): string {
   return `${seconds.toFixed(3)}s`;
 }
 
+/** Header, then the scrolling page, then the activity bar in the bottom bar, directly above the tabs. */
+export function shellHtml(header: string, message: string, main: string, activity: string, tabs: string): string {
+  return `${header}${message}<main>${main}</main>${activity}${tabs}`;
+}
+
 export function headerHtml(state: Save, devOn: boolean): string {
   return `<header class="top">
     <div class="avatar">${chibi('#2d3a5c', 30)}</div>
@@ -327,7 +332,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;
   const sell = selected
-    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">All</button></div>`
+    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
     : '';
   const shop = `<div class="panel"><h3>Shop</h3>${SHOP_ITEMS.map((id) => {
     const left = shopStock(state, id, now);
@@ -367,7 +372,7 @@ function equipmentHtml(state: Save): string {
 export function reportHtml(report: CatchupReport): string {
   const hours = (ms: number) => `${(ms / 3_600_000).toFixed(2)} h`;
   const xp = Object.entries(report.xpGained)
-    .map(([skill, amount]) => `${skill} ${amount}`)
+    .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
   const levels = Object.entries(report.levelsAfter)
     .map(([skill, level]) => {
