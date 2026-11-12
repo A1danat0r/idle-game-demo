@@ -75,6 +75,11 @@ function timeLabel(state: Save, id: string, base: number): string {
   return `${seconds.toFixed(3)}s`;
 }
 
+/** Header, then the scrolling page, then the activity bar directly above the tabs. */
+export function shellHtml(header: string, message: string, main: string, activity: string, tabs: string): string {
+  return `${header}${message}<main>${main}</main>${activity}${tabs}`;
+}
+
 export function headerHtml(state: Save, devOn: boolean): string {
   return `<header class="top">
     <div class="avatar">${chibi('#2d3a5c', 30)}</div>
@@ -367,7 +372,7 @@ function equipmentHtml(state: Save): string {
 export function reportHtml(report: CatchupReport): string {
   const hours = (ms: number) => `${(ms / 3_600_000).toFixed(2)} h`;
   const xp = Object.entries(report.xpGained)
-    .map(([skill, amount]) => `${skill} ${amount}`)
+    .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
   const levels = Object.entries(report.levelsAfter)
     .map(([skill, level]) => {

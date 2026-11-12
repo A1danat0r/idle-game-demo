@@ -2,6 +2,7 @@ import './style.css';
 import { hitRateReport, killCycleReport, meadowHour, samplePoacher, survivabilityReport } from './checks';
 import { ITEMS, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
 import {
+  advanceOpenTab,
   buyNode,
   buyShop,
   buySkill,
@@ -13,7 +14,6 @@ import {
   setSkillLevel,
   sell,
   setFood,
-  simulate,
   startCombat,
   startGather,
   startProduce,
@@ -31,7 +31,7 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
-import { activityHtml, devHtml, headerHtml, mainHtml, noticeHtml, reportHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityHtml, devHtml, headerHtml, mainHtml, noticeHtml, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -124,14 +124,11 @@ function showReport(report: CatchupReport): void {
 function tick(): void {
   if (document.hidden) return;
   const now = gameNow();
-  const gap = now - state.lastCredited;
-  if (gap >= SILENT_GAP_MS) {
-    const report = creditOffline(state, now);
+  const report = advanceOpenTab(state, now, SILENT_GAP_MS);
+  if (report) {
     writeSave(localStorage, state);
     if (shouldShow(report)) showReport(report);
-  } else if (gap > 0) {
-    simulate(state, gap);
-    state.lastCredited = now;
+  } else {
     const mark = state.stats.actions + state.stats.kills;
     if (mark !== lastActions || now - lastSave >= 10_000) {
       lastActions = mark;
@@ -145,7 +142,14 @@ function tick(): void {
 function render(): void {
   const main = app.querySelector('main');
   const scroll = main?.scrollTop ?? 0;
-  app.innerHTML = `${headerHtml(state, devOn)}${view.message ? `<p class="msg">${escapeText(view.message)}</p>` : ''}${activityHtml(state)}${`<main>${mainHtml(state, view, gameNow())}</main>`}${tabsHtml(view)}`;
+  const message = view.message ? `<p class="msg">${escapeText(view.message)}</p>` : '';
+  app.innerHTML = shellHtml(
+    headerHtml(state, devOn),
+    message,
+    mainHtml(state, view, gameNow()),
+    activityHtml(state),
+    tabsHtml(view),
+  );
   const next = app.querySelector('main');
   if (next) next.scrollTop = scroll;
   const clock = dev.querySelector('[data-clock]');

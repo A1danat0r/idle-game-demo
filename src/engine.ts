@@ -743,6 +743,21 @@ function levelsOf(state: Save): Partial<Record<SkillId, number>> {
   return out;
 }
 
+/**
+ * Advance a visible tab to `now`.
+ * A backwards clock credits 0 and moves the last-credited time to `now`,
+ * so the next positive gap runs immediately instead of waiting for the clock to catch up.
+ */
+export function advanceOpenTab(state: Save, now: number, silentGapMs: number): CatchupReport | null {
+  const gap = now - state.lastCredited;
+  if (gap < 0 || gap >= silentGapMs) return creditOffline(state, now);
+  if (gap > 0) {
+    simulate(state, gap);
+    state.lastCredited = now;
+  }
+  return null;
+}
+
 export function creditOffline(state: Save, now: number): CatchupReport {
   const away = now - state.lastCredited;
   const before = levelsOf(state);

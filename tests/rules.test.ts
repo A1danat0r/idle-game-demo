@@ -18,10 +18,12 @@ import {
   playerMaxHp,
 } from '../src/content';
 import { FOREST_FOX_LEVEL } from '../src/provisional';
+import { reportHtml } from '../src/ui';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
   actionSeconds,
+  advanceOpenTab,
   buyShop,
   buySkill,
   creditOffline,
@@ -683,5 +685,43 @@ describe('node price helper', () => {
     expect(buyNode(state, 'mat.wood.oak')).toBe(false);
     expect(NODE_BY_ID['mat.wood.pine'].cost).toBe(0);
     expect(NODE_BY_ID['mat.ore.iron'].cost).toBe(1500);
+  });
+});
+
+describe('open-tab clock and catch-up display', () => {
+  it('resets a backwards clock and then keeps gathering', () => {
+    const state = newGame(1_000_000);
+    startGather(state, 'mat.wood.pine');
+    const actions = state.stats.actions;
+    const rewound = advanceOpenTab(state, 1_000_000 - 3_600_000, 5_000);
+    expect(rewound?.backwards).toBe(true);
+    expect(rewound?.creditedMs).toBe(0);
+    expect(state.lastCredited).toBe(1_000_000 - 3_600_000);
+    expect(state.stats.actions).toBe(actions);
+    advanceOpenTab(state, state.lastCredited + 12_000, 5_000);
+    expect(state.stats.actions).toBeGreaterThan(actions);
+    expect(state.bank['mat.wood.pine']).toBe(state.stats.actions);
+  });
+
+  it('shows catch-up XP rounded down', () => {
+    const html = reportHtml({
+      awayMs: 60_000,
+      creditedMs: 60_000,
+      capped: false,
+      backwards: false,
+      activity: 'Combat · Thorn beetle',
+      actions: 0,
+      kills: 1,
+      xpGained: { Strength: 48, Hitpoints: 9.6 },
+      levelsBefore: { Strength: 1, Hitpoints: 1 },
+      levelsAfter: { Strength: 1, Hitpoints: 1 },
+      itemsGained: {},
+      itemsConsumed: {},
+      coinsGained: 0,
+      foodEaten: 0,
+      stopped: 'window',
+    });
+    expect(html).toContain('Strength 48, Hitpoints 9');
+    expect(html).not.toContain('9.6');
   });
 });
