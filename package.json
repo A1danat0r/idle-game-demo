@@ -1,0 +1,19 @@
+{
+  "name": "idle-game-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "route": "vitest run tests/route.test.ts --reporter=verbose"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3",
+    "vitest": "^3.0.5"
+  }
+}
