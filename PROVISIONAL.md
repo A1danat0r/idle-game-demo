@@ -1,39 +1,20 @@
 # Still not covered by the approved spec
 
-Spec r2 (sha256 `5555883ad744b977c729238a40046de2beab3daa5de7742b02054f4483eea361`) is approved for the draft. The rules below are the only ones it still does not settle. Each has a named constant in `src/provisional.ts` except the sell buttons, which are plain UI.
+Spec r2 (sha256 `680c583358758c5642348cdeba5c222c5d72e1f9e337907eaf8fe57778d8e56b`) is approved for the draft. Editorial wording from 2026-11-13 is included. No numbers, pacing, gear stats, or Forest fox level changed in that wording pass.
 
 ## Forest fox level
 
 `FOREST_FOX_LEVEL = 10` in `src/provisional.ts`.
 
-Spec §2.5 still says the Forest fox has no catalogue level and that 10 is a placeholder. HP (60) and max hit (3) are derived from that number.
+Spec §2.5 still says the Forest fox has no catalogue level and that 10 is a placeholder. HP (60) and max hit (3) are derived from that number. Gear stats are also still undecided; worn gear has no stats.
 
 **Question:** what level is the Forest fox?
 
-## Regen and an attack on the same timestamp
+## Accepted as built
 
-`REGEN_BEFORE_ATTACK_ON_TIE = true`.
+These were open here and are now spec wording. The constants stay, because they are the values the spec now states.
 
-**Question:** if regen and an attack fall on the same timestamp, which resolves first?
-
-## Second tab
-
-`TAB_LOCK_STALE_MS = 4000`.
-
-The spec says only one tab runs and the other shows a notice. It does not say how long a silent tab keeps the lock, or whether a blocked tab may take over without a reload. This demo keeps the lock for 4 seconds of heartbeats and the blocked tab stays on the notice until it is reloaded.
-
-**Question:** how long after a tab goes silent may another tab take over, and must that tab be reloaded?
-
-## When the catch-up pop-up appears
-
-`SILENT_GAP_MS = 5000` and `CATCHUP_REPORT_MIN_MS = 1000`.
-
-A visible gap shorter than 5 seconds is applied with no pop-up. A credited window shorter than 1 second does not open the pop-up, unless the 24 hour cap cut it or the clock moved backwards. The spec says the report is a pop-up on load and does not set a minimum.
-
-**Question:** should every non-zero catch-up, including a fraction of a second, open the pop-up?
-
-## Sell quantity
-
-Inventory has Sell 1 and Sell all. Selling is instant either way. The spec does not say how many of a stack one tap sells.
-
-**Question:** is selling one at a time, the whole stack, or both?
+- Regen and an action on the same instant: regen applies first (`REGEN_BEFORE_ATTACK_ON_TIE`).
+- Second tab: the running tab renews its lock every second. Another tab may take over only after 4 seconds of silence, on reload, and shows the notice until then (`TAB_LOCK_STALE_MS`).
+- Catch-up pop-up: on load or return when at least 1 second was credited, the 24 hour cap cut the window, or the clock went backwards. A visible-tab gap under 5 seconds is credited with no pop-up (`CATCHUP_REPORT_MIN_MS`, `SILENT_GAP_MS`).
+- Inventory selling: Sell 1 and Sell all, both instant.

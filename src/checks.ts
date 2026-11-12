@@ -98,7 +98,7 @@ export function survivabilityReport(): string {
   const meanFood = food.reduce((sum, n) => sum + n, 0) / food.length;
   return [
     `Meadow, Attack 1, 10 runs of 240 kills: ${meadowPauses} runs paused (pass if at most 1)`,
-    `Poacher, 20 roast minnows, pause-at-kill mean ${meanPause.toFixed(2)} over ${poacher.join(', ')} (pass 9–15)`,
+    `Poacher, 20 roast minnows, pause after this many completed kills, mean ${meanPause.toFixed(2)} over ${poacher.join(', ')} (pass 9–15)`,
     `Poacher, Defence 20, Hitpoints 7, cooked shrimp, food/240 kills mean ${meanFood.toFixed(2)} over ${food.join(', ')} (pass 4–10)`,
   ].join('\n');
 }

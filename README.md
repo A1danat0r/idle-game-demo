@@ -42,4 +42,8 @@ The header shows the build label `demo-dev` and the short commit it was built fr
 
 ## Offline
 
-The app stores the game in `localStorage` (`saveFormat` 1). Closing it and coming back credits up to 24 hours of the activity you left running, then shows a catch-up pop-up. A second tab shows a notice and does not run the game. After one online visit, the service worker can open the app shell offline.
+The app stores the game in `localStorage` (`saveFormat` 1). Closing it and coming back credits up to 24 hours of the activity you left running. The catch-up pop-up opens on load or when you return if at least 1 second was credited, the 24 hour cap cut the window, or the clock went backwards. A gap under 5 seconds while the tab stays visible is credited with no pop-up.
+
+A backwards clock credits nothing and sets the last-credited time to the current clock. Moving the clock forward after that credits the new window. Reloading, or a second tab, does not credit the same window twice.
+
+The running tab renews its lock every second. Another tab shows a notice until it is reloaded, and it can take over only after 4 seconds of silence. The activity bar sits in the bottom bar, directly above the tabs. Inventory sells with Sell 1 and Sell all, both instant. After one online visit, the service worker can open the app shell offline.

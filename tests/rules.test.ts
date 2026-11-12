@@ -364,6 +364,7 @@ describe('combat', () => {
         expect(trial.bank['food.roast_hare']).toBe(5);
         expect(trial.stats.kills).toBe(0);
         expect(trial.stats.pauses).toBe(1);
+        expect(trial.stats.pauseAtKill).toEqual([0]);
         break;
       }
     }
@@ -441,28 +442,33 @@ describe('combat', () => {
 
   it('pays the poacher 3-9 and lands loot near the catalogue value', () => {
     const kills = 1000;
-    const focused = combatReady(30, 7);
-    focused.xp.Defence = XP_TABLE[30];
-    focused.xp.Hitpoints = XP_TABLE[30];
-    focused.hp = playerMaxHp(30);
-    startCombat(focused, 'wood.poacher', 'Attack');
-    let guard = 0;
-    while (focused.stats.kills < kills && !focused.paused && guard++ < kills + 5) {
-      simulate(focused, 4 * 2400 + 3000);
-    }
-    expect(focused.paused).toBe(false);
-    expect(focused.stats.kills).toBe(kills);
-    const mean = focused.stats.coinsFromKills / kills;
-    expect(mean).toBeGreaterThan(5.7);
-    expect(mean).toBeLessThan(6.3);
     const lootEv = expectedDropValue(ENEMY_BY_ID['wood.poacher'].drops);
     expect(lootEv).toBeCloseTo(6.5, 5);
     expect(expectedCoinValue(ENEMY_BY_ID['wood.poacher'])).toBe(6);
-    const ratio = focused.stats.lootValue / kills / lootEv;
-    expect(ratio).toBeGreaterThan(0.9);
-    expect(ratio).toBeLessThan(1.1);
-    const beetle = expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops);
-    expect(beetle).toBeCloseTo(6.25, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops)).toBeCloseTo(6.25, 5);
+    const ratios: number[] = [];
+    for (let seed = 1; seed <= 5; seed++) {
+      const focused = combatReady(30, seed);
+      focused.xp.Defence = XP_TABLE[30];
+      focused.xp.Hitpoints = XP_TABLE[30];
+      focused.hp = playerMaxHp(30);
+      startCombat(focused, 'wood.poacher', 'Attack');
+      let guard = 0;
+      while (focused.stats.kills < kills && !focused.paused && guard++ < kills + 5) {
+        simulate(focused, 4 * 2400 + 3000);
+      }
+      expect(focused.paused).toBe(false);
+      expect(focused.stats.kills).toBe(kills);
+      if (seed === 1) {
+        const mean = focused.stats.coinsFromKills / kills;
+        expect(mean).toBeGreaterThan(5.7);
+        expect(mean).toBeLessThan(6.3);
+      }
+      ratios.push(focused.stats.lootValue / kills / lootEv);
+    }
+    const meanRatio = ratios.reduce((sum, ratio) => sum + ratio, 0) / ratios.length;
+    expect(meanRatio).toBeGreaterThan(0.9);
+    expect(meanRatio).toBeLessThan(1.1);
   });
 });
 
@@ -542,6 +548,7 @@ describe('save, offline, shop', () => {
     expect(back.creditedMs).toBe(0);
     expect(state.xp.Woodcutting).toBe(xp);
     expect(state.lastCredited).toBe(now);
+    // The reset moves the last-credited time to now, so the next forward window is credited.
     const after = creditOffline(state, now + 30_000);
     expect(after.creditedMs).toBe(30_000);
     expect(after.actions).toBeLessThan(20);

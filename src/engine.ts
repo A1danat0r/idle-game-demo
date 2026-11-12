@@ -529,7 +529,8 @@ function markPaused(state: Save, sink?: Sink): void {
   state.hp = 0;
   state.paused = true;
   state.stats.pauses += 1;
-  state.stats.pauseAtKill.push(state.stats.kills + 1);
+  // Completed kills only. A pause during the first fight is 0.
+  state.stats.pauseAtKill.push(state.stats.kills);
   if (sink) sink.stopped = 'paused';
 }
 
