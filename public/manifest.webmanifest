@@ -1,0 +1,11 @@
+{
+  "name": "Idle",
+  "short_name": "Idle",
+  "start_url": "/idle-game-demo/",
+  "scope": "/idle-game-demo/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1424",
+  "theme_color": "#0d1424",
+  "icons": [{ "src": "/idle-game-demo/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
