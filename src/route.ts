@@ -2,9 +2,9 @@ import {
   ENEMY_BY_ID,
   ITEMS,
   NODE_BY_ID,
+  NODES,
   RECIPES,
   RECIPE_BY_ID,
-  NODE_PRICE,
   equippedGear,
   hitChance,
   hitsPerKill,
@@ -148,19 +148,29 @@ function foodFree(enemyId: string, state: Save): boolean {
   return damage <= regen + 1e-9;
 }
 
-function bestCoinActivity(state: Save): 'pine' | 'meadow' | 'poacher' {
-  const pine = 1 / actionSeconds(state, 'mat.wood.pine');
-  let best: 'pine' | 'meadow' | 'poacher' = 'pine';
-  let bestRate = pine;
+type Grind = { kind: 'gather'; nodeId: string } | { kind: 'combat'; enemyId: string };
+
+/** Best coins per second among owned food-free activities, including every usable gathering node. */
+function bestCoinActivity(state: Save): Grind {
+  let best: Grind = { kind: 'gather', nodeId: 'mat.wood.pine' };
+  let bestRate = -1;
+  for (const node of NODES) {
+    if (!nodeUsable(state, node.id)) continue;
+    const rate = (ITEMS[node.id]?.sell ?? 0) / actionSeconds(state, node.id);
+    if (rate > bestRate) {
+      bestRate = rate;
+      best = { kind: 'gather', nodeId: node.id };
+    }
+  }
   if (state.owned.some((skill) => skill === 'Attack' || skill === 'Strength' || skill === 'Defence')) {
     const meadow = fightSeconds(state, 1, 6.25);
     if (meadow > bestRate) {
-      best = 'meadow';
       bestRate = meadow;
+      best = { kind: 'combat', enemyId: 'meadow.beetle' };
     }
     if (foodFree('wood.poacher', state)) {
-      const rate = fightSeconds(state, 12, 12.5);
-      if (rate > bestRate) best = 'poacher';
+      const poacher = fightSeconds(state, 12, 12.5);
+      if (poacher > bestRate) best = { kind: 'combat', enemyId: 'wood.poacher' };
     }
   }
   return best;
@@ -217,15 +227,12 @@ function fight(state: Save, enemyId: string, style: SkillId, clock: Clock, opts:
 function grindOnce(state: Save, clock: Clock, opts: SimOptions): void {
   const before = clock.ms;
   const choice = bestCoinActivity(state);
-  if (choice === 'pine') {
-    gather(state, 'mat.wood.pine', 1, clock, opts);
+  if (choice.kind === 'gather') {
+    gather(state, choice.nodeId, 1, clock, opts);
     liquidate(state);
-  } else if (choice === 'meadow') {
-    const style = (['Strength', 'Attack', 'Defence'] as const).find((skill) => owned(state, skill)) ?? 'Strength';
-    fight(state, 'meadow.beetle', style, clock, opts);
   } else {
     const style = (['Strength', 'Attack', 'Defence'] as const).find((skill) => owned(state, skill)) ?? 'Strength';
-    fight(state, 'wood.poacher', style, clock, opts);
+    fight(state, choice.enemyId, style, clock, opts);
   }
   clock.grindMs += clock.ms - before;
 }
@@ -419,7 +426,8 @@ export function runReferenceRoute(options: { seed?: number; expectedLoot?: boole
   train(state, 'Cooking', 30, 'cook2030', clock, opts);
   train(state, 'Fishing', 30, 'trout', clock, opts);
   const spent =
-    clock.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) + clock.nodes.length * NODE_PRICE;
+    clock.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+    clock.nodes.reduce((sum, event) => sum + (NODE_BY_ID[event.id ?? '']?.cost ?? 0), 0);
   const levels: Record<string, number> = {};
   for (const skill of ['Woodcutting', 'Fishing', 'Cooking', 'Attack', 'Strength', 'Defence', 'Mining', 'Smithing', 'Hitpoints'] as const) {
     levels[skill] = skillLevel(state, skill);
