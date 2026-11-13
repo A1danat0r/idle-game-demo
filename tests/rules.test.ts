@@ -19,7 +19,7 @@ import {
   playerHitChance,
   playerMaxHp,
 } from '../src/content';
-import { mainHtml, renderKey, reportHtml, type View } from '../src/ui';
+import { activityDestination, activityHtml, mainHtml, renderKey, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
@@ -957,6 +957,64 @@ describe('switching enemy', () => {
     const after = mainHtml(loaded!, combatView('meadow.hare'), 0);
     expect(after).toContain('Lv 1</em> 15/15');
     expect(after).not.toContain('10/15');
+  });
+});
+
+describe('activity bar and Activity tab', () => {
+  it('uses the running action icon, including Mining limestone and Fishing', () => {
+    const idle = newGame(0);
+    expect(activityHtml(idle)).toContain('stroke="#9aa0b0"');
+    expect(activityHtml(idle)).not.toContain('fill="#8a5a2b"');
+
+    const mining = newGame(0);
+    mining.owned.push('Mining');
+    mining.xp.Mining = XP_TABLE[10];
+    mining.nodes.push('mat.stone.limestone');
+    startGather(mining, 'mat.stone.limestone');
+    const miningBar = activityHtml(mining);
+    expect(miningBar).toContain('Mining · Limestone');
+    expect(miningBar).toContain('fill="#8d8478"');
+    expect(miningBar).not.toContain('fill="#8a5a2b"');
+
+    const fishing = newGame(0);
+    fishing.owned.push('Fishing');
+    fishing.xp.Fishing = 0;
+    startGather(fishing, 'mat.fish.minnow');
+    const fishingBar = activityHtml(fishing);
+    expect(fishingBar).toContain('fill="#5aa0c8"');
+    expect(fishingBar).not.toContain('fill="#8a5a2b"');
+
+    const fight = newGame(0);
+    fight.owned.push('Strength', 'Hitpoints');
+    fight.xp.Strength = 0;
+    fight.xp.Hitpoints = 0;
+    startCombat(fight, 'meadow.beetle', 'Strength');
+    expect(activityHtml(fight)).toContain('M28 6');
+  });
+
+  it('opens the running skill after a reload, and Woodcutting only when idle', () => {
+    const mining = newGame(0);
+    mining.owned.push('Mining');
+    mining.xp.Mining = XP_TABLE[10];
+    mining.nodes.push('mat.stone.limestone');
+    startGather(mining, 'mat.stone.limestone');
+    expect(activityDestination(mining, 'Woodcutting')).toEqual({ tab: 'skill', skill: 'Mining' });
+
+    const idle = newGame(0);
+    expect(activityDestination(idle, null)).toEqual({ tab: 'skill', skill: 'Woodcutting' });
+    expect(activityDestination(idle, 'Fishing')).toEqual({ tab: 'skill', skill: 'Fishing' });
+
+    const fight = newGame(0);
+    fight.owned.push('Strength', 'Hitpoints');
+    fight.xp.Strength = 0;
+    fight.xp.Hitpoints = 0;
+    startCombat(fight, 'wood.fox', 'Strength');
+    expect(activityDestination(fight, 'Woodcutting')).toEqual({
+      tab: 'combat',
+      skill: 'Strength',
+      area: 'Woodland edge',
+      selected: 'wood.fox',
+    });
   });
 });
 

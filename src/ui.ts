@@ -4,7 +4,9 @@ import {
   ENEMIES,
   ENEMY_BY_ID,
   ITEMS,
+  NODE_BY_ID,
   NODES,
+  RECIPE_BY_ID,
   RECIPES,
   SKILL_IDS,
   SKILL_PRICES,
@@ -13,8 +15,10 @@ import {
   XP_TABLE,
   equippedGear,
   gearStatText,
+  isCombatStyle,
   isFood,
   itemName,
+  type IconName,
   levelForXp,
   playerHitChance,
   skillPrice,
@@ -97,7 +101,7 @@ export function activityHtml(state: Save): string {
   const pct = activityPct(state);
   const label = activityLabel(state);
   const detail = activityDetail(state);
-  const iconName = state.activity?.kind === 'combat' ? 'sword' : state.activity?.kind === 'produce' ? 'food' : 'log';
+  const iconName = activityIcon(state);
   const resume = state.paused
     ? `<button type="button" class="tag btn" data-resume>Resume</button>`
     : `<small data-live="act-pct">${Math.round(pct)}%</small>`;
@@ -107,6 +111,66 @@ export function activityHtml(state: Save): string {
 /** Progress within the current action. This changes on every tick; the controls do not. */
 export function activityPercent(state: Save): number {
   return activityPct(state);
+}
+
+const SKILL_ICON: Record<SkillId, IconName> = {
+  Woodcutting: 'log',
+  Fishing: 'fish',
+  Mining: 'ore',
+  Cooking: 'food',
+  Smithing: 'bar',
+  Attack: 'sword',
+  Strength: 'sword',
+  Defence: 'shield',
+  Hitpoints: 'food',
+};
+
+/** The running action's item icon, then its skill icon, then the idle mark. */
+export function activityIcon(state: Save): IconName {
+  const activity = state.activity;
+  if (!activity) return 'idle';
+  if (activity.kind === 'combat') return 'sword';
+  if (activity.kind === 'gather') {
+    return ITEMS[activity.nodeId]?.icon ?? SKILL_ICON[NODE_BY_ID[activity.nodeId]?.skill ?? 'Woodcutting'];
+  }
+  const recipe = RECIPE_BY_ID[activity.recipeId];
+  const output = recipe?.outputs[0]?.id;
+  if (output && ITEMS[output]?.icon) return ITEMS[output].icon;
+  return SKILL_ICON[recipe?.skill ?? 'Cooking'];
+}
+
+export interface ActivityDestination {
+  tab: 'skill' | 'combat';
+  skill: SkillId;
+  area?: (typeof AREAS)[number];
+  selected?: string;
+}
+
+/**
+ * Where the Activity tab goes.
+ * A running gather or production action opens that skill.
+ * A fight opens the Combat screen on that enemy. Combat skills have no activity page.
+ * With nothing running, use the skill already open this session, then Woodcutting.
+ * The save does not store the open skill, so a reload forgets it.
+ */
+export function activityDestination(state: Save, lastSkill: SkillId | null): ActivityDestination {
+  const activity = state.activity;
+  if (activity?.kind === 'combat') {
+    const enemy = ENEMY_BY_ID[activity.enemyId];
+    return {
+      tab: 'combat',
+      skill: activity.style,
+      area: enemy?.area,
+      selected: activity.enemyId,
+    };
+  }
+  let skill: SkillId | null = null;
+  if (activity?.kind === 'gather') skill = NODE_BY_ID[activity.nodeId]?.skill ?? null;
+  if (activity?.kind === 'produce') skill = RECIPE_BY_ID[activity.recipeId]?.skill ?? null;
+  if (!skill) {
+    skill = lastSkill && !isCombatStyle(lastSkill) && lastSkill !== 'Hitpoints' ? lastSkill : 'Woodcutting';
+  }
+  return { tab: 'skill', skill };
 }
 
 /**
@@ -254,7 +318,7 @@ function skillHtml(state: Save, skill: SkillId | null): string {
     skill === 'Cooking' || skill === 'Smithing'
       ? RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)).join('')
       : NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)).join('');
-  return `<div class="skillhead"><div class="emblem">${icon(skill === 'Fishing' ? 'fish' : skill === 'Mining' ? 'ore' : skill === 'Cooking' ? 'food' : skill === 'Smithing' ? 'bar' : 'log', 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${tier}</div></div>
+  return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${tier}</div></div>
     ${scene}
     <div class="list">${rows}</div>`;
 }
