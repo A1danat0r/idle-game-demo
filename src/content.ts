@@ -81,7 +81,8 @@ export type IconName =
   | 'coin'
   | 'ammo'
   | 'part'
-  | 'moss';
+  | 'moss'
+  | 'idle';
 
 export const ITEMS: Record<string, ItemDef> = {};
 

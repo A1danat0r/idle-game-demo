@@ -23,6 +23,7 @@ const shapes: Record<IconName, string> = {
   ammo: `<path d="M12 28 L16 8 H20 L18 28 Z" fill="#c9ced6"/><path d="M24 28 L28 12 H31 L27 28 Z" fill="#b87333"/>`,
   part: `<path d="M10 24 Q20 8 30 24 L24 30 H16 Z" fill="#6d4c2f"/>`,
   moss: `<circle cx="14" cy="22" r="6" fill="#3d7a45"/><circle cx="24" cy="18" r="7" fill="#4c8a3c"/><circle cx="26" cy="26" r="5" fill="#2f5a3a"/>`,
+  idle: `<circle cx="20" cy="20" r="11" fill="none" stroke="#9aa0b0" stroke-width="2"/><rect x="15" y="13" width="3.5" height="14" rx="1" fill="#9aa0b0"/><rect x="21.5" y="13" width="3.5" height="14" rx="1" fill="#9aa0b0"/>`,
 };
 
 export const icon = (name: IconName, size = 40) =>
