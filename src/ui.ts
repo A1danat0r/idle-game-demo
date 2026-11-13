@@ -11,11 +11,14 @@ import {
   SHOP_ITEMS,
   SHOP_PRICE,
   XP_TABLE,
+  equippedGear,
+  gearStatText,
   isFood,
   itemName,
   levelForXp,
   playerHitChance,
   skillPrice,
+  equipSlotFor,
   type CombatStyle,
   type SkillId,
 } from './content';
@@ -134,8 +137,12 @@ function activityDetail(state: Save): string {
     return `${timeLabel(state, recipe.id, recipe.seconds)} · ${recipe.xp} XP`;
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
-  const attack = formulaLevel(state, 'Attack');
-  return `${activity.style} · hit ${Math.round(playerHitChance(attack, enemy.level) * 100)}% · ${state.hp}/${maxHp(state)} HP`;
+  return `${activity.style} · hit ${Math.round(shownHitChance(state, enemy.level) * 100)}% · ${state.hp}/${maxHp(state)} HP`;
+}
+
+function shownHitChance(state: Save, enemyLevel: number): number {
+  const gear = equippedGear(state.equipped, state.bank);
+  return playerHitChance(formulaLevel(state, 'Attack'), enemyLevel, gear.acc);
 }
 
 export function tabsHtml(view: View): string {
@@ -256,12 +263,13 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const inputs = recipe.inputs.map((input) => `${input.qty} ${itemName(input.id)}`).join(', ');
   const output = recipe.outputs[0];
   const have = recipe.inputs.every((input) => (state.bank[input.id] ?? 0) >= input.qty);
+  const stats = gearStatText(output.id);
   const right = !reached
     ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
     : active
       ? `<span class="tag on">Active</span>`
       : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}</small><small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id, recipe.seconds)} · ${recipe.xp} XP · sells ${ITEMS[output.id].sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
+  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small><small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id, recipe.seconds)} · ${recipe.xp} XP · sells ${ITEMS[output.id].sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
 }
 
 function combatHtml(state: Save, view: View): string {
@@ -295,8 +303,7 @@ function combatHtml(state: Save, view: View): string {
   const foodList = foods
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
     .join(' ');
-  const attack = formulaLevel(state, 'Attack');
-  const chance = Math.round(playerHitChance(attack, selected.level) * 100);
+  const chance = Math.round(shownHitChance(state, selected.level) * 100);
   return `<div class="areahead"><div><h2>${esc(view.area)}</h2><small>${styles}</small></div><small>${areas}</small></div>
     <div class="fight">
       <div class="scene">
@@ -304,10 +311,10 @@ function combatHtml(state: Save, view: View): string {
         <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green')}<small>${chance}% hit</small></div>
         <div class="fighter">${chibi('#4a2f2f', 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}</div></div>
       </div>
-      <div class="panel enemies"><h3>Enemies</h3>${list}${state.equipped.weapon && (state.bank[state.equipped.weapon] ?? 0) > 0 ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>
+      <div class="panel enemies"><h3>Enemies</h3>${list}${weaponReady(state) ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>
     </div>
     <div class="two">
-      <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own. Gear has no stats.</p></div>
+      <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
       <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>
     </div>`;
 }
@@ -332,7 +339,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;
   const sell = selected
-    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
+    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}${gearStatText(selected.id) ? ` · ${esc(gearStatText(selected.id))}` : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
     : '';
   const shop = `<div class="panel"><h3>Shop</h3>${SHOP_ITEMS.map((id) => {
     const left = shopStock(state, id, now);
@@ -346,26 +353,50 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     ${sell}`;
 }
 
-function equipmentHtml(state: Save): string {
-  const weaponId = state.equipped.weapon;
-  const weapon = weaponId && (state.bank[weaponId] ?? 0) > 0 ? ITEMS[weaponId] : null;
-  const weapons = Object.keys(state.bank).filter((id) => id.startsWith('gear.melee.') && (state.bank[id] ?? 0) > 0);
-  const tools = Object.keys(state.bank).filter((id) => ITEMS[id]?.kind === 'tool' && (state.bank[id] ?? 0) > 0);
-  const wear = weapons
-    .map((id) => `<button type="button" class="gearpick" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${state.equipped.weapon === id ? 'Equipped' : 'Tap to equip'}</small></div></button>`)
+function weaponReady(state: Save): boolean {
+  const id = state.equipped.weapon;
+  return !!id && equipSlotFor(id) === 'weapon' && (state.bank[id] ?? 0) > 0;
+}
+
+function worn(state: Save, slot: 'weapon' | 'body' | 'shield'): string | null {
+  const id = state.equipped[slot];
+  if (!id || equipSlotFor(id) !== slot || (state.bank[id] ?? 0) <= 0) return null;
+  return id;
+}
+
+function slotButton(state: Save, slot: 'weapon' | 'body' | 'shield', label: string): string {
+  const id = worn(state, slot);
+  const item = id ? ITEMS[id] : null;
+  const stats = id ? gearStatText(id) : '';
+  return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
+}
+
+function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string): string {
+  const ids = Object.keys(state.bank).filter((id) => equipSlotFor(id) === slot && (state.bank[id] ?? 0) > 0);
+  if (ids.length === 0) return `<p class="note">${empty}</p>`;
+  return ids
+    .map((id) => {
+      const on = state.equipped[slot] === id;
+      return `<button type="button" class="gearpick" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
+    })
     .join('');
+}
+
+function equipmentHtml(state: Save): string {
+  const tools = Object.keys(state.bank).filter((id) => ITEMS[id]?.kind === 'tool' && (state.bank[id] ?? 0) > 0);
   const toolRows = tools
     .map((id) => `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>×${state.bank[id]} · tier applies while owned</small></div></div>`)
     .join('');
   return `${title('Equipment')}
-    <div class="equip" style="grid-template-columns: 1fr 140px">
-      <div class="col">
-        <div class="eslot t-base"><button type="button" data-unequip="weapon">${weapon ? icon(weapon.icon, 34) : ''}<small>Weapon</small><em>${weapon ? esc(weapon.name) : 'Empty'}</em></button></div>
-      </div>
+    <div class="equip">
+      <div class="col">${slotButton(state, 'body', 'Body')}</div>
       <div class="hero">${chibi('#151b2e', 120)}</div>
+      <div class="col">${slotButton(state, 'weapon', 'Weapon')}${slotButton(state, 'shield', 'Shield')}</div>
     </div>
-    <p class="note center">Gear has no stats. A weapon must be equipped to fight. Tools are never equipped.</p>
-    <div class="panel"><h3>Weapon</h3>${wear || '<p class="note">No weapon in the bank.</p>'}</div>
+    <p class="note center">A weapon must be equipped to fight. Body and shield may stay empty. Crafted gear is not equipped for you. Tools are never equipped.</p>
+    <div class="panel"><h3>Weapon</h3>${gearList(state, 'weapon', 'No weapon in the bank.')}</div>
+    <div class="panel"><h3>Body</h3>${gearList(state, 'body', 'No body armour in the bank.')}</div>
+    <div class="panel"><h3>Shield</h3>${gearList(state, 'shield', 'No shield in the bank.')}</div>
     <div class="panel"><h3>Tools</h3>${toolRows || '<p class="note">No tools owned. The highest owned axe or pickaxe applies on its own.</p>'}</div>`;
 }
 
@@ -450,7 +481,7 @@ export function devHtml(): string {
       <button type="button" class="tag btn" data-poacher>Poacher sample</button>
       <button type="button" class="tag btn" data-survive>Survivability</button>
     </div>
-    <p class="note">Route autoplay uses the real engine and expected loot, which is how section 4 was computed. Hit rolls still use the seeded generator.</p>
+    <p class="note">Route autoplay is the section 4 Smithing-first route. It forges the iron spear and equips it before combat. Loot is expected value. Hit rolls use the seeded generator.</p>
     <pre data-dev-out></pre>
     <button type="button" class="tag" data-dev-close>Close</button>
   </div></div>`;

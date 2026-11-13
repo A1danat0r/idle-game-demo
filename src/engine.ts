@@ -6,6 +6,7 @@ import {
   ENEMIES,
   type EnemyDef,
   type EquipSlot,
+  type EquippedSlots,
   HITPOINTS_XP_PER_KILL,
   ITEMS,
   KILL_PAUSE_MS,
@@ -24,6 +25,9 @@ import {
   TOOL_TIME_FACTOR,
   XP_CAP,
   XP_TABLE,
+  emptyEquipped,
+  equippedGear,
+  equipSlotFor,
   expectedCoinValue,
   expectedDropValue,
   hitChance,
@@ -87,6 +91,7 @@ export interface StatsLog {
   playerSwings: number;
   playerHits: number;
   playerMisses: number;
+  enemyHits: number;
 }
 
 export interface Save {
@@ -97,7 +102,7 @@ export interface Save {
   purchaseCount: number;
   nodes: string[];
   bank: Record<string, number>;
-  equipped: Partial<Record<EquipSlot, string>>;
+  equipped: EquippedSlots;
   activity: Activity | null;
   progressMs: number;
   hp: number;
@@ -161,6 +166,7 @@ export function emptyStats(): StatsLog {
     playerSwings: 0,
     playerHits: 0,
     playerMisses: 0,
+    enemyHits: 0,
   };
 }
 
@@ -173,7 +179,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     purchaseCount: 0,
     nodes: [],
     bank: { [STARTER_WEAPON]: 1 },
-    equipped: { weapon: STARTER_WEAPON },
+    equipped: { weapon: STARTER_WEAPON, body: null, shield: null },
     activity: null,
     progressMs: 0,
     hp: playerMaxHp(1),
@@ -284,9 +290,14 @@ function takeItem(state: Save, id: string, qty: number, sink?: Sink): boolean {
   if (sink) sink.consumed[id] = (sink.consumed[id] ?? 0) + qty;
   if ((state.bank[id] ?? 0) === 0) {
     if (state.foodSlot === id) state.foodSlot = null;
-    for (const slot of Object.keys(state.equipped) as EquipSlot[]) {
-      if (state.equipped[slot] === id) delete state.equipped[slot];
+    let lostWeapon = false;
+    for (const slot of ['weapon', 'body', 'shield'] as const) {
+      if (state.equipped[slot] === id) {
+        state.equipped[slot] = null;
+        if (slot === 'weapon') lostWeapon = true;
+      }
     }
+    if (lostWeapon) abandonCombat(state);
   }
   return true;
 }
@@ -355,7 +366,7 @@ export function startCombat(state: Save, enemyId: string, style: CombatStyle): b
   if (!ownsCombatSkill(state)) return false;
   if (!state.owned.includes(style) || !isCombatStyle(style)) return false;
   const weapon = state.equipped.weapon;
-  if (!weapon || (state.bank[weapon] ?? 0) <= 0) return false;
+  if (!weapon || equipSlotFor(weapon) !== 'weapon' || (state.bank[weapon] ?? 0) <= 0) return false;
   const same =
     state.activity?.kind === 'combat' &&
     state.activity.enemyId === enemyId &&
@@ -379,7 +390,7 @@ function spawnEnemy(state: Save): void {
   if (!activity || activity.kind !== 'combat') return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   const strength = formulaLevel(state, 'Strength');
-  const hits = hitsPerKill(strength, enemy.level);
+  const hits = hitsPerKill(strength, enemy.level, equippedGear(state.equipped, state.bank).pow);
   state.combat = {
     phase: 'fight',
     hitsPerKill: hits,
@@ -475,14 +486,25 @@ export function buyShop(state: Save, itemId: string, now: number): boolean {
 }
 
 export function equip(state: Save, itemId: string): boolean {
-  if (!itemId.startsWith('gear.melee.')) return false;
-  if ((state.bank[itemId] ?? 0) <= 0) return false;
-  state.equipped.weapon = itemId;
+  const slot = equipSlotFor(itemId);
+  if (!slot || (state.bank[itemId] ?? 0) <= 0) return false;
+  state.equipped[slot] = itemId;
   return true;
 }
 
 export function unequip(state: Save, slot: EquipSlot): void {
-  delete state.equipped[slot];
+  if (slot !== 'weapon' && slot !== 'body' && slot !== 'shield') return;
+  state.equipped[slot] = null;
+  if (slot === 'weapon') abandonCombat(state);
+}
+
+/** End the current fight without loot. XP from hits already landed stays. */
+function abandonCombat(state: Save): void {
+  if (state.activity?.kind !== 'combat') return;
+  state.activity = null;
+  state.progressMs = 0;
+  state.paused = false;
+  state.combat = null;
 }
 
 function tryEat(state: Save, sink?: Sink): boolean {
@@ -540,8 +562,9 @@ function enemyAttack(state: Save, sink?: Sink): void {
   if (!activity || activity.kind !== 'combat' || !combat) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   combat.enemyAttacks += 1;
-  const chance = hitChance(enemy.level, formulaLevel(state, 'Defence'));
+  const chance = hitChance(enemy.level, formulaLevel(state, 'Defence'), equippedGear(state.equipped, state.bank).grd);
   if (nextUnit(state) >= chance) return;
+  state.stats.enemyHits += 1;
   const damage = rollInt(state, 1, enemy.maxHit);
   const lethal = state.hp - damage <= 0;
   if (lethal) {
@@ -565,7 +588,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   combat.swings += 1;
   state.stats.playerSwings += 1;
   const attackLevel = formulaLevel(state, 'Attack');
-  const chance = playerHitChance(attackLevel, enemy.level);
+  const chance = playerHitChance(attackLevel, enemy.level, equippedGear(state.equipped, state.bank).acc);
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
     return;
@@ -871,6 +894,7 @@ export function deserialize(raw: string): Save | null {
   if (typeof statsIn.playerSwings === 'number') stats.playerSwings = statsIn.playerSwings;
   if (typeof statsIn.playerHits === 'number') stats.playerHits = statsIn.playerHits;
   if (typeof statsIn.playerMisses === 'number') stats.playerMisses = statsIn.playerMisses;
+  if (typeof statsIn.enemyHits === 'number') stats.enemyHits = statsIn.enemyHits;
   const shop: Save['shop'] = {};
   if (isRecord(parsed.shop)) {
     for (const [key, value] of Object.entries(parsed.shop)) {
@@ -881,10 +905,11 @@ export function deserialize(raw: string): Save | null {
       };
     }
   }
-  const equipped: Save['equipped'] = {};
+  const equipped = emptyEquipped();
   if (isRecord(parsed.equipped)) {
-    for (const [key, value] of Object.entries(parsed.equipped)) {
-      if (typeof value === 'string') equipped[key as EquipSlot] = value;
+    for (const slot of ['weapon', 'body', 'shield'] as const) {
+      const value = parsed.equipped[slot];
+      if (typeof value === 'string' && value.length > 0) equipped[slot] = value;
     }
   }
   let activity: Activity | null = null;

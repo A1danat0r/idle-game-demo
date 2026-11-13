@@ -1,4 +1,4 @@
-import { ENEMY_BY_ID, XP_TABLE, playerHitChance, playerMaxHp } from './content';
+import { ENEMY_BY_ID, XP_TABLE, playerHitChance, playerMaxHp, STARTER_WEAPON, ITEMS } from './content';
 import { newGame, simulate, startCombat, stepCompletion, type Save } from './engine';
 
 function fighter(attackLevel: number, enemyId: string, seed: number): Save {
@@ -15,14 +15,18 @@ function fighter(attackLevel: number, enemyId: string, seed: number): Save {
 
 /** Measured hit rate over 1,000 swings for the section 5 table. */
 export function hitRateReport(): string {
+  const acc = ITEMS[STARTER_WEAPON].acc ?? 0;
   const rows: [number, string, number][] = [
-    [1, 'meadow.beetle', 0.88],
-    [1, 'wood.jay', 0.772],
-    [1, 'wood.poacher', 0.748],
+    [1, 'meadow.beetle', 0.904],
+    [1, 'wood.fox', 0.82],
+    [1, 'wood.jay', 0.796],
+    [1, 'wood.poacher', 0.772],
     [11, 'meadow.beetle', 1],
-    [11, 'wood.jay', 0.892],
-    [11, 'wood.poacher', 0.868],
+    [11, 'wood.fox', 0.94],
+    [11, 'wood.jay', 0.916],
+    [11, 'wood.poacher', 0.892],
     [30, 'meadow.beetle', 1],
+    [30, 'wood.fox', 1],
     [30, 'wood.jay', 1],
     [30, 'wood.poacher', 1],
   ];
@@ -34,7 +38,7 @@ export function hitRateReport(): string {
       let guard = 0;
       while (state.stats.playerSwings < 1000 && !state.paused && guard++ < 8000) simulate(state, 2400);
       const rate = state.stats.playerHits / state.stats.playerSwings;
-      return `Attack ${attack} vs ${enemy.name} (Lv ${enemy.level}): ${(rate * 100).toFixed(1)}% measured, ${(expected * 100).toFixed(1)}% expected, formula ${playerHitChance(attack, enemy.level)}`;
+      return `Attack ${attack} vs ${enemy.name} (Lv ${enemy.level}): ${(rate * 100).toFixed(1)}% measured, ${(expected * 100).toFixed(1)}% expected, formula ${playerHitChance(attack, enemy.level, acc)}`;
     })
     .join('\n');
 }
@@ -54,7 +58,7 @@ export function killCycleReport(): string {
     kills += 1;
   }
   const mean = total / Math.max(1, kills) / 1000;
-  return `Attack 1 vs Lv 1, 5 hits: mean cycle ${mean.toFixed(2)}s over ${kills} kills (target 16.64s ±3%)`;
+  return `Attack 1 vs Lv 1, starting sword, 5 hits: mean cycle ${mean.toFixed(2)}s over ${kills} kills (target 16.27s ±3%)`;
 }
 
 export function samplePoacher(kills = 1000, seed = 7): string {

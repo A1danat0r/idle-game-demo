@@ -27,16 +27,28 @@ describe('reference route', () => {
     console.log(formatRouteResult(result));
     const second = result.purchases[0];
     const third = result.purchases[1];
-    expect(second.skill).toBe('Strength');
+    expect(second.skill).toBe('Cooking');
     expect(second.atHours).toBeGreaterThanOrEqual(0.513);
     expect(second.atHours).toBeLessThanOrEqual(0.567);
-    expect(third.skill).toBe('Fishing');
-    expect(third.atHours).toBeGreaterThanOrEqual(1.235);
-    expect(third.atHours).toBeLessThanOrEqual(1.365);
-    expect(result.elapsedHours).toBeGreaterThanOrEqual(17.29);
-    expect(result.elapsedHours).toBeLessThanOrEqual(19.11);
-    expect(result.earned).toBeGreaterThan(33022 * 0.95);
-    expect(result.earned).toBeLessThan(33022 * 1.05);
+    expect(third.skill).toBe('Mining');
+    expect(third.atHours).toBeGreaterThanOrEqual(1.197);
+    expect(third.atHours).toBeLessThanOrEqual(1.323);
+    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.967);
+    expect(result.elapsedHours).toBeLessThanOrEqual(18.753);
+    expect(result.earned).toBeGreaterThanOrEqual(31730);
+    expect(result.earned).toBeLessThanOrEqual(35070);
+    expect(result.purchases.map((event) => event.skill)).toEqual([
+      'Cooking',
+      'Mining',
+      'Smithing',
+      'Strength',
+      'Defence',
+      'Attack',
+      'Fishing',
+    ]);
+    expect(result.state.equipped.weapon).toBe('gear.melee.iron_spear');
+    expect(result.state.equipped.body).toBeNull();
+    expect(result.state.equipped.shield).toBeNull();
     expect(result.levels.Woodcutting).toBe(30);
     expect(result.levels.Fishing).toBe(30);
     expect(result.levels.Cooking).toBe(30);

@@ -1,16 +1,7 @@
 /**
  * Constants that implement the approved spec.
- * The Forest fox level is the only one still undecided.
- * Spec r2 sha256 680c583358758c5642348cdeba5c222c5d72e1f9e337907eaf8fe57778d8e56b.
+ * Spec r2 sha256 ae654ead1a207010a454deb78186c4c360f8897c3699fad50f3e372ba09003f9.
  */
-
-/**
- * PROVISIONAL: spec §2.5 still says the Forest fox has no catalogue level
- * and that 10 is a placeholder. HP and max hit are derived from this number.
- * Gear stats are also still undecided and are not represented here.
- * Question: what level is the Forest fox?
- */
-export const FOREST_FOX_LEVEL = 10;
 
 /**
  * §5: if a regen tick and an action fall on the same instant, regen applies first.

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   ENEMIES,
   ENEMY_BY_ID,
+  ITEMS,
+  STARTER_WEAPON,
   NODES,
   NODE_BY_ID,
   RECIPES,
@@ -17,7 +19,6 @@ import {
   playerHitChance,
   playerMaxHp,
 } from '../src/content';
-import { FOREST_FOX_LEVEL } from '../src/provisional';
 import { reportHtml } from '../src/ui';
 import {
   SAVE_KEY,
@@ -43,6 +44,7 @@ import {
   startGather,
   startProduce,
   stepCompletion,
+  equip,
   unequip,
   tabLockDecision,
   writeSave,
@@ -266,26 +268,34 @@ describe('actions', () => {
 });
 
 describe('player hit chance', () => {
-  it('matches the section 5 table and both clamps', () => {
+  it('matches the section 5 table for the starting sword and both clamps', () => {
+    const acc = 2;
+    expect(playerHitChance(1, 1, acc)).toBeCloseTo(0.904, 10);
+    expect(playerHitChance(1, 8, acc)).toBeCloseTo(0.82, 10);
+    expect(playerHitChance(1, 10, acc)).toBeCloseTo(0.796, 10);
+    expect(playerHitChance(1, 12, acc)).toBeCloseTo(0.772, 10);
+    expect(playerHitChance(11, 1, acc)).toBe(1);
+    expect(playerHitChance(11, 8, acc)).toBeCloseTo(0.94, 10);
+    expect(playerHitChance(11, 10, acc)).toBeCloseTo(0.916, 10);
+    expect(playerHitChance(11, 12, acc)).toBeCloseTo(0.892, 10);
+    expect(playerHitChance(30, 1, acc)).toBe(1);
+    expect(playerHitChance(30, 8, acc)).toBe(1);
+    expect(playerHitChance(30, 10, acc)).toBe(1);
+    expect(playerHitChance(30, 12, acc)).toBe(1);
     expect(playerHitChance(1, 1)).toBeCloseTo(0.88, 10);
-    expect(playerHitChance(1, 10)).toBeCloseTo(0.772, 10);
-    expect(playerHitChance(1, 12)).toBeCloseTo(0.748, 10);
-    expect(playerHitChance(11, 1)).toBeCloseTo(1, 10);
-    expect(playerHitChance(11, 10)).toBeCloseTo(0.892, 10);
-    expect(playerHitChance(11, 12)).toBeCloseTo(0.868, 10);
-    expect(playerHitChance(30, 1)).toBe(1);
-    expect(playerHitChance(30, 10)).toBe(1);
-    expect(playerHitChance(30, 12)).toBe(1);
     expect(playerHitChance(1, 33)).toBe(0.5);
     expect(playerHitChance(1, 100)).toBe(0.5);
+    expect(playerHitChance(1, 1, 100)).toBe(1);
   });
 
-  it('reads the enemy level the spec defines, and does not invent one for the fox', () => {
+  it('uses the approved Forest fox level', () => {
     expect(ENEMY_BY_ID['meadow.beetle'].level).toBe(1);
     expect(ENEMY_BY_ID['wood.jay'].level).toBe(10);
     expect(ENEMY_BY_ID['wood.poacher'].level).toBe(12);
-    expect(ENEMY_BY_ID['wood.fox'].level).toBe(FOREST_FOX_LEVEL);
-    expect(ENEMY_BY_ID['wood.fox'].hp).toBe(5 * (FOREST_FOX_LEVEL + 2));
+    expect(ENEMY_BY_ID['wood.fox'].level).toBe(8);
+    expect(ENEMY_BY_ID['wood.fox'].hp).toBe(50);
+    expect(ENEMY_BY_ID['wood.fox'].maxHit).toBe(3);
+    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6, 5);
   });
 
   it('deals no damage and grants no XP on a miss, and still pays 120 when the kill lands', () => {
@@ -326,6 +336,19 @@ describe('combat', () => {
     expect(hitsPerKill(21, 12)).toBe(5);
     expect(hitsPerKill(22, 12)).toBe(4);
     expect(hitsPerKill(30, 12)).toBe(4);
+    expect(hitsPerKill(1, 1, 2)).toBe(5);
+    expect(hitsPerKill(8, 1, 2)).toBe(5);
+    expect(hitsPerKill(9, 1, 2)).toBe(4);
+    expect(hitsPerKill(19, 1, 2)).toBe(3);
+    expect(hitsPerKill(15, 8, 2)).toBe(5);
+    expect(hitsPerKill(16, 8, 2)).toBe(4);
+    expect(hitsPerKill(26, 8, 2)).toBe(3);
+    expect(hitsPerKill(17, 10, 2)).toBe(5);
+    expect(hitsPerKill(18, 10, 2)).toBe(4);
+    expect(hitsPerKill(28, 10, 2)).toBe(3);
+    expect(hitsPerKill(19, 12, 2)).toBe(5);
+    expect(hitsPerKill(20, 12, 2)).toBe(4);
+    expect(hitsPerKill(30, 12, 2)).toBe(3);
     const state = combatReady(1);
     startCombat(state, 'meadow.beetle', 'Strength');
     expect(state.combat?.hitsPerKill).toBe(5);
@@ -484,7 +507,10 @@ describe('save, offline, shop', () => {
     state.nodes.push('mat.ore.iron');
     state.bank['mat.wood.pine'] = 12;
     state.bank['tool.mining.bronze_pickaxe'] = 1;
+    state.bank['gear.armour.bronze_body'] = 1;
+    state.bank['gear.shield.bronze'] = 1;
     state.equipped.body = 'gear.armour.bronze_body';
+    state.equipped.shield = 'gear.shield.bronze';
     state.activity = { kind: 'gather', nodeId: 'mat.wood.pine' };
     state.progressMs = 1200;
     state.hp = 9;
@@ -617,10 +643,12 @@ describe('approved combat details', () => {
 
   it('measures hit rates within 0.03 and the Attack 1 kill cycle within 3%', () => {
     const cases: [number, string, number][] = [
-      [1, 'meadow.beetle', 0.88],
-      [1, 'wood.jay', 0.772],
-      [1, 'wood.poacher', 0.748],
+      [1, 'meadow.beetle', 0.904],
+      [1, 'wood.fox', 0.82],
+      [1, 'wood.jay', 0.796],
+      [1, 'wood.poacher', 0.772],
       [30, 'meadow.beetle', 1],
+      [30, 'wood.fox', 1],
       [30, 'wood.poacher', 1],
     ];
     for (const [attack, enemyId, expected] of cases) {
@@ -647,8 +675,8 @@ describe('approved combat details', () => {
       total += step.ms;
     }
     const mean = total / 200 / 1000;
-    expect(mean).toBeGreaterThan(16.64 * 0.97);
-    expect(mean).toBeLessThan(16.64 * 1.03);
+    expect(mean).toBeGreaterThan(16.27 * 0.97);
+    expect(mean).toBeLessThan(16.27 * 1.03);
   });
 
   it('refuses to fight without a weapon and keeps landed XP when you switch away', () => {
@@ -730,5 +758,165 @@ describe('open-tab clock and catch-up display', () => {
     });
     expect(html).toContain('Strength 48, Hitpoints 9');
     expect(html).not.toContain('9.6');
+  });
+});
+
+describe('gear stats', () => {
+  it('uses the option-B stats and the armour recipes already in the catalogue', () => {
+    const stats: Record<string, [number, number, number]> = {
+      'gear.melee.bronze_sword': [2, 2, 0],
+      'gear.melee.bronze_dagger': [5, 0, 0],
+      'gear.melee.bronze_mace': [0, 5, 0],
+      'gear.melee.bronze_spear': [3, 3, 0],
+      'gear.melee.iron_sword': [6, 6, 0],
+      'gear.melee.iron_dagger': [10, 0, 0],
+      'gear.melee.iron_spear': [7, 7, 0],
+      'gear.armour.bronze_body': [0, 0, 3],
+      'gear.shield.bronze': [0, 0, 2],
+      'gear.armour.iron_body': [0, 0, 6],
+    };
+    for (const [id, [acc, pow, grd]] of Object.entries(stats)) {
+      expect(ITEMS[id].acc, id).toBe(acc);
+      expect(ITEMS[id].pow, id).toBe(pow);
+      expect(ITEMS[id].grd, id).toBe(grd);
+    }
+    expect(RECIPE_BY_ID['recipe.gear.armour.bronze_body'].inputs).toEqual([{ id: 'mat.bar.bronze', qty: 3 }]);
+    expect(RECIPE_BY_ID['recipe.gear.shield.bronze'].inputs).toEqual([
+      { id: 'mat.bar.bronze', qty: 2 },
+      { id: 'mat.wood.pine', qty: 1 },
+    ]);
+    expect(RECIPE_BY_ID['recipe.gear.armour.iron_body'].inputs).toEqual([{ id: 'mat.bar.iron', qty: 3 }]);
+    expect(RECIPE_BY_ID['recipe.gear.melee.iron_spear'].level).toBe(22);
+    expect(hitChance(1, 1)).toBeCloseTo(0.4, 10);
+    expect(hitChance(8, 1)).toBeCloseTo(0.61, 10);
+    expect(hitChance(10, 1)).toBeCloseTo(0.67, 10);
+    expect(hitChance(12, 1)).toBeCloseTo(0.73, 10);
+    expect(hitChance(1, 1, 5)).toBeCloseTo(0.25, 10);
+    expect(hitChance(8, 1, 5)).toBeCloseTo(0.46, 10);
+    expect(hitChance(10, 1, 5)).toBeCloseTo(0.52, 10);
+    expect(hitChance(12, 1, 5)).toBeCloseTo(0.58, 10);
+    expect(hitChance(1, 1, 8)).toBeCloseTo(0.16, 10);
+    expect(hitChance(8, 1, 8)).toBeCloseTo(0.37, 10);
+    expect(hitChance(10, 1, 8)).toBeCloseTo(0.43, 10);
+    expect(hitChance(12, 1, 8)).toBeCloseTo(0.49, 10);
+  });
+
+  it('adds Accuracy, Power and Guard only from gear that is equipped', () => {
+    const sword = combatReady(9, 1, 30);
+    startCombat(sword, 'meadow.beetle', 'Strength');
+    expect(sword.combat?.hitsPerKill).toBe(4);
+    simulate(sword, 2400);
+    expect(sword.stats.playerMisses).toBe(0);
+    expect(sword.combat?.enemyHp).toBeCloseTo(15 * 0.75, 5);
+
+    const plain = combatReady(9, 1, 30);
+    plain.bank['gear.melee.bronze_dagger'] = 1;
+    expect(equip(plain, 'gear.melee.bronze_dagger')).toBe(true);
+    startCombat(plain, 'meadow.beetle', 'Strength');
+    expect(plain.combat?.hitsPerKill).toBe(5);
+    simulate(plain, 2400);
+    expect(plain.combat?.enemyHp).toBeCloseTo(12, 5);
+    expect(plain.stats.playerMisses).toBe(0);
+
+    const guarded = combatReady(1, 4, 30);
+    guarded.xp.Defence = 0;
+    guarded.xp.Hitpoints = XP_TABLE[30];
+    guarded.hp = playerMaxHp(30);
+    guarded.bank['gear.armour.bronze_body'] = 1;
+    guarded.bank['gear.shield.bronze'] = 1;
+    equip(guarded, 'gear.armour.bronze_body');
+    equip(guarded, 'gear.shield.bronze');
+    startCombat(guarded, 'meadow.beetle', 'Attack');
+    let guard = 0;
+    while (guarded.stats.playerSwings < 400 && !guarded.paused && guard++ < 500) simulate(guarded, 2400);
+    const attacks = guarded.stats.playerSwings;
+    expect(attacks).toBeGreaterThan(300);
+    const rate = guarded.stats.enemyHits / attacks;
+    expect(rate).toBeGreaterThan(0.18);
+    expect(rate).toBeLessThan(0.32);
+
+    const open = combatReady(1, 4, 30);
+    open.xp.Hitpoints = XP_TABLE[30];
+    open.hp = playerMaxHp(30);
+    startCombat(open, 'meadow.beetle', 'Attack');
+    guard = 0;
+    while (open.stats.playerSwings < attacks && guard++ < 500) simulate(open, 2400);
+    const openRate = open.stats.enemyHits / open.stats.playerSwings;
+    expect(openRate).toBeGreaterThan(0.33);
+    expect(openRate).toBeLessThan(0.47);
+    expect(openRate).toBeGreaterThan(rate);
+  });
+
+  it('equips and unequips the three slots, and does not equip crafted gear or tools', () => {
+    const state = newGame(0);
+    state.owned.push('Smithing');
+    state.xp.Smithing = 0;
+    state.bank['mat.bar.bronze'] = 5;
+    state.bank['mat.wood.pine'] = 1;
+    startProduce(state, 'recipe.gear.armour.bronze_body');
+    simulate(state, 3700);
+    expect(state.bank['gear.armour.bronze_body']).toBe(1);
+    expect(state.equipped.body).toBeNull();
+    expect(state.equipped.weapon).toBe(STARTER_WEAPON);
+    state.bank['gear.shield.bronze'] = 1;
+    state.bank['tool.woodcutting.bronze_axe'] = 1;
+    expect(equip(state, 'tool.woodcutting.bronze_axe')).toBe(false);
+    expect(equip(state, 'gear.armour.bronze_body')).toBe(true);
+    expect(equip(state, 'gear.shield.bronze')).toBe(true);
+    expect(state.equipped).toEqual({
+      weapon: STARTER_WEAPON,
+      body: 'gear.armour.bronze_body',
+      shield: 'gear.shield.bronze',
+    });
+    unequip(state, 'shield');
+    expect(state.equipped.shield).toBeNull();
+    expect(state.activity).toBeNull();
+    state.owned.push('Strength', 'Hitpoints');
+    state.xp.Strength = 0;
+    state.xp.Hitpoints = 0;
+    state.xp.Attack = XP_TABLE[30];
+    startCombat(state, 'meadow.hare', 'Strength');
+    simulate(state, 2400);
+    expect(state.xp.Strength).toBe(24);
+    unequip(state, 'weapon');
+    expect(state.activity).toBeNull();
+    expect(state.stats.kills).toBe(0);
+    expect(state.xp.Strength).toBe(24);
+    state.equipped.weapon = STARTER_WEAPON;
+    startCombat(state, 'meadow.hare', 'Strength');
+    sell(state, STARTER_WEAPON, 1);
+    expect(state.equipped.weapon).toBeNull();
+    expect(state.activity).toBeNull();
+    expect(state.stats.kills).toBe(0);
+  });
+
+  it('loads an old save that has no body or shield, then credits offline combat with the restored gear', () => {
+    const current = newGame(1_000);
+    const raw = JSON.parse(serialize(current)) as { equipped: Record<string, unknown> };
+    raw.equipped = { weapon: STARTER_WEAPON };
+    const migrated = deserialize(JSON.stringify(raw));
+    expect(migrated?.equipped).toEqual({ weapon: STARTER_WEAPON, body: null, shield: null });
+
+    const fighting = combatReady(1, 2, 1);
+    fighting.bank['gear.melee.iron_dagger'] = 1;
+    equip(fighting, 'gear.melee.iron_dagger');
+    fighting.bank['gear.armour.iron_body'] = 1;
+    fighting.bank['gear.shield.bronze'] = 1;
+    equip(fighting, 'gear.armour.iron_body');
+    equip(fighting, 'gear.shield.bronze');
+    const saved = deserialize(serialize(fighting));
+    expect(saved?.equipped).toEqual({
+      weapon: 'gear.melee.iron_dagger',
+      body: 'gear.armour.iron_body',
+      shield: 'gear.shield.bronze',
+    });
+    startCombat(saved!, 'meadow.beetle', 'Defence');
+    saved!.lastCredited = 0;
+    const report = creditOffline(saved!, 180_000);
+    expect(report.kills).toBeGreaterThan(0);
+    expect(saved!.stats.playerMisses).toBe(0);
+    expect(saved!.equipped.weapon).toBe('gear.melee.iron_dagger');
+    expect(saved!.stats.playerSwings).toBeGreaterThan(20);
+    expect(saved!.stats.enemyHits / saved!.stats.playerSwings).toBeLessThan(0.35);
   });
 });
