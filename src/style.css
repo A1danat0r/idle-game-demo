@@ -181,6 +181,14 @@ button.gearpick.on small { color: #7be08a; }
 .floater.miss { color: var(--muted); font-weight: 600; }
 .floater.heal { color: #7be08a; }
 .floater.toast { color: var(--gold); }
+.floater.anchored {
+  position: absolute; max-width: none; white-space: nowrap; transform: translate(-50%, -50%);
+  animation: floater-rise-anchored 1100ms ease-out forwards;
+}
+@keyframes floater-rise-anchored {
+  from { opacity: 1; transform: translate(-50%, calc(-50% + 6px)); }
+  to { opacity: 0; transform: translate(-50%, calc(-50% - 26px)); }
+}
 .bar.thin { height: 4px; margin-top: 1px; }
 .actbars { display: flex; align-items: center; gap: 6px; }
 .actbars .bar { flex: 1; margin: 3px 0; }
@@ -190,6 +198,6 @@ button.gearpick.on small { color: #7be08a; }
   to { opacity: 0; transform: translateY(-26px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .floater { animation: floater-fade 1100ms ease-out forwards; }
+  .floater, .floater.anchored { animation: floater-fade 1100ms ease-out forwards; }
   @keyframes floater-fade { from { opacity: 1; } to { opacity: 0; } }
 }

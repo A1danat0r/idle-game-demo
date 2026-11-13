@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { XP_TABLE } from '../src/content';
 import { advanceOpenTab, newGame, setFood, startCombat, startGather, type FloatNote } from '../src/engine';
-import { FLOAT_CAP, formatActionNotes, presentNotes } from '../src/floaters';
+import { FLOAT_CAP, combatAnchor, formatActionNotes, formatCombatAmount, presentNotes } from '../src/floaters';
 
 describe('action and combat floaters', () => {
   it('records the real XP and item for a completed gather', () => {
@@ -29,17 +29,26 @@ describe('action and combat floaters', () => {
     const shown = presentNotes(notes);
     expect(shown).toEqual([
       { tone: 'action', place: 'bar', text: '+84 XP\n+2 Pine logs' },
-      { tone: 'heal', place: 'combat', text: '+5' },
-      { tone: 'player', place: 'combat', text: '3.8' },
+      { tone: 'heal', place: 'combat', text: '+5', anchor: 'player' },
+      { tone: 'player', place: 'combat', text: '3.8', anchor: 'enemy' },
     ]);
     expect(shown.length).toBe(FLOAT_CAP);
     expect(presentNotes([{ kind: 'miss', side: 'player' }])).toEqual([
-      { tone: 'miss', place: 'combat', text: 'Miss' },
+      { tone: 'miss', place: 'combat', text: 'Miss', anchor: 'enemy' },
     ]);
     expect(presentNotes([{ kind: 'miss', side: 'enemy' }])).toEqual([
-      { tone: 'enemy', place: 'combat', text: 'Miss' },
+      { tone: 'enemy', place: 'combat', text: 'Miss', anchor: 'player' },
     ]);
-    expect(presentNotes([{ kind: 'enemy-hit', amount: 2 }])[0].text).toBe('-2');
+    expect(presentNotes([{ kind: 'enemy-hit', amount: 2 }])[0]).toMatchObject({ text: '-2', anchor: 'player' });
+    expect(presentNotes([{ kind: 'player-hit', amount: 150 }])[0]).toMatchObject({ text: '150', anchor: 'enemy' });
+    expect(presentNotes([{ kind: 'enemy-hit', amount: 1234 }])[0]).toMatchObject({ text: '-1,234', anchor: 'player' });
+    expect(presentNotes([{ kind: 'heal', amount: 1234 }])[0]).toMatchObject({ text: '+1,234', anchor: 'player' });
+    expect(formatCombatAmount(3.75)).toBe('3.8');
+    expect(combatAnchor({ kind: 'player-hit', amount: 1 })).toBe('enemy');
+    expect(combatAnchor({ kind: 'miss', side: 'player' })).toBe('enemy');
+    expect(combatAnchor({ kind: 'enemy-hit', amount: 1 })).toBe('player');
+    expect(combatAnchor({ kind: 'miss', side: 'enemy' })).toBe('player');
+    expect(combatAnchor({ kind: 'heal', amount: 1 })).toBe('player');
   });
 
   it('records a miss, a hit amount, and a heal from the real rolls', () => {
