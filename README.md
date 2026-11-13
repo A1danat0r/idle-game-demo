@@ -2,6 +2,8 @@
 
 A phone idle game in the Melvor style. Installable web app, TypeScript and Vite, no framework. The rules are the approved draft in the project spec (16 gathering nodes, 12 Cooking recipes, 28 Smithing recipes, 11 enemies).
 
+Equipment has three slots: weapon, body, and shield. Weapons add Accuracy and Power. Bronze and iron body armour and the bronze shield add Guard. Crafted gear stays in the bank until you equip it. The Forest fox is level 8.
+
 ## Run
 
 ```bash
@@ -26,7 +28,7 @@ npm test
 
 That runs the engine tests: XP and prices, action timers, tools, combat (120 XP per kill, hit chance, one enemy attack per swing), the reference-route pacing bands, save/load, a corrupt save, offline progress, and the shop restock.
 
-`npm run route` prints the section 4 route. It drives the real engine. Loot is credited at expected value, which is how that route was computed. Hit rolls still use the seeded generator.
+`npm run route` prints the section 4 official route. It drives the real engine: Smithing first, then the iron spear is forged and equipped before any combat. Loot is credited at expected value, which is how that route was computed. Hit rolls still use the seeded generator, with the equipped weapon's Accuracy and Power. The binding bands are 0.513–0.567h, 1.197–1.323h, and 16.967–18.753h.
 
 ## Dev tools
 

@@ -1,5 +1,3 @@
-import { FOREST_FOX_LEVEL } from './provisional';
-
 /** Approved. Level-1 nodes are free. Every other demo node costs this once, and only after the skill reaches the node's level. */
 export const NODE_PRICE = 1500;
 
@@ -54,6 +52,12 @@ export interface ItemDef {
   kind: ItemKind;
   /** Heal amount for auto-eat foods. */
   heal?: number;
+  /** Weapon Accuracy. Added to Attack in player hit chance. */
+  acc?: number;
+  /** Weapon Power. Added to Strength in hits per kill. */
+  pow?: number;
+  /** Body or shield Guard. Added to Defence in enemy hit chance. */
+  grd?: number;
   icon: IconName;
 }
 
@@ -255,17 +259,19 @@ export function enemyMaxHp(level: number): number {
 export function enemyMaxHit(level: number): number {
   return 1 + Math.floor(level / 4);
 }
-export function hitsPerKill(strength: number, enemyLevel: number): number {
-  const steps = Math.max(0, Math.floor((strength - enemyLevel) / 10));
+/** Hits per kill. Power is added to Strength. The result is locked when a kill starts. */
+export function hitsPerKill(strength: number, enemyLevel: number, power = 0): number {
+  const steps = Math.max(0, Math.floor((strength + power - enemyLevel) / 10));
   return Math.max(3, 5 - steps);
 }
-export function hitChance(enemyLevel: number, defence: number): number {
-  return Math.min(0.9, Math.max(0.05, 0.4 + 0.03 * (enemyLevel - defence)));
+/** Enemy hit chance. Guard from body and shield is added to Defence. */
+export function hitChance(enemyLevel: number, defence: number, guard = 0): number {
+  return Math.min(0.9, Math.max(0.05, 0.4 + 0.03 * (enemyLevel - (defence + guard))));
 }
 
-/** Approved player hit chance. A miss deals no damage. Gear does not enter this formula. */
-export function playerHitChance(attackLevel: number, enemyLevel: number): number {
-  const raw = 0.88 + 0.012 * (attackLevel - enemyLevel);
+/** Player hit chance. Accuracy is added to Attack. A miss deals no damage and grants no XP. */
+export function playerHitChance(attackLevel: number, enemyLevel: number, accuracy = 0): number {
+  const raw = 0.88 + 0.012 * ((attackLevel + accuracy) - enemyLevel);
   return Math.min(1, Math.max(0.5, raw));
 }
 export function playerMaxHp(hitpointsLevel: number): number {
@@ -311,7 +317,8 @@ export const ENEMIES: EnemyDef[] = [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 12 },
     { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 12 },
   ], null),
-  enemy('wood.fox', 'Forest fox', 'Woodland edge', FOREST_FOX_LEVEL, [
+  // Level 8 is approved. HP 50 and max hit 3 follow HP = 5 × (level + 2) and max hit = 1 + floor(level/4).
+  enemy('wood.fox', 'Forest fox', 'Woodland edge', 8, [
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 3 },
   ], null),
   enemy('wood.grub', 'Resin grub', 'Woodland edge', 10, [
@@ -414,17 +421,17 @@ function addItems(): void {
   ];
   for (const row of mats) item({ ...row, kind: 'material' });
   for (const food of FOODS) item({ ...food, kind: 'food', icon: 'food' });
-  const gear: { id: string; name: string; sell: number; icon: IconName }[] = [
-    { id: 'gear.armour.bronze_body', name: 'Bronze body armour', sell: 10, icon: 'body' },
-    { id: 'gear.armour.iron_body', name: 'Iron body armour', sell: 10, icon: 'body' },
-    { id: 'gear.melee.bronze_sword', name: 'Bronze sword', sell: 7, icon: 'sword' },
-    { id: 'gear.melee.iron_sword', name: 'Iron sword', sell: 7, icon: 'sword' },
-    { id: 'gear.melee.bronze_dagger', name: 'Bronze dagger', sell: 3, icon: 'sword' },
-    { id: 'gear.melee.iron_dagger', name: 'Iron dagger', sell: 3, icon: 'sword' },
-    { id: 'gear.melee.bronze_mace', name: 'Bronze mace', sell: 8, icon: 'sword' },
-    { id: 'gear.melee.bronze_spear', name: 'Bronze spear', sell: 8, icon: 'sword' },
-    { id: 'gear.melee.iron_spear', name: 'Iron spear', sell: 8, icon: 'sword' },
-    { id: 'gear.shield.bronze', name: 'Bronze shield', sell: 8, icon: 'shield' },
+  const gear: { id: string; name: string; sell: number; icon: IconName; acc: number; pow: number; grd: number }[] = [
+    { id: 'gear.armour.bronze_body', name: 'Bronze body armour', sell: 10, icon: 'body', acc: 0, pow: 0, grd: 3 },
+    { id: 'gear.armour.iron_body', name: 'Iron body armour', sell: 10, icon: 'body', acc: 0, pow: 0, grd: 6 },
+    { id: 'gear.melee.bronze_sword', name: 'Bronze sword', sell: 7, icon: 'sword', acc: 2, pow: 2, grd: 0 },
+    { id: 'gear.melee.iron_sword', name: 'Iron sword', sell: 7, icon: 'sword', acc: 6, pow: 6, grd: 0 },
+    { id: 'gear.melee.bronze_dagger', name: 'Bronze dagger', sell: 3, icon: 'sword', acc: 5, pow: 0, grd: 0 },
+    { id: 'gear.melee.iron_dagger', name: 'Iron dagger', sell: 3, icon: 'sword', acc: 10, pow: 0, grd: 0 },
+    { id: 'gear.melee.bronze_mace', name: 'Bronze mace', sell: 8, icon: 'sword', acc: 0, pow: 5, grd: 0 },
+    { id: 'gear.melee.bronze_spear', name: 'Bronze spear', sell: 8, icon: 'sword', acc: 3, pow: 3, grd: 0 },
+    { id: 'gear.melee.iron_spear', name: 'Iron spear', sell: 8, icon: 'sword', acc: 7, pow: 7, grd: 0 },
+    { id: 'gear.shield.bronze', name: 'Bronze shield', sell: 8, icon: 'shield', acc: 0, pow: 0, grd: 2 },
   ];
   for (const row of gear) item({ ...row, kind: 'gear' });
   const tools: { id: string; name: string; sell: number; icon: IconName }[] = [
@@ -453,25 +460,59 @@ export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
 }
 
-export type EquipSlot = 'head' | 'body' | 'legs' | 'feet' | 'weapon' | 'offhand' | 'neck' | 'ring';
+export type EquipSlot = 'weapon' | 'body' | 'shield';
+
+export interface EquippedSlots {
+  weapon: string | null;
+  body: string | null;
+  shield: string | null;
+}
+
+export interface GearBonus {
+  acc: number;
+  pow: number;
+  grd: number;
+}
 
 export const EQUIP_SLOTS: { id: EquipSlot; label: string }[] = [
-  { id: 'head', label: 'Head' },
-  { id: 'body', label: 'Body' },
-  { id: 'legs', label: 'Legs' },
-  { id: 'feet', label: 'Feet' },
   { id: 'weapon', label: 'Weapon' },
-  { id: 'offhand', label: 'Off-hand' },
-  { id: 'neck', label: 'Neck' },
-  { id: 'ring', label: 'Ring' },
+  { id: 'body', label: 'Body' },
+  { id: 'shield', label: 'Shield' },
 ];
 
-/** Demo items only fill body, weapon, and off-hand. Other slots stay empty. */
+/** Weapons, body armour, and shields are the only equippable demo items. Tools are never equipped. */
 export function equipSlotFor(itemId: string): EquipSlot | null {
   if (itemId.startsWith('gear.melee.')) return 'weapon';
-  if (itemId.startsWith('gear.shield.')) return 'offhand';
+  if (itemId.startsWith('gear.shield.')) return 'shield';
   if (itemId.startsWith('gear.armour.')) return 'body';
   return null;
+}
+
+export function emptyEquipped(): EquippedSlots {
+  return { weapon: null, body: null, shield: null };
+}
+
+/** Bonuses from items that are both equipped and still in the bank. One item per slot. */
+export function equippedGear(equipped: EquippedSlots, bank: Record<string, number>): GearBonus {
+  const total: GearBonus = { acc: 0, pow: 0, grd: 0 };
+  for (const slot of EQUIP_SLOTS) {
+    const id = equipped[slot.id];
+    if (!id || (bank[id] ?? 0) <= 0 || equipSlotFor(id) !== slot.id) continue;
+    const item = ITEMS[id];
+    total.acc += item?.acc ?? 0;
+    total.pow += item?.pow ?? 0;
+    total.grd += item?.grd ?? 0;
+  }
+  return total;
+}
+
+/** Item line for Accuracy, Power, or Guard. Empty for anything that is not gear. */
+export function gearStatText(id: string): string {
+  const item = ITEMS[id];
+  const slot = equipSlotFor(id);
+  if (!item || !slot) return '';
+  if (slot === 'weapon') return `+${item.acc ?? 0} Acc · +${item.pow ?? 0} Pow`;
+  return `+${item.grd ?? 0} Grd`;
 }
 
 export function levelForXp(xp: number): number {

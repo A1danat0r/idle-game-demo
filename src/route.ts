@@ -5,8 +5,10 @@ import {
   RECIPES,
   RECIPE_BY_ID,
   NODE_PRICE,
+  equippedGear,
   hitChance,
   hitsPerKill,
+  playerHitChance,
   skillPrice,
   type RecipeDef,
   type SkillId,
@@ -16,6 +18,7 @@ import {
   buyNode,
   buySkill,
   formulaLevel,
+  equip,
   newGame,
   nodeUsable,
   resumeCombat,
@@ -30,10 +33,11 @@ import {
   type SimOptions,
 } from './engine';
 
-const PURCHASE_ORDER = ['Strength', 'Fishing', 'Cooking', 'Defence', 'Attack', 'Mining', 'Smithing'] as const;
+const PURCHASE_ORDER = ['Cooking', 'Mining', 'Smithing', 'Strength', 'Defence', 'Attack', 'Fishing'] as const;
 
 const KEEP = new Set([
   'gear.melee.bronze_sword',
+  'gear.melee.iron_spear',
   'tool.woodcutting.bronze_axe',
   'tool.woodcutting.iron_axe',
   'tool.mining.bronze_pickaxe',
@@ -127,11 +131,20 @@ function ensureNode(state: Save, nodeId: string, clock: Clock, opts: SimOptions)
   clock.nodes.push({ skill: node.skill, id: nodeId, atHours: hours(clock.ms), coins: state.coins });
 }
 
+function fightSeconds(state: Save, enemyLevel: number, coinValue: number): number {
+  const gear = equippedGear(state.equipped, state.bank);
+  const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemyLevel, gear.pow);
+  const chance = playerHitChance(formulaLevel(state, 'Attack'), enemyLevel, gear.acc);
+  return coinValue / (hits / chance * 2.4 + 3);
+}
+
 function foodFree(enemyId: string, state: Save): boolean {
   const enemy = ENEMY_BY_ID[enemyId];
-  const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemy.level);
-  const damage = hits * hitChance(enemy.level, formulaLevel(state, 'Defence')) * ((enemy.maxHit + 1) / 2);
-  const regen = (hits * 2.4 + 3) / 6;
+  const gear = equippedGear(state.equipped, state.bank);
+  const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemy.level, gear.pow);
+  const swings = hits / playerHitChance(formulaLevel(state, 'Attack'), enemy.level, gear.acc);
+  const damage = swings * hitChance(enemy.level, formulaLevel(state, 'Defence'), gear.grd) * ((enemy.maxHit + 1) / 2);
+  const regen = (swings * 2.4 + 3) / 6;
   return damage <= regen + 1e-9;
 }
 
@@ -140,15 +153,13 @@ function bestCoinActivity(state: Save): 'pine' | 'meadow' | 'poacher' {
   let best: 'pine' | 'meadow' | 'poacher' = 'pine';
   let bestRate = pine;
   if (state.owned.some((skill) => skill === 'Attack' || skill === 'Strength' || skill === 'Defence')) {
-    const meadowHits = hitsPerKill(formulaLevel(state, 'Strength'), 1);
-    const meadow = 6.25 / (meadowHits * 2.4 + 3);
+    const meadow = fightSeconds(state, 1, 6.25);
     if (meadow > bestRate) {
       best = 'meadow';
       bestRate = meadow;
     }
     if (foodFree('wood.poacher', state)) {
-      const hits = hitsPerKill(formulaLevel(state, 'Strength'), 12);
-      const rate = 12.5 / (hits * 2.4 + 3);
+      const rate = fightSeconds(state, 12, 12.5);
       if (rate > bestRate) best = 'poacher';
     }
   }
@@ -299,6 +310,13 @@ function craftTool(state: Save, recipeId: string, metal: 'bronze' | 'iron', cloc
   if (spare > 0) sell(state, bar, spare);
 }
 
+/** Forge the iron spear and equip it. Crafted gear is never equipped by production itself. */
+function forgeIronSpear(state: Save, clock: Clock, opts: SimOptions): void {
+  const spear = 'gear.melee.iron_spear';
+  if ((state.bank[spear] ?? 0) <= 0) craftTool(state, 'recipe.gear.melee.iron_spear', 'iron', clock, opts);
+  if (!equip(state, spear)) throw new Error('could not equip the iron spear');
+}
+
 function craftTools(state: Save, metal: 'bronze' | 'iron', clock: Clock, opts: SimOptions): void {
   const ids =
     metal === 'bronze'
@@ -389,13 +407,15 @@ export function runReferenceRoute(options: { seed?: number; expectedLoot?: boole
   const state = newGame(0, options.seed ?? 1);
   const clock: Clock = { ms: 0, grindMs: 0, purchases: [], nodes: [], segments: [] };
   train(state, 'Woodcutting', 20, 'pine', clock, opts);
-  train(state, 'Strength', 30, 'meadow', clock, opts);
-  train(state, 'Fishing', 20, 'minnow', clock, opts);
   train(state, 'Cooking', 20, 'charcoal', clock, opts);
+  train(state, 'Smithing', 20, 'bronze', clock, opts);
+  train(state, 'Smithing', 22, 'iron', clock, opts);
+  forgeIronSpear(state, clock, opts);
+  train(state, 'Strength', 30, 'meadow', clock, opts);
   train(state, 'Defence', 30, 'meadow', clock, opts);
   train(state, 'Attack', 30, 'meadow', clock, opts);
-  train(state, 'Smithing', 20, 'bronze', clock, opts);
   train(state, 'Smithing', 30, 'iron', clock, opts);
+  train(state, 'Fishing', 20, 'minnow', clock, opts);
   train(state, 'Cooking', 30, 'cook2030', clock, opts);
   train(state, 'Fishing', 30, 'trout', clock, opts);
   const spent =

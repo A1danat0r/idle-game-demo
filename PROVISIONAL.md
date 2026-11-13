@@ -1,14 +1,6 @@
 # Still not covered by the approved spec
 
-Spec r2 (sha256 `680c583358758c5642348cdeba5c222c5d72e1f9e337907eaf8fe57778d8e56b`) is approved for the draft. Editorial wording from 2026-11-13 is included. No numbers, pacing, gear stats, or Forest fox level changed in that wording pass.
-
-## Forest fox level
-
-`FOREST_FOX_LEVEL = 10` in `src/provisional.ts`.
-
-Spec §2.5 still says the Forest fox has no catalogue level and that 10 is a placeholder. HP (60) and max hit (3) are derived from that number. Gear stats are also still undecided; worn gear has no stats.
-
-**Question:** what level is the Forest fox?
+Spec r2 (sha256 `ae654ead1a207010a454deb78186c4c360f8897c3699fad50f3e372ba09003f9`) is approved for the draft. Option-B gear stats, Forest fox level 8, the Smithing-first iron-spear reference route, and “crafted gear is not auto-equipped” are included. Nothing in this build is still provisional.
 
 ## Accepted as built
 
