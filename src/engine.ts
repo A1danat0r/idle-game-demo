@@ -14,7 +14,11 @@ import {
   NODE_BY_ID,
   OFFLINE_CAP_MS,
   RECIPE_BY_ID,
+  REGEN_HP,
   REGEN_MS,
+  COMBAT_HP_SCALE,
+  playerBaseDamage,
+  variedDamage,
   SHOP_DAILY_LIMIT,
   SHOP_ITEMS,
   SHOP_PRICE,
@@ -130,6 +134,8 @@ export interface Save {
   rngState: number;
   regenMs: number;
   stats: StatsLog;
+  /** 10 once HP has been moved onto the ×10 scale. Absent on older saves. */
+  combatScale: number;
   /** Integer mastery XP per node or recipe. Levels and perks are derived. */
   mastery: Record<string, number>;
   /** Integer mastery XP per enemy. */
@@ -218,6 +224,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     activity: null,
     progressMs: 0,
     hp: playerMaxHp(1),
+    combatScale: COMBAT_HP_SCALE,
     paused: false,
     combat: null,
     foodSlot: null,
@@ -618,7 +625,8 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
     return;
   }
   state.stats.enemyHits += 1;
-  const damage = rollInt(state, 1, enemy.maxHit);
+  const oldMax = Math.max(1, Math.round(enemy.maxHit / COMBAT_HP_SCALE));
+  const damage = variedDamage(COMBAT_HP_SCALE * rollInt(state, 1, oldMax), nextUnit(state));
   notes?.push({ kind: 'enemy-hit', amount: damage });
   const lethal = state.hp - damage <= 0;
   if (lethal) {
@@ -650,14 +658,15 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   }
   state.stats.playerHits += 1;
   combat.hitsLanded += 1;
-  const styleXp = STYLE_XP_PER_KILL / hits;
-  const hpXp = HITPOINTS_XP_PER_KILL / hits;
+  const rolled = variedDamage(playerBaseDamage(combat.enemyMaxHp, hits), nextUnit(state));
+  const removed = Math.min(rolled, combat.enemyHp);
+  const styleXp = (STYLE_XP_PER_KILL * removed) / combat.enemyMaxHp;
+  const hpXp = (HITPOINTS_XP_PER_KILL * removed) / combat.enemyMaxHp;
   addXp(state, activity.style, styleXp);
   if (state.owned.includes('Hitpoints')) addXp(state, 'Hitpoints', hpXp);
-  const dealt = combat.enemyMaxHp / hits;
-  opts.notes?.push({ kind: 'player-hit', amount: dealt });
-  combat.enemyHp -= dealt;
-  if (combat.hitsLanded >= hits) {
+  opts.notes?.push({ kind: 'player-hit', amount: rolled });
+  combat.enemyHp -= removed;
+  if (combat.enemyHp <= 1e-9) {
     combat.enemyHp = 0;
     combat.phase = 'pause';
     combat.killAtMs = state.progressMs;
@@ -778,7 +787,7 @@ export function simulate(state: Save, ms: number, sink?: Sink, opts: SimOptions 
     if (kind === 'regen') {
       state.regenMs = 0;
       const cap = maxHp(state);
-      if (state.hp < cap) state.hp += 1;
+      if (state.hp < cap) state.hp = Math.min(cap, state.hp + REGEN_HP);
     } else {
       resolveDue(state, sink, opts);
     }
@@ -1098,7 +1107,7 @@ export function deserialize(raw: string): Save | null {
   const mastery = readMastery(parsed.mastery);
   const enemyMastery = readMastery(parsed.enemyMastery);
   if (!mastery || !enemyMastery) return null;
-  return {
+  const loaded: Save = {
     saveFormat: SAVE_FORMAT,
     coins: parsed.coins,
     xp,
@@ -1120,7 +1129,20 @@ export function deserialize(raw: string): Save | null {
     stats,
     mastery,
     enemyMastery,
+    combatScale: 0,
   };
+  migrateCombatScale(loaded, parsed.combatScale);
+  return loaded;
+}
+
+function migrateCombatScale(state: Save, stored: unknown): void {
+  if (stored === COMBAT_HP_SCALE) {
+    state.combatScale = COMBAT_HP_SCALE;
+    return;
+  }
+  state.hp = Math.min(maxHp(state), state.hp * COMBAT_HP_SCALE);
+  if (state.activity?.kind === 'combat' && state.combat?.phase === 'fight' && !state.paused) spawnEnemy(state);
+  state.combatScale = COMBAT_HP_SCALE;
 }
 
 function readMastery(value: unknown): Record<string, number> | null {

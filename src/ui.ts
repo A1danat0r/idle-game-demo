@@ -67,8 +67,9 @@ const esc = (value: string) =>
   value.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+const fmtCoins = (n: number) => Math.floor(n).toLocaleString('en-US');
 const fmtXp = (n: number) => Math.floor(n).toLocaleString('en-US');
-const coin = (n: number) => `<span class="coin">${icon('coin', 16)}${fmt(n)}</span>`;
+const coin = (n: number) => `<span class="coin">${icon('coin', 16)}${fmtCoins(n)}</span>`;
 const bar = (pct: number, cls = '', live = '') =>
   `<div class="bar ${cls}"><i${live ? ` data-live="${live}"` : ''} style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
 const title = (text: string) => `<h2 class="title"><span>◆</span>${esc(text)}<span>◆</span></h2>`;
@@ -103,13 +104,10 @@ function xpView(xp: number): { level: number; pct: number; text: string } {
   return { level, pct: ((xp - prev) / (next - prev)) * 100, text: `${fmtXp(xp)} / ${fmt(next)} XP` };
 }
 
-function timeLabel(state: Save, id: string, base: number): string {
+function timeLabel(state: Save, id: string): string {
   const seconds = actionSeconds(state, id);
-  if (Math.abs(seconds - base) < 1e-9) {
-    const text = Number.isInteger(base) ? base.toFixed(1) : String(base);
-    return `${text}s`;
-  }
-  return `${seconds.toFixed(3)}s`;
+  const text = (Math.round(seconds * 1000) / 1000).toFixed(3).replace(/\.?0+$/, '');
+  return `${text}s`;
 }
 
 /** Header, then the scrolling page, then the activity bar in the bottom bar, directly above the tabs. */
@@ -227,7 +225,7 @@ export function renderKey(state: Save, view: View): string {
     enemyHp: state.combat ? Math.ceil(state.combat.enemyHp) : null,
     hits: state.combat?.hitsLanded ?? 0,
     hp: Math.ceil(state.hp),
-    coins: Math.round(state.coins),
+    coins: Math.floor(state.coins),
     owned: state.owned,
     nodes: state.nodes,
     bank: state.bank,
@@ -267,12 +265,13 @@ function activityDetail(state: Save): string {
   if (activity.kind === 'gather') {
     const node = NODES.find((row) => row.id === activity.nodeId)!;
     const seconds = actionSeconds(state, node.id);
-    const perHour = Math.round(3600 / seconds) * (ITEMS[node.id]?.sell ?? 0);
-    return `${timeLabel(state, node.id, node.seconds)} · ${node.xp} XP · ${fmt(perHour)} coins/h if sold`;
+    const unit = (ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id);
+    const perHour = Math.round((3600 * unit) / seconds);
+    return `${timeLabel(state, node.id)} · ${node.xp} XP · ${fmt(perHour)} coins/h if sold`;
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPES.find((row) => row.id === activity.recipeId)!;
-    return `${timeLabel(state, recipe.id, recipe.seconds)} · ${recipe.xp} XP`;
+    return `${timeLabel(state, recipe.id)} · ${recipe.xp} XP`;
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
   return `${activity.style} · hit ${Math.round(shownHitChance(state, enemy.level) * 100)}% · ${state.hp}/${maxHp(state)} HP`;
@@ -397,7 +396,7 @@ function nodeRow(state: Save, node: (typeof NODES)[number]): string {
   const click = usable ? `data-node="${node.id}"` : '';
   const xp = fmtAmount(node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
   const sell = fmtAmount((ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id));
-  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small>${masteryLine(state.mastery[node.id] ?? 0)}<small>${timeLabel(state, node.id, node.seconds)} · ${xp} XP · sells ${sell}</small></div>${right}</div>`;
+  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small>${masteryLine(state.mastery[node.id] ?? 0)}<small>${timeLabel(state, node.id)} · ${xp} XP · sells ${sell}</small></div>${right}</div>`;
 }
 
 function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
@@ -415,7 +414,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
       : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
   const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
   const sell = fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id));
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id, recipe.seconds)} · ${xp} XP · sells ${sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
+  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
 }
 
 function combatHtml(state: Save, view: View): string {
@@ -582,7 +581,7 @@ export function reportHtml(report: CatchupReport): string {
       <dt>Levels</dt><dd>${esc(levels || 'none')}</dd>
       <dt>Gained</dt><dd>${esc(gained)}</dd>
       <dt>Consumed</dt><dd>${esc(consumed)}</dd>
-      <dt>Coins</dt><dd>${fmt(report.coinsGained)}</dd>
+      <dt>Coins</dt><dd>${fmtCoins(report.coinsGained)}</dd>
       <dt>Food eaten</dt><dd>${report.foodEaten}</dd>
       <dt>Mastery</dt><dd>${esc(masteryText(report))}</dd>
       <dt>Perks</dt><dd>${esc((report.perksUnlocked ?? []).join('; ') || 'none')}</dd>

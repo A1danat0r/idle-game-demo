@@ -259,6 +259,12 @@ export const ATTACK_INTERVAL_MS = 2400;
 export const KILL_PAUSE_MS = 3000;
 export const ENEMY_FIRST_ATTACK_MS = 1200;
 export const REGEN_MS = 6000;
+/** HP restored on each regen tick. ×10 scale; heals and regen are not varied. */
+export const REGEN_HP = 10;
+/** Health and the pre-variance damage roll are each ×10, with their own rounding. */
+export const COMBAT_HP_SCALE = 10;
+/** Every landed hit is multiplied by a factor in [1 − spread, 1 + spread]. */
+export const DAMAGE_SPREAD = 0.05;
 export const AUTO_EAT_FRACTION = 0.5;
 export const OFFLINE_CAP_MS = 24 * 60 * 60 * 1000;
 
@@ -266,15 +272,49 @@ export const STYLE_XP_PER_KILL = 120;
 export const HITPOINTS_XP_PER_KILL = 24;
 
 export function enemyMaxHp(level: number): number {
-  return 5 * (level + 2);
+  return COMBAT_HP_SCALE * 5 * (level + 2);
 }
 export function enemyMaxHit(level: number): number {
-  return 1 + Math.floor(level / 4);
+  return COMBAT_HP_SCALE * (1 + Math.floor(level / 4));
+}
+/** Half up, for positive damage. The §5.1 default rounding. */
+export function roundHalfUp(value: number): number {
+  return Math.floor(value + 0.5);
+}
+/** Base player damage for one landed hit. `enemyHp` is already on the ×10 scale. */
+export function playerBaseDamage(enemyHp: number, hits: number): number {
+  return roundHalfUp(enemyHp / hits);
+}
+/** round(base × f) with f drawn from [0.95, 1.05). `unit` is in [0, 1). */
+export function variedDamage(base: number, unit: number): number {
+  const factor = 1 - DAMAGE_SPREAD + unit * (DAMAGE_SPREAD * 2);
+  return roundHalfUp(base * factor);
 }
 /** Hits per kill. Power is added to Strength. The result is locked when a kill starts. */
 export function hitsPerKill(strength: number, enemyLevel: number, power = 0): number {
   const steps = Math.max(0, Math.floor((strength + power - enemyLevel) / 10));
   return Math.max(3, 5 - steps);
+}
+/**
+ * Expected landed hits once each hit is varied. From §5.1. The base count is the
+ * Strength table; a kill takes that many hits or one more.
+ */
+const EXPECTED_LANDED: Record<string, number> = {
+  '1:5': 5.3951,
+  '1:4': 4.1455,
+  '1:3': 3.424,
+  '8:5': 5.4703,
+  '8:4': 4.4734,
+  '8:3': 3.4329,
+  '10:5': 5.4752,
+  '10:4': 4.4777,
+  '10:3': 3.4813,
+  '12:5': 5.4787,
+  '12:4': 4.481,
+  '12:3': 3.5161,
+};
+export function expectedLandedHits(enemyLevel: number, baseHits: number): number {
+  return EXPECTED_LANDED[`${enemyLevel}:${baseHits}`] ?? baseHits;
 }
 /** Enemy hit chance. Guard from body and shield is added to Defence. */
 export function hitChance(enemyLevel: number, defence: number, guard = 0): number {
@@ -287,7 +327,7 @@ export function playerHitChance(attackLevel: number, enemyLevel: number, accurac
   return Math.min(1, Math.max(0.5, raw));
 }
 export function playerMaxHp(hitpointsLevel: number): number {
-  return 10 + 2 * hitpointsLevel;
+  return 100 + 20 * hitpointsLevel;
 }
 
 function enemy(
@@ -375,15 +415,15 @@ export function expectedCoinValue(enemyDef: EnemyDef): number {
 }
 
 const FOODS: { id: string; name: string; sell: number; heal: number }[] = [
-  { id: 'food.roast_hare', name: 'Roast hare', sell: 6, heal: 5 },
-  { id: 'food.roast_minnows', name: 'Roast minnows', sell: 3, heal: 5 },
-  { id: 'food.cooked_shrimp', name: 'Cooked river shrimp', sell: 5, heal: 10 },
-  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 11, heal: 10 },
-  { id: 'food.mutton_herb_stew', name: 'Mutton-and-herb stew', sell: 7, heal: 12 },
-  { id: 'food.roast_perch', name: 'Roast perch', sell: 8, heal: 12 },
-  { id: 'food.tortoise_herb_soup', name: 'Tortoise-and-herb soup', sell: 4, heal: 14 },
-  { id: 'food.roast_trout', name: 'Roast trout', sell: 9, heal: 16 },
-  { id: 'food.baked_carp', name: 'Baked carp', sell: 12, heal: 17 },
+  { id: 'food.roast_hare', name: 'Roast hare', sell: 6, heal: 50 },
+  { id: 'food.roast_minnows', name: 'Roast minnows', sell: 3, heal: 50 },
+  { id: 'food.cooked_shrimp', name: 'Cooked river shrimp', sell: 5, heal: 100 },
+  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 11, heal: 100 },
+  { id: 'food.mutton_herb_stew', name: 'Mutton-and-herb stew', sell: 7, heal: 120 },
+  { id: 'food.roast_perch', name: 'Roast perch', sell: 8, heal: 120 },
+  { id: 'food.tortoise_herb_soup', name: 'Tortoise-and-herb soup', sell: 4, heal: 140 },
+  { id: 'food.roast_trout', name: 'Roast trout', sell: 9, heal: 160 },
+  { id: 'food.baked_carp', name: 'Baked carp', sell: 12, heal: 170 },
 ];
 
 function addItems(): void {

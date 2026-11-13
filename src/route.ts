@@ -7,6 +7,7 @@ import {
   RECIPE_BY_ID,
   equippedGear,
   hitChance,
+  expectedLandedHits,
   hitsPerKill,
   playerHitChance,
   skillPrice,
@@ -135,15 +136,16 @@ function ensureNode(state: Save, nodeId: string, clock: Clock, opts: SimOptions)
 function fightSeconds(state: Save, enemyLevel: number, coinValue: number): number {
   const gear = equippedGear(state.equipped, state.bank);
   const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemyLevel, gear.pow);
+  const landed = expectedLandedHits(enemyLevel, hits);
   const chance = playerHitChance(formulaLevel(state, 'Attack'), enemyLevel, gear.acc);
-  return coinValue / (hits / chance * 2.4 + 3);
+  return coinValue / (landed / chance * 2.4 + 3);
 }
 
 function foodFree(enemyId: string, state: Save): boolean {
   const enemy = ENEMY_BY_ID[enemyId];
   const gear = equippedGear(state.equipped, state.bank);
   const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemy.level, gear.pow);
-  const swings = hits / playerHitChance(formulaLevel(state, 'Attack'), enemy.level, gear.acc);
+  const swings = expectedLandedHits(enemy.level, hits) / playerHitChance(formulaLevel(state, 'Attack'), enemy.level, gear.acc);
   const damage = swings * hitChance(enemy.level, formulaLevel(state, 'Defence'), gear.grd) * ((enemy.maxHit + 1) / 2);
   const regen = (swings * 2.4 + 3) / 6;
   return damage <= regen + 1e-9;

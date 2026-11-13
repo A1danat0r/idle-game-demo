@@ -52,39 +52,54 @@ describe('action and combat floaters', () => {
   });
 
   it('records a miss, a hit amount, and a heal from the real rolls', () => {
-    const miss = newGame(0, 7);
-    miss.owned.push('Strength', 'Attack', 'Defence', 'Hitpoints');
-    miss.xp.Strength = 0;
-    miss.xp.Attack = 0;
-    miss.xp.Defence = XP_TABLE[30];
-    miss.xp.Hitpoints = XP_TABLE[30];
-    miss.hp = 70;
-    startCombat(miss, 'meadow.beetle', 'Strength');
-    const missed: FloatNote[] = [];
-    advanceOpenTab(miss, 2400, 5000, missed);
-    expect(missed).toContainEqual({ kind: 'miss', side: 'player' });
+    let foundPlayerMiss = false;
+    let foundEnemyMiss = false;
+    for (let seed = 1; seed < 40 && (!foundPlayerMiss || !foundEnemyMiss); seed += 1) {
+      const miss = newGame(0, seed);
+      miss.owned.push('Strength', 'Attack', 'Defence', 'Hitpoints');
+      miss.xp.Strength = 0;
+      miss.xp.Attack = 0;
+      miss.xp.Defence = XP_TABLE[30];
+      miss.xp.Hitpoints = XP_TABLE[30];
+      miss.hp = 200;
+      startCombat(miss, 'meadow.beetle', 'Strength');
+      const missed: FloatNote[] = [];
+      advanceOpenTab(miss, 2400, 5000, missed);
+      if (missed.some((note) => note.kind === 'miss' && note.side === 'player')) foundPlayerMiss = true;
+      const player = missed.find((note) => note.kind === 'player-hit');
+      if (missed.some((note) => note.kind === 'miss' && note.side === 'enemy')) {
+        foundEnemyMiss = true;
+        if (player && player.kind === 'player-hit') {
+          expect(player.amount).toBeGreaterThanOrEqual(29);
+          expect(player.amount).toBeLessThanOrEqual(32);
+        }
+      }
+    }
+    expect(foundPlayerMiss).toBe(true);
+    expect(foundEnemyMiss).toBe(true);
 
-    const glancing = newGame(0, 1);
-    glancing.owned.push('Strength');
-    startCombat(glancing, 'meadow.hare', 'Strength');
-    const enemyMiss: FloatNote[] = [];
-    advanceOpenTab(glancing, 2400, 5000, enemyMiss);
-    expect(enemyMiss).toContainEqual({ kind: 'miss', side: 'enemy' });
-    expect(enemyMiss).toContainEqual({ kind: 'player-hit', amount: 3 });
-
-    const hit = newGame(0, 8);
-    hit.owned.push('Strength', 'Attack', 'Hitpoints');
-    hit.xp.Attack = XP_TABLE[30];
-    hit.hp = 6;
-    hit.bank['food.roast_minnows'] = 2;
-    expect(setFood(hit, 'food.roast_minnows')).toBe(true);
-    startCombat(hit, 'meadow.hare', 'Strength');
-    const notes: FloatNote[] = [];
-    advanceOpenTab(hit, 2400, 5000, notes);
-    expect(notes).toContainEqual({ kind: 'enemy-hit', amount: 1 });
-    expect(notes).toContainEqual({ kind: 'heal', amount: 5 });
-    expect(notes).toContainEqual({ kind: 'player-hit', amount: 3 });
-    expect(hit.hp).toBe(10);
+    let healed = false;
+    for (let seed = 1; seed < 30 && !healed; seed += 1) {
+      const hit = newGame(0, seed);
+      hit.owned.push('Strength', 'Attack', 'Hitpoints');
+      hit.xp.Attack = XP_TABLE[30];
+      hit.hp = 70;
+      hit.bank['food.roast_minnows'] = 2;
+      expect(setFood(hit, 'food.roast_minnows')).toBe(true);
+      startCombat(hit, 'meadow.hare', 'Strength');
+      const notes: FloatNote[] = [];
+      advanceOpenTab(hit, 2400, 5000, notes);
+      const enemy = notes.find((note) => note.kind === 'enemy-hit');
+      const heal = notes.find((note) => note.kind === 'heal');
+      const player = notes.find((note) => note.kind === 'player-hit');
+      if (!enemy || enemy.kind !== 'enemy-hit' || !heal || heal.kind !== 'heal') continue;
+      expect(enemy.amount === 10 || enemy.amount === 11).toBe(true);
+      expect(heal.amount).toBe(50);
+      expect(hit.hp).toBe(70 - enemy.amount + 50);
+      expect(player && player.kind === 'player-hit' && player.amount >= 29 && player.amount <= 32).toBe(true);
+      healed = true;
+    }
+    expect(healed).toBe(true);
   });
 
   it('does not collect notes for an offline catch-up', () => {
