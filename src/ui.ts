@@ -57,7 +57,8 @@ const esc = (value: string) =>
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const fmtXp = (n: number) => Math.floor(n).toLocaleString('en-US');
 const coin = (n: number) => `<span class="coin">${icon('coin', 16)}${fmt(n)}</span>`;
-const bar = (pct: number, cls = '') => `<div class="bar ${cls}"><i style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
+const bar = (pct: number, cls = '', live = '') =>
+  `<div class="bar ${cls}"><i${live ? ` data-live="${live}"` : ''} style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
 const title = (text: string) => `<h2 class="title"><span>◆</span>${esc(text)}<span>◆</span></h2>`;
 const lock = `<svg width="14" height="14" viewBox="0 0 20 20"><rect x="3" y="9" width="14" height="10" rx="2" fill="#8a8f9c"/><path d="M6 9V6a4 4 0 0 1 8 0v3" fill="none" stroke="#8a8f9c" stroke-width="2"/></svg>`;
 
@@ -99,8 +100,46 @@ export function activityHtml(state: Save): string {
   const iconName = state.activity?.kind === 'combat' ? 'sword' : state.activity?.kind === 'produce' ? 'food' : 'log';
   const resume = state.paused
     ? `<button type="button" class="tag btn" data-resume>Resume</button>`
-    : `<small>${Math.round(pct)}%</small>`;
-  return `<div class="activity" data-activity>${icon(iconName, 34)}<div class="grow"><b>${esc(label)}</b><small>${esc(detail)}</small>${bar(pct, state.paused ? 'red' : '')}</div>${resume}</div>`;
+    : `<small data-live="act-pct">${Math.round(pct)}%</small>`;
+  return `<div class="activity" data-activity>${icon(iconName, 34)}<div class="grow"><b>${esc(label)}</b><small>${esc(detail)}</small>${bar(pct, state.paused ? 'red' : '', 'act-bar')}</div>${resume}</div>`;
+}
+
+/** Progress within the current action. This changes on every tick; the controls do not. */
+export function activityPercent(state: Save): number {
+  return activityPct(state);
+}
+
+/**
+ * Identity of the interactive screen. Progress inside an action is intentionally
+ * left out, so a tick can refresh bars without replacing the buttons under a finger.
+ */
+export function renderKey(state: Save, view: View): string {
+  const activity = state.activity;
+  const act = !activity
+    ? ''
+    : activity.kind === 'gather'
+      ? `g:${activity.nodeId}`
+      : activity.kind === 'produce'
+        ? `p:${activity.recipeId}`
+        : `c:${activity.enemyId}:${activity.style}`;
+  return JSON.stringify({
+    view,
+    paused: state.paused,
+    act,
+    phase: state.combat?.phase ?? '',
+    enemyHp: state.combat ? Math.ceil(state.combat.enemyHp) : null,
+    hits: state.combat?.hitsLanded ?? 0,
+    hp: Math.ceil(state.hp),
+    coins: Math.round(state.coins),
+    owned: state.owned,
+    nodes: state.nodes,
+    bank: state.bank,
+    equipped: state.equipped,
+    food: state.foodSlot,
+    xp: state.xp,
+    shop: state.shop,
+    purchaseCount: state.purchaseCount,
+  });
 }
 
 function activityPct(state: Save): number {
@@ -309,7 +348,7 @@ function combatHtml(state: Save, view: View): string {
     <div class="fight">
       <div class="scene">
         <div class="fighter">${chibi('#2d3a5c', 84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
-        <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green')}<small>${chance}% hit</small></div>
+        <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
         <div class="fighter">${chibi('#4a2f2f', 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}</div></div>
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}${weaponReady(state) ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>

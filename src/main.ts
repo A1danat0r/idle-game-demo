@@ -31,7 +31,7 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
-import { activityHtml, devHtml, headerHtml, mainHtml, noticeHtml, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityHtml, activityPercent, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -44,6 +44,7 @@ const tabId = sessionStorage.getItem(TAB_ID_KEY) ?? Math.random().toString(36).s
 sessionStorage.setItem(TAB_ID_KEY, tabId);
 
 let offset = Number(sessionStorage.getItem(CLOCK_KEY) ?? '0') || 0;
+let drawnKey = '';
 let state: Save;
 let lastSave = 0;
 let lastActions = 0;
@@ -140,6 +141,12 @@ function tick(): void {
 }
 
 function render(): void {
+  const key = renderKey(state, view);
+  if (key === drawnKey && app.querySelector('[data-activity]')) {
+    patchLive();
+    return;
+  }
+  drawnKey = key;
   const main = app.querySelector('main');
   const scroll = main?.scrollTop ?? 0;
   const message = view.message ? `<p class="msg">${escapeText(view.message)}</p>` : '';
@@ -158,6 +165,17 @@ function render(): void {
   if (stats) {
     stats.textContent = `Actions ${state.stats.actions} · kills ${state.stats.kills} · pauses ${state.stats.pauses} · food ${state.stats.foodEaten} · swings ${state.stats.playerSwings} · hits ${state.stats.playerHits} · misses ${state.stats.playerMisses}`;
   }
+}
+
+/** Move the progress bars without replacing the buttons a finger is holding. */
+function patchLive(): void {
+  const pct = Math.max(0, Math.min(100, activityPercent(state)));
+  for (const name of ['act-bar', 'fight-bar']) {
+    const bar = app.querySelector<HTMLElement>(`[data-live="${name}"]`);
+    if (bar) bar.style.width = `${pct}%`;
+  }
+  const label = app.querySelector('[data-live="act-pct"]');
+  if (label) label.textContent = `${Math.round(pct)}%`;
 }
 
 function escapeText(value: string): string {

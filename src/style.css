@@ -4,6 +4,7 @@
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--text);
 }
 * { box-sizing: border-box; margin: 0; }
+html, body, button, .row, .gearpick { touch-action: manipulation; }
 body { background: #05080f; }
 #app { width: 100%; max-width: 430px; height: 100vh; height: 100dvh; margin: 0 auto; display: flex; flex-direction: column;
   background: radial-gradient(circle at 50% 0, #1a2440, var(--bg) 60%); overflow: hidden; }
