@@ -283,8 +283,9 @@ function combatHtml(state: Save, view: View): string {
     enemies.find((enemy) => state.activity?.kind === 'combat' && state.activity.enemyId === enemy.id) ??
     enemies[0];
   const fighting = state.activity?.kind === 'combat' ? ENEMY_BY_ID[state.activity.enemyId] : null;
-  const enemyHp = state.combat && fighting ? state.combat.enemyHp : selected.hp;
-  const enemyMax = state.combat && fighting && fighting.id === selected.id ? state.combat.enemyMaxHp : selected.hp;
+  const live = state.combat && fighting && fighting.id === selected.id ? state.combat : null;
+  const enemyHp = live ? live.enemyHp : selected.hp;
+  const enemyMax = live ? live.enemyMaxHp : selected.hp;
   const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
     .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
     .join('');
