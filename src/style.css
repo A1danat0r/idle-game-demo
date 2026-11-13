@@ -162,3 +162,29 @@ button.gearpick.on { border-color: var(--gold); box-shadow: inset 0 0 0 1px #3a3
 .gearpick b, .gearpick small { white-space: normal; overflow-wrap: anywhere; }
 button.gearpick.on small { color: #7be08a; }
 .aboutline { font-size: 13px; margin: 6px 0 12px; }
+
+#floaters { position: fixed; inset: 0; z-index: 25; display: flex; justify-content: center; pointer-events: none; }
+#floaters .float-col { position: relative; width: min(430px, 100%); height: 100%; pointer-events: none; }
+#floaters [data-float-combat], #floaters [data-float-actions] {
+  position: absolute; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none;
+}
+#floaters [data-float-combat] { top: 34%; }
+#floaters [data-float-actions] { bottom: 156px; }
+.floater {
+  pointer-events: none; max-width: 86%; text-align: center; white-space: pre-line;
+  background: #0a0f1ce6; border: 1px solid var(--gold-d); border-radius: 8px; padding: 4px 10px;
+  font-size: 14px; font-weight: 700; color: var(--gold);
+  animation: floater-rise 1100ms ease-out forwards;
+}
+.floater.player { color: #f3e2a4; }
+.floater.enemy { color: #e07070; }
+.floater.miss { color: var(--muted); font-weight: 600; }
+.floater.heal { color: #7be08a; }
+@keyframes floater-rise {
+  from { opacity: 1; transform: translateY(6px); }
+  to { opacity: 0; transform: translateY(-26px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .floater { animation: floater-fade 1100ms ease-out forwards; }
+  @keyframes floater-fade { from { opacity: 1; } to { opacity: 0; } }
+}

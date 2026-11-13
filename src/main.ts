@@ -21,6 +21,7 @@ import {
   unequip,
   writeSave,
   type CatchupReport,
+  type FloatNote,
   type Save,
 } from './engine';
 import {
@@ -31,6 +32,7 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
+import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, presentNotes } from './floaters';
 import { activityDestination, activityHtml, activityPercent, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
@@ -122,10 +124,42 @@ function showReport(report: CatchupReport): void {
   overlay.innerHTML = reportHtml(report);
 }
 
+let pendingNotes: FloatNote[] = [];
+let noteTimer = 0;
+
+function queueNotes(notes: FloatNote[]): void {
+  pendingNotes.push(...notes);
+  if (noteTimer) return;
+  noteTimer = window.setTimeout(flushNotes, FLOAT_BATCH_MS);
+}
+
+function flushNotes(): void {
+  noteTimer = 0;
+  const notes = pendingNotes;
+  pendingNotes = [];
+  const views = presentNotes(notes).filter((item) => item.place === 'bar' || view.tab === 'combat');
+  for (const item of views) spawnFloater(item);
+}
+
+function spawnFloater(item: { tone: string; place: 'bar' | 'combat'; text: string }): void {
+  const host = document.querySelector(item.place === 'combat' ? '[data-float-combat]' : '[data-float-actions]');
+  if (!host) return;
+  while (host.children.length >= FLOAT_CAP) host.firstElementChild?.remove();
+  const el = document.createElement('div');
+  el.className = `floater ${item.tone}`;
+  el.textContent = item.text;
+  host.appendChild(el);
+  const remove = () => el.remove();
+  el.addEventListener('animationend', remove);
+  window.setTimeout(remove, FLOAT_LIFE_MS + 50);
+}
+
 function tick(): void {
   if (document.hidden) return;
   const now = gameNow();
-  const report = advanceOpenTab(state, now, SILENT_GAP_MS);
+  const notes: FloatNote[] = [];
+  const report = advanceOpenTab(state, now, SILENT_GAP_MS, notes);
+  if (!report && notes.length) queueNotes(notes);
   if (report) {
     writeSave(localStorage, state);
     if (shouldShow(report)) showReport(report);
