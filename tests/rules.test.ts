@@ -19,7 +19,7 @@ import {
   playerHitChance,
   playerMaxHp,
 } from '../src/content';
-import { reportHtml } from '../src/ui';
+import { mainHtml, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
@@ -918,5 +918,44 @@ describe('gear stats', () => {
     expect(saved!.equipped.weapon).toBe('gear.melee.iron_dagger');
     expect(saved!.stats.playerSwings).toBeGreaterThan(20);
     expect(saved!.stats.enemyHits / saved!.stats.playerSwings).toBeLessThan(0.35);
+  });
+});
+
+describe('switching enemy', () => {
+  const combatView = (selected: string): View => ({
+    tab: 'combat',
+    skill: 'Woodcutting',
+    filter: 'all',
+    selected,
+    area: 'Meadow verge',
+    style: 'Strength',
+    message: '',
+  });
+
+  it('gives the newly selected enemy its own full HP, and a saved switch does not restore the old HP', () => {
+    const state = combatReady(30, 1, 30);
+    startCombat(state, 'meadow.beetle', 'Strength');
+    simulate(state, 2400);
+    expect(state.combat?.enemyHp).toBeCloseTo(10, 5);
+    const shown = mainHtml(state, combatView('meadow.hare'), 0);
+    expect(shown).toContain('Burrowing hare');
+    expect(shown).toContain('Lv 1</em> 15/15');
+    expect(shown).not.toContain('10/15');
+
+    expect(startCombat(state, 'meadow.hare', 'Strength')).toBe(true);
+    expect(state.activity).toMatchObject({ kind: 'combat', enemyId: 'meadow.hare' });
+    expect(state.combat?.enemyHp).toBe(15);
+    expect(state.combat?.enemyMaxHp).toBe(15);
+    const loaded = deserialize(serialize(state));
+    expect(loaded?.combat?.enemyHp).toBe(15);
+    expect(loaded?.combat?.enemyMaxHp).toBe(15);
+    loaded!.lastCredited = 0;
+    creditOffline(loaded!, 1000);
+    expect(loaded?.activity).toMatchObject({ kind: 'combat', enemyId: 'meadow.hare' });
+    expect(loaded?.combat?.enemyHp).toBe(15);
+    expect(loaded?.combat?.enemyMaxHp).toBe(15);
+    const after = mainHtml(loaded!, combatView('meadow.hare'), 0);
+    expect(after).toContain('Lv 1</em> 15/15');
+    expect(after).not.toContain('10/15');
   });
 });

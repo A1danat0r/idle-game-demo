@@ -94,9 +94,9 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 .filters { display: flex; gap: 5px; margin: 6px 0; }
 .filters button { flex: 1; text-align: center; font-size: 12px; padding: 5px 0; border: 1px solid #353d55; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; cursor: pointer; }
 .filters .on { border-color: var(--gold); color: var(--gold); background: #2a2516; }
-button.row { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; }
-button.cell { width: 100%; font: inherit; color: inherit; cursor: pointer; }
-button.mini { width: 100%; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+button.row { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; appearance: none; }
+button.cell { width: 100%; font: inherit; color: inherit; cursor: pointer; appearance: none; }
+button.mini { width: 100%; font: inherit; color: inherit; cursor: pointer; text-align: left; appearance: none; }
 .invgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .invgrid .cell { padding: 14px 2px 4px; min-height: 88px; justify-content: space-between; }
 .invgrid .qty { position: absolute; right: 5px; top: 3px; font-size: 11px; font-weight: 700; color: #fff; }
@@ -150,7 +150,14 @@ button.mini { width: 100%; font: inherit; color: inherit; cursor: pointer; text-
 .empty { text-align: center; color: var(--muted); padding: 18px 8px; }
 .styles { display: flex; gap: 6px; margin: 6px 0; }
 .styles button { flex: 1; }
-button.tag { font: inherit; cursor: pointer; }
-.eslot button { all: unset; cursor: pointer; display: flex; flex-direction: column; align-items: center; width: 100%; }
-.gearpick { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #262f4a; }
+button.tag { appearance: none; font: inherit; cursor: pointer; background: transparent; }
+.eslot button { all: unset; cursor: pointer; display: flex; flex-direction: column; align-items: center; width: 100%; min-width: 0; }
+.eslot small, .eslot em { white-space: normal; overflow-wrap: anywhere; max-width: 100%; line-height: 1.2; }
+.gearpick { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 5px; padding: 6px 8px; text-align: left;
+  background: #0f1527; border: 1px solid #353d55; border-radius: 6px; }
+.gearpick:last-child { margin-bottom: 0; }
+button.gearpick { appearance: none; color: var(--text); font: inherit; cursor: pointer; height: auto; white-space: normal; overflow: visible; }
+button.gearpick.on { border-color: var(--gold); box-shadow: inset 0 0 0 1px #3a3220; }
+.gearpick b, .gearpick small { white-space: normal; overflow-wrap: anywhere; }
+button.gearpick.on small { color: #7be08a; }
 .aboutline { font-size: 13px; margin: 6px 0 12px; }
