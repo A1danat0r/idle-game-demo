@@ -17,6 +17,7 @@ import {
   REGEN_HP,
   REGEN_MS,
   COMBAT_HP_SCALE,
+  enemyDamageRollMax,
   playerBaseDamage,
   variedDamage,
   SHOP_DAILY_LIMIT,
@@ -625,8 +626,10 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
     return;
   }
   state.stats.enemyHits += 1;
-  const oldMax = Math.max(1, Math.round(enemy.maxHit / COMBAT_HP_SCALE));
-  const damage = variedDamage(COMBAT_HP_SCALE * rollInt(state, 1, oldMax), nextUnit(state));
+  const damage = variedDamage(
+    COMBAT_HP_SCALE * rollInt(state, 1, enemyDamageRollMax(enemy.maxHit)),
+    nextUnit(state),
+  );
   notes?.push({ kind: 'enemy-hit', amount: damage });
   const lethal = state.hp - damage <= 0;
   if (lethal) {
