@@ -377,7 +377,7 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
   return ids
     .map((id) => {
       const on = state.equipped[slot] === id;
-      return `<button type="button" class="gearpick" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
+      return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
     })
     .join('');
 }
