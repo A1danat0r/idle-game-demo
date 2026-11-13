@@ -290,6 +290,34 @@ export function variedDamage(base: number, unit: number): number {
   const factor = 1 - DAMAGE_SPREAD + unit * (DAMAGE_SPREAD * 2);
   return roundHalfUp(base * factor);
 }
+/** Upper end of the pre-scale roll: uniform integer 1..this, then × {@link COMBAT_HP_SCALE}. */
+export function enemyDamageRollMax(maxHit: number): number {
+  return Math.max(1, Math.round(maxHit / COMBAT_HP_SCALE));
+}
+/**
+ * Expected damage of one landed enemy hit.
+ * Same roll the combat engine uses: 10 × uniform{1..old max hit}, then the 5% factor, half up.
+ */
+export function expectedEnemyHitDamage(maxHit: number): number {
+  const rolls = enemyDamageRollMax(maxHit);
+  let sum = 0;
+  for (let roll = 1; roll <= rolls; roll += 1) sum += expectedVariedDamage(COMBAT_HP_SCALE * roll);
+  return sum / rolls;
+}
+
+function expectedVariedDamage(base: number): number {
+  const lo = (1 - DAMAGE_SPREAD) * base;
+  const hi = (1 + DAMAGE_SPREAD) * base;
+  const span = hi - lo;
+  if (span <= 0) return roundHalfUp(base);
+  let mean = 0;
+  for (let hit = Math.floor(lo) - 1; hit <= Math.ceil(hi) + 1; hit += 1) {
+    const left = Math.max(lo, hit - 0.5);
+    const right = Math.min(hi, hit + 0.5);
+    if (right > left) mean += hit * ((right - left) / span);
+  }
+  return mean;
+}
 /** Hits per kill. Power is added to Strength. The result is locked when a kill starts. */
 export function hitsPerKill(strength: number, enemyLevel: number, power = 0): number {
   const steps = Math.max(0, Math.floor((strength + power - enemyLevel) / 10));

@@ -10,6 +10,7 @@ import {
   equip,
   importSave,
   loadAndCredit,
+  maxHp,
   resumeCombat,
   setSkillLevel,
   sell,
@@ -399,7 +400,7 @@ function openDev(): void {
     const level = Number(dev.querySelector<HTMLInputElement>('[data-set-level]')?.value ?? '1');
     if (!isSkill(skill) || !Number.isInteger(level)) return;
     setSkillLevel(state, skill, level);
-    if (skill === 'Hitpoints') state.hp = Math.min(state.hp, 10 + 2 * level);
+    if (skill === 'Hitpoints') state.hp = Math.min(state.hp, maxHp(state));
     afterChange(`${skill} set to level ${level}.`);
   });
   dev.querySelector('[data-apply-give]')?.addEventListener('click', () => {
