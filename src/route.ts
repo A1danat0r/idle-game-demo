@@ -13,6 +13,7 @@ import {
   type RecipeDef,
   type SkillId,
 } from './content';
+import { actionXpMultiplier, enemyLootFactor, sellMultiplier } from './mastery';
 import {
   actionSeconds,
   buyNode,
@@ -156,20 +157,20 @@ function bestCoinActivity(state: Save): Grind {
   let bestRate = -1;
   for (const node of NODES) {
     if (!nodeUsable(state, node.id)) continue;
-    const rate = (ITEMS[node.id]?.sell ?? 0) / actionSeconds(state, node.id);
+    const rate = ((ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id)) / actionSeconds(state, node.id);
     if (rate > bestRate) {
       bestRate = rate;
       best = { kind: 'gather', nodeId: node.id };
     }
   }
   if (state.owned.some((skill) => skill === 'Attack' || skill === 'Strength' || skill === 'Defence')) {
-    const meadow = fightSeconds(state, 1, 6.25);
+    const meadow = fightSeconds(state, 1, 6.25 * enemyLootFactor(state.enemyMastery, 'meadow.beetle'));
     if (meadow > bestRate) {
       bestRate = meadow;
       best = { kind: 'combat', enemyId: 'meadow.beetle' };
     }
     if (foodFree('wood.poacher', state)) {
-      const poacher = fightSeconds(state, 12, 12.5);
+      const poacher = fightSeconds(state, 12, 12.5 * enemyLootFactor(state.enemyMastery, 'wood.poacher'));
       if (poacher > bestRate) best = { kind: 'combat', enemyId: 'wood.poacher' };
     }
   }
@@ -289,18 +290,18 @@ function cycleScore(state: Save, metal: 'bronze' | 'iron', recipe: RecipeDef): {
     seconds += (n / 2) * actionSeconds(state, 'mat.wood.pine');
     seconds += (n / 2) * actionSeconds(state, 'recipe.mat.fuel.charcoal');
     seconds += n * actionSeconds(state, 'recipe.mat.bar.bronze');
-    smithXp += n * (RECIPE_BY_ID['recipe.mat.bar.bronze'].xp);
+    smithXp += n * RECIPE_BY_ID['recipe.mat.bar.bronze'].xp * actionXpMultiplier(state.mastery, 'recipe.mat.bar.bronze', 'Smithing');
   } else {
     seconds += n * 2 * actionSeconds(state, 'mat.ore.iron');
     seconds += (n / 2) * actionSeconds(state, 'mat.wood.pine');
     seconds += (n / 2) * actionSeconds(state, 'recipe.mat.fuel.charcoal');
     seconds += n * actionSeconds(state, 'recipe.mat.bar.iron');
-    smithXp += n * (RECIPE_BY_ID['recipe.mat.bar.iron'].xp);
+    smithXp += n * RECIPE_BY_ID['recipe.mat.bar.iron'].xp * actionXpMultiplier(state.mastery, 'recipe.mat.bar.iron', 'Smithing');
   }
   seconds += m * actionSeconds(state, recipe.id);
-  smithXp += m * recipe.xp;
+  smithXp += m * recipe.xp * actionXpMultiplier(state.mastery, recipe.id, 'Smithing');
   const out = recipe.outputs[0];
-  const sellValue = m * out.qty * (ITEMS[out.id]?.sell ?? 0);
+  const sellValue = m * out.qty * (ITEMS[out.id]?.sell ?? 0) * sellMultiplier(state.mastery, out.id);
   return { xpPerSec: smithXp / seconds, coinsPerSec: sellValue / seconds };
 }
 

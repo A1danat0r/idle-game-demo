@@ -180,6 +180,11 @@ button.gearpick.on small { color: #7be08a; }
 .floater.enemy { color: #e07070; }
 .floater.miss { color: var(--muted); font-weight: 600; }
 .floater.heal { color: #7be08a; }
+.floater.toast { color: var(--gold); }
+.bar.thin { height: 4px; margin-top: 1px; }
+.actbars { display: flex; align-items: center; gap: 6px; }
+.actbars .bar { flex: 1; margin: 3px 0; }
+.actbars .bar.thin { flex: 0.65; }
 @keyframes floater-rise {
   from { opacity: 1; transform: translateY(6px); }
   to { opacity: 0; transform: translateY(-26px); }

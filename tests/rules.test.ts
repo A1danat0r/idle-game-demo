@@ -20,6 +20,7 @@ import {
   playerHitChance,
   playerMaxHp,
 } from '../src/content';
+import { masteryLevel } from '../src/mastery';
 import { activityDestination, activityHtml, mainHtml, renderKey, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
@@ -603,6 +604,9 @@ describe('save, offline, shop', () => {
     expect(loaded).not.toBeNull();
     expect(loaded!.nodes).toEqual(['mat.stone.limestone', 'mat.wood.maple']);
     expect(loaded!.owned).toContain('Mining');
+    expect(loaded!.saveFormat).toBe(2);
+    expect(loaded!.mastery).toEqual({});
+    expect(loaded!.enemyMastery).toEqual({});
     expect(loaded!.coins).toBe(40);
     expect(sell(loaded!, 'mat.tree.resin', 1)).toBe(true);
     expect(loaded!.coins).toBe(43);
@@ -623,7 +627,18 @@ describe('save, offline, shop', () => {
     expect(report.capped).toBe(true);
     expect(report.creditedMs).toBe(24 * HOUR);
     expect(report.awayMs).toBe(30 * HOUR);
-    expect(report.actions).toBe(Math.floor((24 * HOUR) / 2600));
+    let mxp = 0;
+    let left = 24 * HOUR;
+    let expectedActions = 0;
+    while (left > 0) {
+      const duration = masteryLevel(mxp) >= 20 ? 2600 * 0.95 : 2600;
+      if (left + 1e-6 < duration) break;
+      left -= duration;
+      expectedActions += 1;
+      mxp += 26;
+    }
+    expect(report.actions).toBe(expectedActions);
+    expect(masteryLevel(state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
     expect(state.bank['mat.wood.pine']).toBe(report.actions);
     expect(state.xp.Woodcutting).toBe(XP_CAP);
     expect(state.lastCredited).toBe(now);
@@ -820,6 +835,8 @@ describe('open-tab clock and catch-up display', () => {
       coinsGained: 0,
       foodEaten: 0,
       stopped: 'window',
+      masteryLevels: [],
+      perksUnlocked: [],
     });
     expect(html).toContain('Strength 48, Hitpoints 9');
     expect(html).not.toContain('9.6');

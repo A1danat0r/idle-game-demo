@@ -19,6 +19,7 @@ import {
   SHOP_ITEMS,
   SHOP_PRICE,
   SHOP_WINDOW_MS,
+  SKILL_IDS,
   STARTER_WEAPON,
   STYLE_XP_PER_KILL,
   TOOL_TIER,
@@ -42,9 +43,24 @@ import {
   type CombatStyle,
   type SkillId,
 } from './content';
+import {
+  ENEMY_MASTERY_XP,
+  actionMasteryXp,
+  actionXpMultiplier,
+  enemyLootFactor,
+  globalBonusLine,
+  globalXpBonus,
+  levelUpLines,
+  masteryLevel,
+  masteryPerks,
+  sellMultiplier,
+  trackName,
+} from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 
-export const SAVE_FORMAT = 1;
+export const SAVE_FORMAT = 2;
+/** Format-1 saves load with empty mastery maps and are written back as format 2. */
+const SAVE_FORMAT_V1 = 1;
 export const SAVE_KEY = 'idle-game-demo-save';
 export const UNREADABLE_SAVE_KEY = 'idle-game-demo-save-unreadable';
 
@@ -114,6 +130,10 @@ export interface Save {
   rngState: number;
   regenMs: number;
   stats: StatsLog;
+  /** Integer mastery XP per node or recipe. Levels and perks are derived. */
+  mastery: Record<string, number>;
+  /** Integer mastery XP per enemy. */
+  enemyMastery: Record<string, number>;
 }
 
 /** Visual notes for the open tab. Offline catch-up does not collect these. */
@@ -122,7 +142,8 @@ export type FloatNote =
   | { kind: 'player-hit'; amount: number }
   | { kind: 'enemy-hit'; amount: number }
   | { kind: 'miss'; side: 'player' | 'enemy' }
-  | { kind: 'heal'; amount: number };
+  | { kind: 'heal'; amount: number }
+  | { kind: 'toast'; text: string };
 
 export interface SimOptions {
   /**
@@ -160,6 +181,10 @@ export interface CatchupReport {
   coinsGained: number;
   foodEaten: number;
   stopped: 'window' | 'inputs' | 'paused' | 'backwards';
+  /** Tracks whose shown mastery level rose during this catch-up. */
+  masteryLevels: { id: string; name: string; before: number; after: number }[];
+  /** Perk and global-bonus lines unlocked during this catch-up. */
+  perksUnlocked: string[];
 }
 
 export function emptyStats(): StatsLog {
@@ -201,6 +226,8 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     rngState: seed >>> 0,
     regenMs: 0,
     stats: emptyStats(),
+    mastery: {},
+    enemyMastery: {},
   };
   return state;
 }
@@ -240,11 +267,11 @@ export function actionSeconds(state: Save, id: string): number {
   if (node) {
     const tier = node.skill === 'Fishing' ? 0 : toolTier(state, node.skill);
     const factor = TOOL_TIME_FACTOR ** tier;
-    return node.seconds * factor;
+    return node.seconds * factor * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
   }
   const recipe = RECIPE_BY_ID[id];
   if (!recipe) return 0;
-  return recipe.seconds;
+  return recipe.seconds * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
 }
 
 export function actionXp(id: string): number {
@@ -466,8 +493,9 @@ export function sell(state: Save, itemId: string, qty: number): boolean {
   const def = ITEMS[itemId];
   if (!def) return false;
   if (!takeItem(state, itemId, qty)) return false;
-  state.coins = roundXp(state.coins + def.sell * qty);
-  state.stats.coinsFromSales = roundXp(state.stats.coinsFromSales + def.sell * qty);
+  const price = def.sell * sellMultiplier(state.mastery, itemId) * qty;
+  state.coins = roundXp(state.coins + price);
+  state.stats.coinsFromSales = roundXp(state.stats.coinsFromSales + price);
   return true;
 }
 
@@ -536,28 +564,37 @@ function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, 
   state.stats.kills += 1;
   state.stats.killsByEnemy[enemy.id] = (state.stats.killsByEnemy[enemy.id] ?? 0) + 1;
   if (sink) sink.kills += 1;
+  // Loot uses the mastery already earned. This kill's MXP is added afterwards.
+  const factor = enemyLootFactor(state.enemyMastery, enemy.id);
   if (opts.expectedLoot) {
-    const coins = expectedCoinValue(enemy);
-    const loot = expectedDropValue(enemy.drops);
+    const coins = expectedCoinValue(enemy) * factor;
+    const loot = expectedDropValue(enemy.drops) * factor;
     state.coins = roundXp(state.coins + coins + loot);
     state.stats.coinsFromKills = roundXp(state.stats.coinsFromKills + coins);
     state.stats.lootValue = roundXp(state.stats.lootValue + loot);
-    if (sink) sink.coins = roundXp(sink.coins + coins);
-    return;
-  }
-  for (const drop of enemy.drops) {
-    if (rollOdds(state, drop.num, drop.den)) {
-      giveItem(state, drop.itemId, drop.qty, sink);
-      const value = (ITEMS[drop.itemId]?.sell ?? 0) * drop.qty;
-      state.stats.lootValue = roundXp(state.stats.lootValue + value);
+    if (sink) sink.coins = roundXp(sink.coins + coins + (loot - expectedDropValue(enemy.drops)));
+  } else {
+    let itemValue = 0;
+    for (const drop of enemy.drops) {
+      if (rollOdds(state, drop.num, drop.den)) {
+        giveItem(state, drop.itemId, drop.qty, sink);
+        itemValue += (ITEMS[drop.itemId]?.sell ?? 0) * drop.qty;
+      }
     }
+    const rolled = enemy.coins ? rollInt(state, enemy.coins.min, enemy.coins.max) : 0;
+    const extra = roundXp((rolled + itemValue) * (factor - 1));
+    if (rolled > 0) {
+      state.coins = roundXp(state.coins + rolled);
+      state.stats.coinsFromKills = roundXp(state.stats.coinsFromKills + rolled);
+      if (sink) sink.coins = roundXp(sink.coins + rolled);
+    }
+    if (extra > 0) {
+      state.coins = roundXp(state.coins + extra);
+      if (sink) sink.coins = roundXp(sink.coins + extra);
+    }
+    state.stats.lootValue = roundXp(state.stats.lootValue + itemValue * factor);
   }
-  if (enemy.coins) {
-    const coins = rollInt(state, enemy.coins.min, enemy.coins.max);
-    state.coins = roundXp(state.coins + coins);
-    state.stats.coinsFromKills = roundXp(state.stats.coinsFromKills + coins);
-    if (sink) sink.coins = roundXp(sink.coins + coins);
-  }
+  grantEnemyMastery(state, enemy.id, opts);
 }
 
 function markPaused(state: Save, sink?: Sink): void {
@@ -634,8 +671,9 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     giveItem(state, node.id, 1, sink);
-    const gained = addXp(state, node.skill, node.xp);
+    const gained = addXp(state, node.skill, node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
     opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty: 1 });
+    grantActionMastery(state, node.id, node.skill, node.seconds, opts);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
@@ -651,7 +689,8 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     }
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
     for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
-    const gained = addXp(state, recipe.skill, recipe.xp);
+    const gained = addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+    grantActionMastery(state, recipe.id, recipe.skill, recipe.seconds, opts);
     const made = recipe.outputs[0];
     if (made) {
       opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty });
@@ -786,6 +825,67 @@ export function stepCompletion(state: Save, opts: SimOptions = {}): { ms: number
   return { ms, type };
 }
 
+function grantActionMastery(state: Save, id: string, skill: SkillId, baseSeconds: number, opts: SimOptions): void {
+  const beforeBonus = globalXpBonus(state.mastery, skill);
+  const before = masteryLevel(state.mastery[id] ?? 0);
+  state.mastery[id] = (state.mastery[id] ?? 0) + actionMasteryXp(baseSeconds);
+  const after = masteryLevel(state.mastery[id]);
+  if (!opts.notes || after === before) return;
+  const name = trackName(id);
+  for (const text of levelUpLines(name, before, after, 'node')) opts.notes.push({ kind: 'toast', text });
+  const bonus = globalBonusLine(skill, beforeBonus, globalXpBonus(state.mastery, skill));
+  if (bonus) opts.notes.push({ kind: 'toast', text: bonus });
+}
+
+function grantEnemyMastery(state: Save, enemyId: string, opts: SimOptions): void {
+  const before = masteryLevel(state.enemyMastery[enemyId] ?? 0);
+  state.enemyMastery[enemyId] = (state.enemyMastery[enemyId] ?? 0) + ENEMY_MASTERY_XP;
+  const after = masteryLevel(state.enemyMastery[enemyId]);
+  if (!opts.notes || after === before) return;
+  for (const text of levelUpLines(trackName(enemyId), before, after, 'enemy')) opts.notes.push({ kind: 'toast', text });
+}
+
+function masteryLevelsOf(state: Save): Record<string, number> {
+  const levels: Record<string, number> = {};
+  for (const [id, mxp] of Object.entries(state.mastery)) levels[id] = masteryLevel(mxp);
+  for (const [id, mxp] of Object.entries(state.enemyMastery)) levels[`enemy:${id}`] = masteryLevel(mxp);
+  return levels;
+}
+
+function skillBonusOf(state: Save): Partial<Record<SkillId, number>> {
+  const bonus: Partial<Record<SkillId, number>> = {};
+  for (const skill of SKILL_IDS) bonus[skill] = globalXpBonus(state.mastery, skill);
+  return bonus;
+}
+
+function masteryGained(
+  before: Record<string, number>,
+  state: Save,
+): { levels: CatchupReport['masteryLevels']; perks: string[] } {
+  const after = masteryLevelsOf(state);
+  const levels: CatchupReport['masteryLevels'] = [];
+  const perks: string[] = [];
+  for (const id of Object.keys(after)) {
+    const from = before[id] ?? 1;
+    const to = after[id];
+    if (to <= from) continue;
+    const bare = id.startsWith('enemy:') ? id.slice(6) : id;
+    const kind = id.startsWith('enemy:') ? 'enemy' : 'node';
+    levels.push({ id: bare, name: trackName(bare), before: from, after: to });
+    perks.push(...levelUpLines(trackName(bare), from, to, kind));
+  }
+  return { levels, perks };
+}
+
+function bonusLines(before: Partial<Record<SkillId, number>>, state: Save): string[] {
+  const lines: string[] = [];
+  for (const skill of SKILL_IDS) {
+    const line = globalBonusLine(skill, before[skill] ?? 0, globalXpBonus(state.mastery, skill));
+    if (line) lines.push(line);
+  }
+  return lines;
+}
+
 function levelsOf(state: Save): Partial<Record<SkillId, number>> {
   const out: Partial<Record<SkillId, number>> = {};
   for (const skill of state.owned) out[skill] = skillLevel(state, skill);
@@ -832,6 +932,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     coinsGained: 0,
     foodEaten: 0,
     stopped: 'window',
+    masteryLevels: [],
+    perksUnlocked: [],
   };
   if (away < 0) {
     report.backwards = true;
@@ -843,6 +945,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   const credited = Math.min(away, OFFLINE_CAP_MS);
   report.creditedMs = credited;
   report.capped = away > OFFLINE_CAP_MS + 1e-6;
+  const masteryBefore = masteryLevelsOf(state);
+  const bonusBefore = skillBonusOf(state);
   const wasPaused = state.paused;
   const sink: Sink = {
     actions: 0,
@@ -865,6 +969,9 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     if (gained !== 0) report.xpGained[skill] = gained;
   }
   report.levelsAfter = levelsOf(state);
+  const gained = masteryGained(masteryBefore, state);
+  report.masteryLevels = gained.levels;
+  report.perksUnlocked = gained.perks.concat(bonusLines(bonusBefore, state));
   if (sink.stopped) report.stopped = sink.stopped;
   else if (wasPaused || state.paused) report.stopped = 'paused';
   else report.stopped = 'window';
@@ -884,7 +991,7 @@ export function deserialize(raw: string): Save | null {
     return null;
   }
   if (!isRecord(parsed)) return null;
-  if (parsed.saveFormat !== SAVE_FORMAT) return null;
+  if (parsed.saveFormat !== SAVE_FORMAT && parsed.saveFormat !== SAVE_FORMAT_V1) return null;
   if (typeof parsed.coins !== 'number' || !Number.isFinite(parsed.coins)) return null;
   if (!isRecord(parsed.xp)) return null;
   if (!Array.isArray(parsed.owned) || !Array.isArray(parsed.nodes)) return null;
@@ -988,6 +1095,9 @@ export function deserialize(raw: string): Save | null {
       killAtMs: typeof c.killAtMs === 'number' ? c.killAtMs : null,
     };
   }
+  const mastery = readMastery(parsed.mastery);
+  const enemyMastery = readMastery(parsed.enemyMastery);
+  if (!mastery || !enemyMastery) return null;
   return {
     saveFormat: SAVE_FORMAT,
     coins: parsed.coins,
@@ -1008,7 +1118,21 @@ export function deserialize(raw: string): Save | null {
     rngState: parsed.rngState >>> 0,
     regenMs: typeof parsed.regenMs === 'number' ? parsed.regenMs : 0,
     stats,
+    mastery,
+    enemyMastery,
   };
+}
+
+function readMastery(value: unknown): Record<string, number> | null {
+  if (value == null) return {};
+  if (!isRecord(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, amount] of Object.entries(value)) {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return null;
+    const mxp = Math.round(amount);
+    if (mxp > 0) out[key] = mxp;
+  }
+  return out;
 }
 
 export function serialize(state: Save): string {

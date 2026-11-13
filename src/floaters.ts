@@ -9,7 +9,7 @@ export const FLOAT_CAP = 3;
 export const FLOAT_LIFE_MS = 1100;
 
 export interface FloaterView {
-  tone: 'action' | 'player' | 'enemy' | 'miss' | 'heal';
+  tone: 'action' | 'player' | 'enemy' | 'miss' | 'heal' | 'toast';
   place: 'bar' | 'combat';
   text: string;
 }
@@ -51,6 +51,7 @@ export function presentNotes(notes: FloatNote[]): FloaterView[] {
       views.push({ tone: note.side === 'enemy' ? 'enemy' : 'miss', place: 'combat', text: 'Miss' });
     }
     else if (note.kind === 'heal') views.push({ tone: 'heal', place: 'combat', text: `+${note.amount}` });
+    else if (note.kind === 'toast') views.push({ tone: 'toast', place: 'bar', text: note.text });
   }
   if (views.length <= FLOAT_CAP) return views;
   const lead = views.filter((view) => view.place === 'bar');

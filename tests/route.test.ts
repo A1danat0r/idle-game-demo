@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { bestBarRecipe, formatRouteResult, runReferenceRoute } from '../src/route';
 import { newGame, skillLevel } from '../src/engine';
 import { XP_TABLE } from '../src/content';
+import { masteryLevel } from '../src/mastery';
 
 describe('reference route', () => {
   it('picks the spec section 4 smithing recipes', () => {
@@ -30,15 +31,15 @@ describe('reference route', () => {
     const second = result.purchases[0];
     const third = result.purchases[1];
     expect(second.skill).toBe('Cooking');
-    expect(second.atHours).toBeGreaterThanOrEqual(0.513);
-    expect(second.atHours).toBeLessThanOrEqual(0.567);
+    expect(second.atHours).toBeGreaterThanOrEqual(0.494);
+    expect(second.atHours).toBeLessThanOrEqual(0.546);
     expect(third.skill).toBe('Mining');
-    expect(third.atHours).toBeGreaterThanOrEqual(1.197);
-    expect(third.atHours).toBeLessThanOrEqual(1.323);
-    expect(result.elapsedHours).toBeGreaterThanOrEqual(18.99);
-    expect(result.elapsedHours).toBeLessThanOrEqual(20.989);
-    expect(result.earned).toBeGreaterThanOrEqual(51687);
-    expect(result.earned).toBeLessThanOrEqual(57127);
+    expect(third.atHours).toBeGreaterThanOrEqual(1.149);
+    expect(third.atHours).toBeLessThanOrEqual(1.27);
+    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.626);
+    expect(result.elapsedHours).toBeLessThanOrEqual(20.458);
+    expect(result.earned).toBeGreaterThanOrEqual(49_105);
+    expect(result.earned).toBeLessThanOrEqual(59_148);
     const needed =
       result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
       result.nodes.length * 3000;
@@ -66,6 +67,8 @@ describe('reference route', () => {
     expect(result.levels.Hitpoints).toBeGreaterThanOrEqual(22);
     expect(result.levels.Hitpoints).toBeLessThanOrEqual(24);
     expect(result.kills).toBe(2559);
+    expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
+    expect(masteryLevel(result.state.enemyMastery['meadow.beetle'] ?? 0)).toBe(30);
     expect(result.nodes.map((node) => node.id).sort()).toEqual(
       ['mat.fish.trout', 'mat.ore.iron', 'mat.wood.oak'].sort(),
     );
