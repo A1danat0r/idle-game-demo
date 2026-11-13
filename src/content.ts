@@ -1,5 +1,12 @@
-/** Approved. Level-1 nodes are free. Every other demo node costs this once, and only after the skill reaches the node's level. */
-export const NODE_PRICE = 1500;
+/**
+ * Paid node cost. Lv-1 nodes are free. The level gate is unchanged:
+ * a node can be bought only once its level is reached.
+ * round(3000 × (level/20)²).
+ */
+export function nodeCost(level: number): number {
+  if (level <= 1) return 0;
+  return Math.round(3000 * (level / 20) ** 2);
+}
 
 /** Cumulative XP required to be each level. Level 1 is 0. Index 0 is unused. */
 export const XP_TABLE: readonly number[] = [
@@ -11,10 +18,14 @@ export const XP_TABLE: readonly number[] = [
 export const XP_CAP = XP_TABLE[30];
 export const LEVEL_CAP = 30;
 
-/** SC1 prices. Slot k (1-based) is index k-1. Ratio (132690/750)^(1/16). */
+/**
+ * Skill purchase k (1-based) is index k-1.
+ * SC(1) = 750. SC(k) = round(750 × 1.3819300421 × 1.6^(k−2)) for k ≥ 2.
+ * The demo buys the first 7. Later slots are the same rule and are not purchased.
+ */
 export const SKILL_PRICES: readonly number[] = [
-  750, 1036, 1432, 1979, 2735, 3780, 5224, 7219, 9976, 13786, 19051, 26327, 36383, 50278, 69481,
-  96018, 132690,
+  750, 1036, 1658, 2653, 4245, 6792, 10868, 17389, 27822, 44515, 71224, 113959, 182334, 291734,
+  466774, 746839, 1194943,
 ];
 
 /** Purchases the demo can make. Woodcutting and Hitpoints are never purchases. */
@@ -102,7 +113,7 @@ export interface NodeDef {
   level: number;
   seconds: number;
   xp: number;
-  /** Free when level is 1. Otherwise NODE_PRICE. */
+  /** Free at level 1. Otherwise nodeCost(level). */
   cost: number;
 }
 
@@ -147,7 +158,7 @@ function node(
   seconds: number,
   xp: number,
 ): NodeDef {
-  return { id, skill, level, seconds, xp, cost: level <= 1 ? 0 : NODE_PRICE };
+  return { id, skill, level, seconds, xp, cost: nodeCost(level) };
 }
 
 export const NODES: NodeDef[] = [
@@ -364,48 +375,48 @@ export function expectedCoinValue(enemyDef: EnemyDef): number {
 }
 
 const FOODS: { id: string; name: string; sell: number; heal: number }[] = [
-  { id: 'food.roast_hare', name: 'Roast hare', sell: 4, heal: 5 },
-  { id: 'food.roast_minnows', name: 'Roast minnows', sell: 2, heal: 5 },
-  { id: 'food.cooked_shrimp', name: 'Cooked river shrimp', sell: 1, heal: 10 },
-  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 3, heal: 10 },
-  { id: 'food.mutton_herb_stew', name: 'Mutton-and-herb stew', sell: 5, heal: 12 },
-  { id: 'food.roast_perch', name: 'Roast perch', sell: 1, heal: 12 },
-  { id: 'food.tortoise_herb_soup', name: 'Tortoise-and-herb soup', sell: 3, heal: 14 },
-  { id: 'food.roast_trout', name: 'Roast trout', sell: 1, heal: 16 },
-  { id: 'food.baked_carp', name: 'Baked carp', sell: 1, heal: 17 },
+  { id: 'food.roast_hare', name: 'Roast hare', sell: 6, heal: 5 },
+  { id: 'food.roast_minnows', name: 'Roast minnows', sell: 3, heal: 5 },
+  { id: 'food.cooked_shrimp', name: 'Cooked river shrimp', sell: 5, heal: 10 },
+  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 11, heal: 10 },
+  { id: 'food.mutton_herb_stew', name: 'Mutton-and-herb stew', sell: 7, heal: 12 },
+  { id: 'food.roast_perch', name: 'Roast perch', sell: 8, heal: 12 },
+  { id: 'food.tortoise_herb_soup', name: 'Tortoise-and-herb soup', sell: 4, heal: 14 },
+  { id: 'food.roast_trout', name: 'Roast trout', sell: 9, heal: 16 },
+  { id: 'food.baked_carp', name: 'Baked carp', sell: 12, heal: 17 },
 ];
 
 function addItems(): void {
   const mats: { id: string; name: string; sell: number; icon: IconName }[] = [
     { id: 'mat.wood.pine', name: 'Pine logs', sell: 1, icon: 'log' },
-    { id: 'mat.tree.resin', name: 'Resin', sell: 1, icon: 'log' },
-    { id: 'mat.wood.maple', name: 'Maple logs', sell: 1, icon: 'log' },
-    { id: 'mat.wood.oak', name: 'Oak logs', sell: 1, icon: 'log' },
+    { id: 'mat.tree.resin', name: 'Resin', sell: 3, icon: 'log' },
+    { id: 'mat.wood.maple', name: 'Maple logs', sell: 3, icon: 'log' },
+    { id: 'mat.wood.oak', name: 'Oak logs', sell: 6, icon: 'log' },
     { id: 'mat.fish.minnow', name: 'Raw minnows', sell: 1, icon: 'fish' },
-    { id: 'mat.fish.river_shrimp', name: 'Raw river shrimp', sell: 1, icon: 'fish' },
-    { id: 'mat.fish.perch', name: 'Raw perch', sell: 1, icon: 'fish' },
-    { id: 'mat.fish.trout', name: 'Raw trout', sell: 1, icon: 'fish' },
-    { id: 'mat.fish.carp', name: 'Raw carp', sell: 1, icon: 'fish' },
+    { id: 'mat.fish.river_shrimp', name: 'Raw river shrimp', sell: 3, icon: 'fish' },
+    { id: 'mat.fish.perch', name: 'Raw perch', sell: 5, icon: 'fish' },
+    { id: 'mat.fish.trout', name: 'Raw trout', sell: 6, icon: 'fish' },
+    { id: 'mat.fish.carp', name: 'Raw carp', sell: 8, icon: 'fish' },
     { id: 'mat.ore.copper', name: 'Copper ore', sell: 1, icon: 'ore' },
     { id: 'mat.ore.tin', name: 'Tin ore', sell: 1, icon: 'ore' },
-    { id: 'mat.stone.limestone', name: 'Limestone', sell: 1, icon: 'stone' },
-    { id: 'mat.mineral.rock_salt', name: 'Rock salt', sell: 1, icon: 'stone' },
-    { id: 'mat.gem.jade', name: 'Rough jade', sell: 1, icon: 'gem' },
-    { id: 'mat.ore.iron', name: 'Iron ore', sell: 1, icon: 'ore' },
-    { id: 'mat.mineral.pottery_clay', name: 'Pottery clay', sell: 1, icon: 'stone' },
+    { id: 'mat.stone.limestone', name: 'Limestone', sell: 3, icon: 'stone' },
+    { id: 'mat.mineral.rock_salt', name: 'Rock salt', sell: 5, icon: 'stone' },
+    { id: 'mat.gem.jade', name: 'Rough jade', sell: 6, icon: 'gem' },
+    { id: 'mat.ore.iron', name: 'Iron ore', sell: 6, icon: 'ore' },
+    { id: 'mat.mineral.pottery_clay', name: 'Pottery clay', sell: 8, icon: 'stone' },
     { id: 'mat.fuel.charcoal', name: 'Charcoal', sell: 1, icon: 'stone' },
-    { id: 'mat.farm.fish_meal', name: 'Fish meal', sell: 2, icon: 'food' },
-    { id: 'mat.food.fish_stock', name: 'Fish stock', sell: 1, icon: 'food' },
-    { id: 'mat.bar.bronze', name: 'Bronze bar', sell: 3, icon: 'bar' },
-    { id: 'mat.bar.iron', name: 'Iron bar', sell: 3, icon: 'bar' },
+    { id: 'mat.farm.fish_meal', name: 'Fish meal', sell: 3, icon: 'food' },
+    { id: 'mat.food.fish_stock', name: 'Fish stock', sell: 8, icon: 'food' },
+    { id: 'mat.bar.bronze', name: 'Bronze bar', sell: 5, icon: 'bar' },
+    { id: 'mat.bar.iron', name: 'Iron bar', sell: 20, icon: 'bar' },
     { id: 'mat.head.bronze_arrow', name: 'Bronze arrowheads', sell: 1, icon: 'ammo' },
     { id: 'mat.head.bronze_bolt', name: 'Bronze bolt tips', sell: 1, icon: 'ammo' },
-    { id: 'mat.wire.bronze', name: 'Bronze wire', sell: 1, icon: 'bar' },
-    { id: 'mat.fitting.bronze_hinge', name: 'Bronze hinges', sell: 2, icon: 'bar' },
+    { id: 'mat.wire.bronze', name: 'Bronze wire', sell: 2, icon: 'bar' },
+    { id: 'mat.fitting.bronze_hinge', name: 'Bronze hinges', sell: 4, icon: 'bar' },
     { id: 'mat.fitting.bronze_nail', name: 'Bronze nails', sell: 1, icon: 'bar' },
-    { id: 'mat.fitting.iron', name: 'Iron fittings', sell: 1, icon: 'bar' },
-    { id: 'mat.head.iron_arrow', name: 'Iron arrowheads', sell: 1, icon: 'ammo' },
-    { id: 'mat.head.iron_bolt', name: 'Iron bolt tips', sell: 1, icon: 'ammo' },
+    { id: 'mat.fitting.iron', name: 'Iron fittings', sell: 8, icon: 'bar' },
+    { id: 'mat.head.iron_arrow', name: 'Iron arrowheads', sell: 3, icon: 'ammo' },
+    { id: 'mat.head.iron_bolt', name: 'Iron bolt tips', sell: 3, icon: 'ammo' },
     { id: 'mat.meat.hare', name: 'Hare meat', sell: 4, icon: 'meat' },
     { id: 'mat.meat.mutton', name: 'Mutton', sell: 4, icon: 'meat' },
     { id: 'mat.meat.tortoise', name: 'Tortoise meat', sell: 4, icon: 'meat' },
@@ -423,30 +434,30 @@ function addItems(): void {
   for (const row of mats) item({ ...row, kind: 'material' });
   for (const food of FOODS) item({ ...food, kind: 'food', icon: 'food' });
   const gear: { id: string; name: string; sell: number; icon: IconName; acc: number; pow: number; grd: number }[] = [
-    { id: 'gear.armour.bronze_body', name: 'Bronze body armour', sell: 10, icon: 'body', acc: 0, pow: 0, grd: 3 },
-    { id: 'gear.armour.iron_body', name: 'Iron body armour', sell: 10, icon: 'body', acc: 0, pow: 0, grd: 6 },
-    { id: 'gear.melee.bronze_sword', name: 'Bronze sword', sell: 7, icon: 'sword', acc: 2, pow: 2, grd: 0 },
-    { id: 'gear.melee.iron_sword', name: 'Iron sword', sell: 7, icon: 'sword', acc: 6, pow: 6, grd: 0 },
-    { id: 'gear.melee.bronze_dagger', name: 'Bronze dagger', sell: 3, icon: 'sword', acc: 5, pow: 0, grd: 0 },
-    { id: 'gear.melee.iron_dagger', name: 'Iron dagger', sell: 3, icon: 'sword', acc: 10, pow: 0, grd: 0 },
-    { id: 'gear.melee.bronze_mace', name: 'Bronze mace', sell: 8, icon: 'sword', acc: 0, pow: 5, grd: 0 },
-    { id: 'gear.melee.bronze_spear', name: 'Bronze spear', sell: 8, icon: 'sword', acc: 3, pow: 3, grd: 0 },
-    { id: 'gear.melee.iron_spear', name: 'Iron spear', sell: 8, icon: 'sword', acc: 7, pow: 7, grd: 0 },
-    { id: 'gear.shield.bronze', name: 'Bronze shield', sell: 8, icon: 'shield', acc: 0, pow: 0, grd: 2 },
+    { id: 'gear.armour.bronze_body', name: 'Bronze body armour', sell: 23, icon: 'body', acc: 0, pow: 0, grd: 3 },
+    { id: 'gear.armour.iron_body', name: 'Iron body armour', sell: 90, icon: 'body', acc: 0, pow: 0, grd: 6 },
+    { id: 'gear.melee.bronze_sword', name: 'Bronze sword', sell: 15, icon: 'sword', acc: 2, pow: 2, grd: 0 },
+    { id: 'gear.melee.iron_sword', name: 'Iron sword', sell: 60, icon: 'sword', acc: 6, pow: 6, grd: 0 },
+    { id: 'gear.melee.bronze_dagger', name: 'Bronze dagger', sell: 8, icon: 'sword', acc: 5, pow: 0, grd: 0 },
+    { id: 'gear.melee.iron_dagger', name: 'Iron dagger', sell: 30, icon: 'sword', acc: 10, pow: 0, grd: 0 },
+    { id: 'gear.melee.bronze_mace', name: 'Bronze mace', sell: 17, icon: 'sword', acc: 0, pow: 5, grd: 0 },
+    { id: 'gear.melee.bronze_spear', name: 'Bronze spear', sell: 17, icon: 'sword', acc: 3, pow: 3, grd: 0 },
+    { id: 'gear.melee.iron_spear', name: 'Iron spear', sell: 69, icon: 'sword', acc: 7, pow: 7, grd: 0 },
+    { id: 'gear.shield.bronze', name: 'Bronze shield', sell: 17, icon: 'shield', acc: 0, pow: 0, grd: 2 },
   ];
   for (const row of gear) item({ ...row, kind: 'gear' });
   const tools: { id: string; name: string; sell: number; icon: IconName }[] = [
-    { id: 'tool.woodcutting.bronze_axe', name: 'Bronze axe', sell: 4, icon: 'axe' },
-    { id: 'tool.woodcutting.iron_axe', name: 'Iron axe', sell: 4, icon: 'axe' },
-    { id: 'tool.mining.bronze_pickaxe', name: 'Bronze pickaxe', sell: 8, icon: 'pick' },
-    { id: 'tool.mining.iron_pickaxe', name: 'Iron pickaxe', sell: 8, icon: 'pick' },
+    { id: 'tool.woodcutting.bronze_axe', name: 'Bronze axe', sell: 9, icon: 'axe' },
+    { id: 'tool.woodcutting.iron_axe', name: 'Iron axe', sell: 39, icon: 'axe' },
+    { id: 'tool.mining.bronze_pickaxe', name: 'Bronze pickaxe', sell: 17, icon: 'pick' },
+    { id: 'tool.mining.iron_pickaxe', name: 'Iron pickaxe', sell: 69, icon: 'pick' },
   ];
   for (const row of tools) item({ ...row, kind: 'tool' });
   const ammo: { id: string; name: string; sell: number }[] = [
     { id: 'ammo.thrown.bronze_knife', name: 'Bronze throwing knives', sell: 1 },
-    { id: 'ammo.thrown.bronze_javelin', name: 'Bronze javelins', sell: 1 },
-    { id: 'ammo.thrown.iron_knife', name: 'Iron throwing knives', sell: 1 },
-    { id: 'ammo.thrown.iron_javelin', name: 'Iron javelins', sell: 1 },
+    { id: 'ammo.thrown.bronze_javelin', name: 'Bronze javelins', sell: 2 },
+    { id: 'ammo.thrown.iron_knife', name: 'Iron throwing knives', sell: 4 },
+    { id: 'ammo.thrown.iron_javelin', name: 'Iron javelins', sell: 8 },
   ];
   for (const row of ammo) item({ ...row, kind: 'ammo', icon: 'ammo' });
 }

@@ -6,6 +6,7 @@ import {
   STARTER_WEAPON,
   NODES,
   NODE_BY_ID,
+  nodeCost,
   RECIPES,
   RECIPE_BY_ID,
   SKILL_PRICES,
@@ -142,12 +143,38 @@ describe('xp and prices', () => {
     expect(levelForXp(102301)).toBe(30);
   });
 
-  it('uses the SC1 ratio through slot 17 and the demo prices', () => {
-    const ratio = (132690 / 750) ** (1 / 16);
-    const rounded = Array.from({ length: 17 }, (_, k) => Math.round(750 * ratio ** k));
-    expect(SKILL_PRICES).toEqual(rounded);
-    expect(SKILL_PRICES.slice(0, 7)).toEqual([750, 1036, 1432, 1979, 2735, 3780, 5224]);
-    expect(SKILL_PRICES[16]).toBe(132690);
+  it('uses the t310 skill prices and the node cost by level', () => {
+    expect(SKILL_PRICES.slice(0, 7)).toEqual([750, 1036, 1658, 2653, 4245, 6792, 10868]);
+    const ratio = 1.3819300421;
+    const fromRule = SKILL_PRICES.map((_, index) =>
+      index === 0 ? 750 : Math.round(750 * ratio * 1.6 ** (index - 1)),
+    );
+    expect(SKILL_PRICES).toEqual(fromRule);
+    expect(nodeCost(1)).toBe(0);
+    expect(nodeCost(10)).toBe(750);
+    expect(nodeCost(15)).toBe(1688);
+    expect(nodeCost(20)).toBe(3000);
+    expect(nodeCost(25)).toBe(4688);
+    expect(NODE_BY_ID['mat.wood.pine'].cost).toBe(0);
+    expect(NODE_BY_ID['mat.stone.limestone'].cost).toBe(750);
+    expect(NODE_BY_ID['mat.fish.perch'].cost).toBe(1688);
+    expect(NODE_BY_ID['mat.ore.iron'].cost).toBe(3000);
+    expect(NODE_BY_ID['mat.fish.carp'].cost).toBe(4688);
+    expect(ITEMS['mat.wood.pine'].sell).toBe(1);
+    expect(ITEMS['mat.stone.limestone'].sell).toBe(3);
+    expect(ITEMS['mat.fish.trout'].sell).toBe(6);
+    expect(ITEMS['mat.ore.iron'].sell).toBe(6);
+    expect(ITEMS['food.roast_hare'].sell).toBe(6);
+    expect(ITEMS['food.baked_carp'].sell).toBe(12);
+    expect(ITEMS['mat.bar.iron'].sell).toBe(20);
+    expect(ITEMS['gear.melee.iron_spear'].sell).toBe(69);
+    expect(ITEMS['tool.woodcutting.iron_axe'].sell).toBe(39);
+    expect(ITEMS['ammo.thrown.iron_knife'].sell).toBe(4);
+    expect(ITEMS['mat.meat.hare'].sell).toBe(4);
+    const grub = expectedDropValue(ENEMY_BY_ID['wood.grub'].drops);
+    expect(grub).toBeCloseTo(10, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops)).toBeCloseTo(6.25, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6, 5);
   });
 
   it('charges the next purchase and refuses a short balance', () => {
@@ -550,6 +577,44 @@ describe('save, offline, shop', () => {
     expect(importSave(readable)?.coins).toBe(444);
   });
 
+  it('loads a pre-change save without refunds and sells at the new prices', () => {
+    const raw = JSON.stringify({
+      saveFormat: 1,
+      coins: 40,
+      xp: { Woodcutting: 0, Mining: 13726 },
+      owned: ['Woodcutting', 'Mining'],
+      purchaseCount: 1,
+      nodes: ['mat.stone.limestone', 'mat.wood.maple'],
+      bank: { 'mat.tree.resin': 2, 'gear.melee.bronze_sword': 1 },
+      equipped: { weapon: 'gear.melee.bronze_sword', body: null, shield: null },
+      activity: { kind: 'gather', nodeId: 'mat.stone.limestone' },
+      progressMs: 0,
+      hp: 12,
+      paused: false,
+      combat: null,
+      foodSlot: null,
+      shop: {},
+      lastCredited: 0,
+      rngState: 1,
+      regenMs: 0,
+      stats: { actions: 0, kills: 0, pauses: 0, foodEaten: 0, coinsFromKills: 0, coinsFromSales: 0, lootValue: 0, killsByEnemy: {}, pauseAtKill: [], playerSwings: 0, playerHits: 0, playerMisses: 0, enemyHits: 0 },
+    });
+    const loaded = deserialize(raw);
+    expect(loaded).not.toBeNull();
+    expect(loaded!.nodes).toEqual(['mat.stone.limestone', 'mat.wood.maple']);
+    expect(loaded!.owned).toContain('Mining');
+    expect(loaded!.coins).toBe(40);
+    expect(sell(loaded!, 'mat.tree.resin', 1)).toBe(true);
+    expect(loaded!.coins).toBe(43);
+    expect(loaded!.bank['mat.tree.resin']).toBe(1);
+    loaded!.coins = 750;
+    expect(buyNode(loaded!, 'mat.fish.river_shrimp')).toBe(false);
+    loaded!.owned.push('Fishing');
+    loaded!.xp.Fishing = XP_TABLE[10];
+    expect(buyNode(loaded!, 'mat.fish.river_shrimp')).toBe(true);
+    expect(loaded!.coins).toBe(0);
+  });
+
   it('credits 24h of a 30h gap, nothing when the clock runs backwards, and never twice', () => {
     const state = newGame(0);
     startGather(state, 'mat.wood.pine');
@@ -705,21 +770,21 @@ describe('approved combat details', () => {
     expect(state.nodes).not.toContain('mat.fish.river_shrimp');
     state.xp.Fishing = XP_TABLE[10];
     expect(buyNode(state, 'mat.fish.river_shrimp')).toBe(true);
-    expect(state.coins).toBe(0);
+    expect(state.coins).toBe(750);
   });
 });
 
 describe('node price helper', () => {
-  it('refuses a node below its level and charges 1,500 once', () => {
+  it('refuses a node below its level and charges that level\'s price once', () => {
     const state = newGame(0);
     state.coins = 5000;
     expect(buyNode(state, 'mat.wood.maple')).toBe(false);
     state.xp.Woodcutting = XP_TABLE[10];
     expect(buyNode(state, 'mat.wood.maple')).toBe(true);
-    expect(state.coins).toBe(3500);
+    expect(state.coins).toBe(4250);
     expect(buyNode(state, 'mat.wood.oak')).toBe(false);
     expect(NODE_BY_ID['mat.wood.pine'].cost).toBe(0);
-    expect(NODE_BY_ID['mat.ore.iron'].cost).toBe(1500);
+    expect(NODE_BY_ID['mat.ore.iron'].cost).toBe(3000);
   });
 });
 

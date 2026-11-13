@@ -12,7 +12,7 @@ describe('reference route', () => {
     state.xp.Smithing = XP_TABLE[2];
     expect(bestBarRecipe(state, 'bronze').id).toBe('recipe.gear.melee.bronze_dagger');
     state.xp.Smithing = XP_TABLE[3];
-    expect(bestBarRecipe(state, 'bronze').id).toBe('recipe.ammo.thrown.bronze_knife');
+    expect(bestBarRecipe(state, 'bronze').id).toBe('recipe.gear.melee.bronze_dagger');
     state.xp.Smithing = XP_TABLE[4];
     expect(bestBarRecipe(state, 'bronze').id).toBe('recipe.mat.head.bronze_bolt');
     state.xp.Smithing = XP_TABLE[10];
@@ -20,6 +20,8 @@ describe('reference route', () => {
     state.xp.Smithing = XP_TABLE[20];
     expect(bestBarRecipe(state, 'iron').id).toBe('recipe.mat.head.iron_arrow');
     expect(skillLevel(state, 'Smithing')).toBe(20);
+    state.xp.Smithing = XP_TABLE[22];
+    expect(bestBarRecipe(state, 'iron').id).toBe('recipe.ammo.thrown.iron_knife');
   });
 
   it('plays the section 4 route inside the binding bands', () => {
@@ -33,10 +35,14 @@ describe('reference route', () => {
     expect(third.skill).toBe('Mining');
     expect(third.atHours).toBeGreaterThanOrEqual(1.197);
     expect(third.atHours).toBeLessThanOrEqual(1.323);
-    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.967);
-    expect(result.elapsedHours).toBeLessThanOrEqual(18.753);
-    expect(result.earned).toBeGreaterThanOrEqual(31730);
-    expect(result.earned).toBeLessThanOrEqual(35070);
+    expect(result.elapsedHours).toBeGreaterThanOrEqual(18.99);
+    expect(result.elapsedHours).toBeLessThanOrEqual(20.989);
+    expect(result.earned).toBeGreaterThanOrEqual(51687);
+    expect(result.earned).toBeLessThanOrEqual(57127);
+    const needed =
+      result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+      result.nodes.length * 3000;
+    expect(needed).toBe(37002);
     expect(result.purchases.map((event) => event.skill)).toEqual([
       'Cooking',
       'Mining',

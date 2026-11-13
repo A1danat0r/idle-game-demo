@@ -1,6 +1,6 @@
 # Still not covered by the approved spec
 
-Spec r2 (sha256 `ae654ead1a207010a454deb78186c4c360f8897c3699fad50f3e372ba09003f9`) is approved for the draft. Option-B gear stats, Forest fox level 8, the Smithing-first iron-spear reference route, and “crafted gear is not auto-equipped” are included. Nothing in this build is still provisional.
+Spec r2 (sha256 `8cdf8506554acdc09d941237533faf9c7308c6e34b203b83c39625b7476e500d`) is approved for the draft, including the t310 gold economy. Nothing in this build is still provisional.
 
 ## Accepted as built
 
