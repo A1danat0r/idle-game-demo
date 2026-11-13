@@ -19,7 +19,7 @@ import {
   playerHitChance,
   playerMaxHp,
 } from '../src/content';
-import { mainHtml, reportHtml, type View } from '../src/ui';
+import { mainHtml, renderKey, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
@@ -957,5 +957,27 @@ describe('switching enemy', () => {
     const after = mainHtml(loaded!, combatView('meadow.hare'), 0);
     expect(after).toContain('Lv 1</em> 15/15');
     expect(after).not.toContain('10/15');
+  });
+});
+
+describe('render identity', () => {
+  it('keeps the same screen key while an action is only progressing', () => {
+    const state = newGame(0);
+    const screen: View = {
+      tab: 'skills',
+      skill: 'Woodcutting',
+      filter: 'all',
+      selected: null,
+      area: 'Meadow verge',
+      style: null,
+      message: '',
+    };
+    startGather(state, 'mat.wood.pine');
+    simulate(state, 400);
+    const before = renderKey(state, screen);
+    simulate(state, 500);
+    expect(renderKey(state, screen)).toBe(before);
+    screen.tab = 'combat';
+    expect(renderKey(state, screen)).not.toBe(before);
   });
 });
