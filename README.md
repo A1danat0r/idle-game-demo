@@ -2,7 +2,7 @@
 
 A phone idle game in the Melvor style. Installable web app, TypeScript and Vite, no framework. The rules are the approved draft in the project spec (16 gathering nodes, 12 Cooking recipes, 28 Smithing recipes, 11 enemies).
 
-Equipment has three slots: weapon, body, and shield. Weapons add Accuracy and Power. Bronze and iron body armour and the bronze shield add Guard. Crafted gear stays in the bank until you equip it. The Forest fox is level 8.
+Equipment has three slots: weapon, body, and shield. Weapons add Accuracy and Power. Bronze and iron body armour and the bronze shield add Guard. Crafted gear stays in the bank until you equip it. The Forest fox is level 8. Combat health and damage are on a ×10 scale, and each landed hit varies by 5%.
 
 ## Run
 
