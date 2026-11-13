@@ -116,12 +116,22 @@ export interface Save {
   stats: StatsLog;
 }
 
+/** Visual notes for the open tab. Offline catch-up does not collect these. */
+export type FloatNote =
+  | { kind: 'action'; skill: SkillId; xp: number; itemId: string; qty: number }
+  | { kind: 'player-hit'; amount: number }
+  | { kind: 'enemy-hit'; amount: number }
+  | { kind: 'miss'; side: 'player' | 'enemy' }
+  | { kind: 'heal'; amount: number };
+
 export interface SimOptions {
   /**
    * Spec section 4 method: credit expected loot value instead of rolling.
    * Used by the reference-route script only.
    */
   expectedLoot?: boolean;
+  /** Filled only for a short visible-tab step. Never used by offline catch-up. */
+  notes?: FloatNote[];
 }
 
 export interface Sink {
@@ -507,13 +517,16 @@ function abandonCombat(state: Save): void {
   state.combat = null;
 }
 
-function tryEat(state: Save, sink?: Sink): boolean {
+function tryEat(state: Save, sink?: Sink, notes?: FloatNote[]): boolean {
   const id = state.foodSlot;
   if (!id || !isFood(id) || (state.bank[id] ?? 0) <= 0) return false;
   const heal = ITEMS[id].heal ?? 0;
+  const before = state.hp;
   takeItem(state, id, 1, sink);
   const cap = maxHp(state);
   state.hp = Math.min(cap, state.hp + heal);
+  const gained = state.hp - before;
+  if (gained > 0) notes?.push({ kind: 'heal', amount: gained });
   state.stats.foodEaten += 1;
   if (sink) sink.foodEaten += 1;
   return true;
@@ -556,16 +569,20 @@ function markPaused(state: Save, sink?: Sink): void {
   if (sink) sink.stopped = 'paused';
 }
 
-function enemyAttack(state: Save, sink?: Sink): void {
+function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
   const activity = state.activity;
   const combat = state.combat;
   if (!activity || activity.kind !== 'combat' || !combat) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   combat.enemyAttacks += 1;
   const chance = hitChance(enemy.level, formulaLevel(state, 'Defence'), equippedGear(state.equipped, state.bank).grd);
-  if (nextUnit(state) >= chance) return;
+  if (nextUnit(state) >= chance) {
+    notes?.push({ kind: 'miss', side: 'enemy' });
+    return;
+  }
   state.stats.enemyHits += 1;
   const damage = rollInt(state, 1, enemy.maxHit);
+  notes?.push({ kind: 'enemy-hit', amount: damage });
   const lethal = state.hp - damage <= 0;
   if (lethal) {
     markPaused(state, sink);
@@ -573,7 +590,7 @@ function enemyAttack(state: Save, sink?: Sink): void {
   }
   state.hp = Math.max(0, state.hp - damage);
   const limit = maxHp(state) * AUTO_EAT_FRACTION;
-  while (state.hp <= limit + 1e-9 && tryEat(state, sink)) {
+  while (state.hp <= limit + 1e-9 && tryEat(state, sink, notes)) {
     // Eat until above the threshold or the slot is empty.
   }
   if (state.hp <= 0) markPaused(state, sink);
@@ -591,6 +608,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   const chance = playerHitChance(attackLevel, enemy.level, equippedGear(state.equipped, state.bank).acc);
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
+    opts.notes?.push({ kind: 'miss', side: 'player' });
     return;
   }
   state.stats.playerHits += 1;
@@ -599,7 +617,9 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   const hpXp = HITPOINTS_XP_PER_KILL / hits;
   addXp(state, activity.style, styleXp);
   if (state.owned.includes('Hitpoints')) addXp(state, 'Hitpoints', hpXp);
-  combat.enemyHp -= combat.enemyMaxHp / hits;
+  const dealt = combat.enemyMaxHp / hits;
+  opts.notes?.push({ kind: 'player-hit', amount: dealt });
+  combat.enemyHp -= dealt;
   if (combat.hitsLanded >= hits) {
     combat.enemyHp = 0;
     combat.phase = 'pause';
@@ -614,7 +634,8 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     giveItem(state, node.id, 1, sink);
-    addXp(state, node.skill, node.xp);
+    const gained = addXp(state, node.skill, node.xp);
+    opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty: 1 });
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
@@ -629,8 +650,12 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
       return;
     }
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
-    for (const output of recipe.outputs) giveItem(state, output.id, output.qty, sink);
-    addXp(state, recipe.skill, recipe.xp);
+    for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
+    const gained = addXp(state, recipe.skill, recipe.xp);
+    const made = recipe.outputs[0];
+    if (made) {
+      opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty });
+    }
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
@@ -644,7 +669,7 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
   }
   const nextPlayer = (combat.swings + 1) * ATTACK_INTERVAL_MS;
   const nextEnemy = 1200 + combat.enemyAttacks * ATTACK_INTERVAL_MS;
-  if (nextEnemy < nextPlayer - 1e-6) enemyAttack(state, sink);
+  if (nextEnemy < nextPlayer - 1e-6) enemyAttack(state, sink, opts.notes);
   else playerAttack(state, sink, opts);
 }
 
@@ -772,11 +797,16 @@ function levelsOf(state: Save): Partial<Record<SkillId, number>> {
  * A backwards clock credits 0 and moves the last-credited time to `now`,
  * so the next positive gap runs immediately instead of waiting for the clock to catch up.
  */
-export function advanceOpenTab(state: Save, now: number, silentGapMs: number): CatchupReport | null {
+export function advanceOpenTab(
+  state: Save,
+  now: number,
+  silentGapMs: number,
+  notes?: FloatNote[],
+): CatchupReport | null {
   const gap = now - state.lastCredited;
   if (gap < 0 || gap >= silentGapMs) return creditOffline(state, now);
   if (gap > 0) {
-    simulate(state, gap);
+    simulate(state, gap, undefined, notes ? { notes } : undefined);
     state.lastCredited = now;
   }
   return null;

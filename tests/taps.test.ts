@@ -49,9 +49,33 @@ describe('touches while the loop ticks', () => {
     await page.waitForFunction(() => /Pine/.test(document.querySelector('[data-activity]')?.textContent ?? ''));
 
     const tab = await page.locator('[data-tab="inventory"]').elementHandle();
+    const skills = await page.locator('[data-tab="skills"]').elementHandle();
     expect(tab).toBeTruthy();
+    expect(skills).toBeTruthy();
     await page.waitForTimeout(700);
     expect(await tab!.evaluate((el) => el.isConnected)).toBe(true);
+    expect(await skills!.evaluate((el) => el.isConnected)).toBe(true);
+
+    const popup = page.locator('.floater').first();
+    await popup.waitFor({ timeout: 8000 });
+    const tabAfter = await page.locator('[data-tab="inventory"]').elementHandle();
+    const skillsAfter = await page.locator('[data-tab="skills"]').elementHandle();
+    expect(tabAfter).toBeTruthy();
+    expect(skillsAfter).toBeTruthy();
+    await page.waitForTimeout(500);
+    expect(await skillsAfter!.evaluate((el) => el.isConnected)).toBe(true);
+    expect(await tabAfter!.evaluate((el) => el.isConnected)).toBe(true);
+    const text = await popup.innerText();
+    expect(text).toContain('+42 XP');
+    expect(text).toContain('Pine logs');
+    const pass = await popup.evaluate((el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      const under = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+      return { pointer: style.pointerEvents, underFloater: under === el };
+    });
+    expect(pass.pointer).toBe('none');
+    expect(pass.underFloater).toBe(false);
 
     let landed = 0;
     for (let i = 0; i < 10; i += 1) {
