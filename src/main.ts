@@ -32,7 +32,7 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
-import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, presentNotes } from './floaters';
+import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, presentNotes, type FloaterView } from './floaters';
 import { activityDestination, activityHtml, activityPercent, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
@@ -141,7 +141,8 @@ function flushNotes(): void {
   for (const item of views) spawnFloater(item);
 }
 
-function spawnFloater(item: { tone: string; place: 'bar' | 'combat'; text: string }): void {
+function spawnFloater(item: FloaterView): void {
+  if (item.anchor && spawnAnchored(item)) return;
   const host = document.querySelector(item.place === 'combat' ? '[data-float-combat]' : '[data-float-actions]');
   if (!host) return;
   while (host.children.length >= FLOAT_CAP) host.firstElementChild?.remove();
@@ -149,6 +150,34 @@ function spawnFloater(item: { tone: string; place: 'bar' | 'combat'; text: strin
   el.className = `floater ${item.tone}`;
   el.textContent = item.text;
   host.appendChild(el);
+  retireFloater(el);
+}
+
+/** Centre a combat number on the figure that was hit, without touching the game area. */
+function spawnAnchored(item: FloaterView): boolean {
+  const column = document.querySelector<HTMLElement>('#floaters .float-col');
+  const figures = document.querySelectorAll('#app .fight .fighter');
+  const figure = item.anchor === 'player' ? figures[0] : figures[1];
+  const avatar = figure?.querySelector('svg');
+  if (!column || !avatar || !item.anchor) return false;
+  while (column.querySelectorAll('.floater.anchored').length >= FLOAT_CAP) {
+    column.querySelector('.floater.anchored')?.remove();
+  }
+  const stack = column.querySelectorAll(`.floater.anchored[data-anchor="${item.anchor}"]`).length;
+  const el = document.createElement('div');
+  el.className = `floater anchored ${item.tone}`;
+  el.dataset.anchor = item.anchor;
+  el.textContent = item.text;
+  column.appendChild(el);
+  const host = column.getBoundingClientRect();
+  const rect = avatar.getBoundingClientRect();
+  el.style.left = `${rect.left - host.left + rect.width / 2}px`;
+  el.style.top = `${rect.top - host.top + rect.height / 2 + stack * 22}px`;
+  retireFloater(el);
+  return true;
+}
+
+function retireFloater(el: HTMLElement): void {
   const remove = () => el.remove();
   el.addEventListener('animationend', remove);
   window.setTimeout(remove, FLOAT_LIFE_MS + 50);

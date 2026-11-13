@@ -28,7 +28,7 @@ npm test
 
 That runs the engine tests: XP and prices, action timers, tools, combat (120 XP per kill, hit chance, one enemy attack per swing), the reference-route pacing bands, save/load, a corrupt save, offline progress, and the shop restock.
 
-`npm run route` prints the section 4 official route. It drives the real engine: Smithing first, then the iron spear is forged and equipped before any combat. Loot is credited at expected value, which is how that route was computed. Hit rolls still use the seeded generator, with the equipped weapon's Accuracy and Power. The binding bands are 0.513–0.567h, 1.197–1.323h, and 16.967–18.753h.
+`npm run route` prints the section 4 official route. It drives the real engine: Smithing first, then the iron spear is forged and equipped before any combat. Loot is credited at expected value, which is how that route was computed. Hit rolls still use the seeded generator, with the equipped weapon's Accuracy and Power. With node and enemy mastery, the bands are 0.494–0.546h, 1.149–1.27h, and 16.626–20.458h.
 
 ## Dev tools
 
@@ -44,7 +44,7 @@ The header shows the build label `demo-dev` and the short commit it was built fr
 
 ## Offline
 
-The app stores the game in `localStorage` (`saveFormat` 1). Closing it and coming back credits up to 24 hours of the activity you left running. The catch-up pop-up opens on load or when you return if at least 1 second was credited, the 24 hour cap cut the window, or the clock went backwards. A gap under 5 seconds while the tab stays visible is credited with no pop-up.
+The app stores the game in `localStorage` (`saveFormat` 2, with node and enemy mastery XP). A format-1 save loads with empty mastery maps. Closing it and coming back credits up to 24 hours of the activity you left running. The catch-up pop-up opens on load or when you return if at least 1 second was credited, the 24 hour cap cut the window, or the clock went backwards. A gap under 5 seconds while the tab stays visible is credited with no pop-up.
 
 A backwards clock credits nothing and sets the last-credited time to the current clock. Moving the clock forward after that credits the new window. Reloading, or a second tab, does not credit the same window twice.
 

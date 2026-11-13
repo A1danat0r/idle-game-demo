@@ -9,14 +9,25 @@ export const FLOAT_CAP = 3;
 export const FLOAT_LIFE_MS = 1100;
 
 export interface FloaterView {
-  tone: 'action' | 'player' | 'enemy' | 'miss' | 'heal';
+  tone: 'action' | 'player' | 'enemy' | 'miss' | 'heal' | 'toast';
   place: 'bar' | 'combat';
   text: string;
+  /** Combat numbers sit on the figure being hit. Action popups stay above the bar. */
+  anchor?: 'player' | 'enemy';
 }
 
-function fmtQty(amount: number): string {
+/** Whole amounts use grouping so 1234 reads 1,234. Fractions stay one decimal. */
+export function formatCombatAmount(amount: number): string {
   const rounded = Math.round(amount * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+  if (Number.isInteger(rounded)) return rounded.toLocaleString('en-US');
+  return rounded.toFixed(1);
+}
+
+/** Whose figure the number floats over. */
+export function combatAnchor(note: FloatNote): 'player' | 'enemy' | null {
+  if (note.kind === 'player-hit' || (note.kind === 'miss' && note.side === 'player')) return 'enemy';
+  if (note.kind === 'enemy-hit' || note.kind === 'heal' || (note.kind === 'miss' && note.side === 'enemy')) return 'player';
+  return null;
 }
 
 /** One action popup: XP rounded down, like the rest of the UI, plus the items gained. */
@@ -45,12 +56,14 @@ export function presentNotes(notes: FloatNote[]): FloaterView[] {
   const actionText = formatActionNotes(actions);
   if (actionText) views.push({ tone: 'action', place: 'bar', text: actionText });
   for (const note of notes) {
-    if (note.kind === 'player-hit') views.push({ tone: 'player', place: 'combat', text: fmtQty(note.amount) });
-    else if (note.kind === 'enemy-hit') views.push({ tone: 'enemy', place: 'combat', text: `-${note.amount}` });
+    const anchor = combatAnchor(note) ?? undefined;
+    if (note.kind === 'player-hit') views.push({ tone: 'player', place: 'combat', text: formatCombatAmount(note.amount), anchor });
+    else if (note.kind === 'enemy-hit') views.push({ tone: 'enemy', place: 'combat', text: `-${formatCombatAmount(note.amount)}`, anchor });
     else if (note.kind === 'miss') {
-      views.push({ tone: note.side === 'enemy' ? 'enemy' : 'miss', place: 'combat', text: 'Miss' });
+      views.push({ tone: note.side === 'enemy' ? 'enemy' : 'miss', place: 'combat', text: 'Miss', anchor });
     }
-    else if (note.kind === 'heal') views.push({ tone: 'heal', place: 'combat', text: `+${note.amount}` });
+    else if (note.kind === 'heal') views.push({ tone: 'heal', place: 'combat', text: `+${formatCombatAmount(note.amount)}`, anchor });
+    else if (note.kind === 'toast') views.push({ tone: 'toast', place: 'bar', text: note.text });
   }
   if (views.length <= FLOAT_CAP) return views;
   const lead = views.filter((view) => view.place === 'bar');

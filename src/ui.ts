@@ -40,6 +40,14 @@ import {
   type Save,
 } from './engine';
 import { chibi, icon } from './icons';
+import {
+  actionXpMultiplier,
+  globalXpBonus,
+  countMaxed,
+  masteryLevel,
+  masteryProgress,
+  sellMultiplier,
+} from './mastery';
 
 export const TAB_IDS = ['skills', 'skill', 'combat', 'inventory', 'equipment'] as const;
 export type TabId = (typeof TAB_IDS)[number];
@@ -65,6 +73,27 @@ const bar = (pct: number, cls = '', live = '') =>
   `<div class="bar ${cls}"><i${live ? ` data-live="${live}"` : ''} style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
 const title = (text: string) => `<h2 class="title"><span>◆</span>${esc(text)}<span>◆</span></h2>`;
 const lock = `<svg width="14" height="14" viewBox="0 0 20 20"><rect x="3" y="9" width="14" height="10" rx="2" fill="#8a8f9c"/><path d="M6 9V6a4 4 0 0 1 8 0v3" fill="none" stroke="#8a8f9c" stroke-width="2"/></svg>`;
+
+function fmtAmount(value: number): string {
+  const rounded = Math.round(value * 100) / 100;
+  return String(rounded);
+}
+
+function masteryLine(mxp: number): string {
+  return `<small>Mastery Lv ${masteryLevel(mxp)}</small>${bar(masteryProgress(mxp), 'thin')}`;
+}
+
+function activityMastery(state: Save): { pct: number } | null {
+  const activity = state.activity;
+  if (!activity) return null;
+  const mxp =
+    activity.kind === 'gather'
+      ? state.mastery[activity.nodeId] ?? 0
+      : activity.kind === 'produce'
+        ? state.mastery[activity.recipeId] ?? 0
+        : state.enemyMastery[activity.enemyId] ?? 0;
+  return { pct: masteryProgress(mxp) };
+}
 
 function xpView(xp: number): { level: number; pct: number; text: string } {
   const level = levelForXp(xp);
@@ -105,7 +134,11 @@ export function activityHtml(state: Save): string {
   const resume = state.paused
     ? `<button type="button" class="tag btn" data-resume>Resume</button>`
     : `<small data-live="act-pct">${Math.round(pct)}%</small>`;
-  return `<div class="activity" data-activity>${icon(iconName, 34)}<div class="grow"><b>${esc(label)}</b><small>${esc(detail)}</small>${bar(pct, state.paused ? 'red' : '', 'act-bar')}</div>${resume}</div>`;
+  const mastery = activityMastery(state);
+  const bars = mastery
+    ? `<div class="actbars">${bar(pct, state.paused ? 'red' : '', 'act-bar')}${bar(mastery.pct, 'thin')}</div>`
+    : bar(pct, state.paused ? 'red' : '', 'act-bar');
+  return `<div class="activity" data-activity>${icon(iconName, 34)}<div class="grow"><b>${esc(label)}</b><small>${esc(detail)}</small>${bars}</div>${resume}</div>`;
 }
 
 /** Progress within the current action. This changes on every tick; the controls do not. */
@@ -201,6 +234,8 @@ export function renderKey(state: Save, view: View): string {
     equipped: state.equipped,
     food: state.foodSlot,
     xp: state.xp,
+    mastery: state.mastery,
+    enemyMastery: state.enemyMastery,
     shop: state.shop,
     purchaseCount: state.purchaseCount,
   });
@@ -314,11 +349,15 @@ function skillHtml(state: Save, skill: SkillId | null): string {
   const tier =
     skill === 'Woodcutting' || skill === 'Mining' ? `<small>Tool tier ${toolTier(state, skill)}</small>` : '';
   const scene = skillScene(skill);
+  const maxed = countMaxed(state.mastery, skill);
+  const bonus = globalXpBonus(state.mastery, skill);
+  const bonusLine =
+    maxed > 0 ? `<small class="ok">+${Math.round(bonus * 100)}% XP, ${Math.min(maxed, 5)} of 5 mastered</small>` : '';
   const rows =
     skill === 'Cooking' || skill === 'Smithing'
       ? RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)).join('')
       : NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)).join('');
-  return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${tier}</div></div>
+  return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
     ${scene}
     <div class="list">${rows}</div>`;
 }
@@ -356,7 +395,9 @@ function nodeRow(state: Save, node: (typeof NODES)[number]): string {
     right = `<div class="price"><span class="tag">${lock} Lv ${node.level}</span></div>`;
   }
   const click = usable ? `data-node="${node.id}"` : '';
-  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small><small>${timeLabel(state, node.id, node.seconds)} · ${node.xp} XP · sells ${ITEMS[node.id].sell}</small></div>${right}</div>`;
+  const xp = fmtAmount(node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
+  const sell = fmtAmount((ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id));
+  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small>${masteryLine(state.mastery[node.id] ?? 0)}<small>${timeLabel(state, node.id, node.seconds)} · ${xp} XP · sells ${sell}</small></div>${right}</div>`;
 }
 
 function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
@@ -372,7 +413,9 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
     : active
       ? `<span class="tag on">Active</span>`
       : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small><small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id, recipe.seconds)} · ${recipe.xp} XP · sells ${ITEMS[output.id].sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
+  const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+  const sell = fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id));
+  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id, recipe.seconds)} · ${xp} XP · sells ${sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
 }
 
 function combatHtml(state: Save, view: View): string {
@@ -394,7 +437,7 @@ function combatHtml(state: Save, view: View): string {
     .join('');
   const areas = AREAS.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
   const list = enemies
-    .map((enemy) => `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small></button>`)
+    .map((enemy) => `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`)
     .join('');
   const drops = selected.drops
     .map((drop) => `<div class="cell t-base">${icon(ITEMS[drop.itemId].icon, 28)}<small>${esc(itemName(drop.itemId))}</small><span class="qty">${drop.num}/${drop.den} ×${drop.qty}</span></div>`)
@@ -413,7 +456,7 @@ function combatHtml(state: Save, view: View): string {
       <div class="scene">
         <div class="fighter">${chibi('#2d3a5c', 84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
         <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
-        <div class="fighter">${chibi('#4a2f2f', 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}</div></div>
+        <div class="fighter">${chibi('#4a2f2f', 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}${weaponReady(state) ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>
     </div>
@@ -541,10 +584,18 @@ export function reportHtml(report: CatchupReport): string {
       <dt>Consumed</dt><dd>${esc(consumed)}</dd>
       <dt>Coins</dt><dd>${fmt(report.coinsGained)}</dd>
       <dt>Food eaten</dt><dd>${report.foodEaten}</dd>
+      <dt>Mastery</dt><dd>${esc(masteryText(report))}</dd>
+      <dt>Perks</dt><dd>${esc((report.perksUnlocked ?? []).join('; ') || 'none')}</dd>
       <dt>Stopped</dt><dd>${esc(why)}</dd>
     </dl>
     <button type="button" class="tag btn" data-catchup-close>Continue</button>
   </div></div>`;
+}
+
+function masteryText(report: CatchupReport): string {
+  const rows = report.masteryLevels ?? [];
+  if (rows.length === 0) return 'none';
+  return rows.map((row) => `${row.name} ${row.before}→${row.after}`).join(', ');
 }
 
 function stackText(stacks: Record<string, number>): string {
