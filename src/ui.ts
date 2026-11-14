@@ -19,6 +19,7 @@ import {
   isCombatStyle,
   isFood,
   itemName,
+  lockLine,
   type IconName,
   levelForXp,
   playerHitChance,
@@ -457,7 +458,10 @@ function combatHtml(state: Save, view: View): string {
     .join('');
   const areas = AREAS.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
   const list = enemies
-    .map((enemy) => `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${enemyFigure(enemy.id, 28)}${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`)
+    .map((enemy) => {
+      const gate = lockLine(state.enemyKills, enemy.id);
+      return `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${enemyFigure(enemy.id, 28)}${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${gate ? `<small>${esc(gate)}</small>` : ''}${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`;
+    })
     .join('');
   const drops = selected.drops
     .map((drop) => `<div class="cell t-base">${icon(ITEMS[drop.itemId].icon, 28)}<small>${esc(itemName(drop.itemId))}</small><span class="qty">${drop.num}/${drop.den} ×${drop.qty}</span></div>`)
@@ -478,7 +482,7 @@ function combatHtml(state: Save, view: View): string {
         <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
         <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
       </div>
-      <div class="panel enemies"><h3>Enemies</h3>${list}${weaponReady(state) ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>
+      <div class="panel enemies"><h3>Enemies</h3>${list}${fightControl(state, selected.id)}</div>
     </div>
     <div class="two">
       <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
@@ -518,6 +522,13 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     <div class="filters">${filters.map((filter) => `<button type="button" class="${view.filter === filter ? 'on' : ''}" data-filter="${filter}">${names[filter]}</button>`).join('')}</div>
     <div class="invgrid">${cells || '<div class="empty">Nothing stored yet.</div>'}</div>
     ${sell}`;
+}
+
+function fightControl(state: Save, enemyId: string): string {
+  if (!weaponReady(state)) return '<p class="note">Equip a weapon first.</p>';
+  const gate = lockLine(state.enemyKills, enemyId);
+  if (gate) return `<p class="note">${esc(gate)}</p>`;
+  return `<button type="button" class="tag btn" data-fight="${enemyId}">Fight</button>`;
 }
 
 function weaponReady(state: Save): boolean {
@@ -656,7 +667,7 @@ export function devHtml(): string {
       <button type="button" class="tag btn" data-poacher>Poacher sample</button>
       <button type="button" class="tag btn" data-survive>Survivability</button>
     </div>
-    <p class="note">Route autoplay is the section 4 Smithing-first route. It forges the iron spear and equips it before combat. Loot is expected value. Hit rolls use the seeded generator.</p>
+    <p class="note">Route autoplay is the section 4 Smithing-first route. It forges the iron spear and equips it before combat, then climbs the Meadow ladder. Loot is expected value. Hit rolls use the seeded generator.</p>
     <pre data-dev-out></pre>
     <button type="button" class="tag" data-dev-close>Close</button>
   </div></div>`;

@@ -174,7 +174,8 @@ describe('xp and prices', () => {
     expect(ITEMS['mat.meat.hare'].sell).toBe(4);
     const grub = expectedDropValue(ENEMY_BY_ID['wood.grub'].drops);
     expect(grub).toBeCloseTo(10, 5);
-    expect(expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops)).toBeCloseTo(6.25, 5);
+    const beetle = ENEMY_BY_ID['meadow.beetle'];
+    expect(expectedDropValue(beetle.drops) + expectedCoinValue(beetle)).toBeCloseTo(6.25, 5);
     expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6, 5);
   });
 
@@ -317,7 +318,7 @@ describe('player hit chance', () => {
   });
 
   it('uses the approved Forest fox level', () => {
-    expect(ENEMY_BY_ID['meadow.beetle'].level).toBe(1);
+    expect(ENEMY_BY_ID['meadow.beetle'].level).toBe(5);
     expect(ENEMY_BY_ID['wood.jay'].level).toBe(10);
     expect(ENEMY_BY_ID['wood.poacher'].level).toBe(12);
     expect(ENEMY_BY_ID['wood.fox'].level).toBe(8);
@@ -330,7 +331,7 @@ describe('player hit chance', () => {
     let missed = false;
     for (let seed = 1; seed < 80 && !missed; seed++) {
       const state = combatReady(1, seed, 1);
-      startCombat(state, 'meadow.beetle', 'Strength');
+      startCombat(state, 'meadow.hare', 'Strength');
       simulate(state, 2400);
       if (state.stats.playerMisses !== 1) continue;
       expect(state.xp.Strength).toBe(0);
@@ -379,7 +380,7 @@ describe('combat', () => {
     expect(hitsPerKill(20, 12, 2)).toBe(4);
     expect(hitsPerKill(30, 12, 2)).toBe(3);
     const state = combatReady(1);
-    startCombat(state, 'meadow.beetle', 'Strength');
+    startCombat(state, 'meadow.hare', 'Strength');
     expect(state.combat?.hitsPerKill).toBe(5);
     simulate(state, 2400);
     const dealt = 150 - (state.combat?.enemyHp ?? 150);
@@ -396,7 +397,7 @@ describe('combat', () => {
 
   it('shortens the kill when Strength is 21 and keeps XP at 120', () => {
     const state = combatReady(21);
-    startCombat(state, 'meadow.beetle', 'Strength');
+    startCombat(state, 'meadow.hare', 'Strength');
     expect(state.combat?.hitsPerKill).toBe(3);
     let guard = 0;
     while (state.stats.kills < 1 && guard++ < 20) simulate(state, 2400);
@@ -492,7 +493,8 @@ describe('combat', () => {
     const lootEv = expectedDropValue(ENEMY_BY_ID['wood.poacher'].drops);
     expect(lootEv).toBeCloseTo(6.5, 5);
     expect(expectedCoinValue(ENEMY_BY_ID['wood.poacher'])).toBe(6);
-    expect(expectedDropValue(ENEMY_BY_ID['meadow.beetle'].drops)).toBeCloseTo(6.25, 5);
+    const beetle = ENEMY_BY_ID['meadow.beetle'];
+    expect(expectedDropValue(beetle.drops) + expectedCoinValue(beetle)).toBeCloseTo(6.25, 5);
     const ratios: number[] = [];
     for (let seed = 1; seed <= 5; seed++) {
       const focused = combatReady(30, seed);
@@ -600,7 +602,7 @@ describe('save, offline, shop', () => {
     expect(loaded).not.toBeNull();
     expect(loaded!.nodes).toEqual(['mat.stone.limestone', 'mat.wood.maple']);
     expect(loaded!.owned).toContain('Mining');
-    expect(loaded!.saveFormat).toBe(2);
+    expect(loaded!.saveFormat).toBe(3);
     expect(loaded!.mastery).toEqual({});
     expect(loaded!.enemyMastery).toEqual({});
     expect(loaded!.coins).toBe(40);
@@ -688,6 +690,7 @@ function combatReady(strengthLevel: number, seed = 1, attackLevel = 30) {
   state.xp.Defence = 0;
   state.xp.Hitpoints = 0;
   state.hp = playerMaxHp(1);
+  state.enemyKills['meadow.beetle'] = 1;
   return state;
 }
 
@@ -720,11 +723,11 @@ describe('approved combat details', () => {
 
   it('measures hit rates within 0.03 and the Attack 1 kill cycle within 3%', () => {
     const cases: [number, string, number][] = [
-      [1, 'meadow.beetle', 0.904],
+      [1, 'meadow.hare', 0.904],
       [1, 'wood.fox', 0.82],
       [1, 'wood.jay', 0.796],
       [1, 'wood.poacher', 0.772],
-      [30, 'meadow.beetle', 1],
+      [30, 'meadow.hare', 1],
       [30, 'wood.fox', 1],
       [30, 'wood.poacher', 1],
     ];
@@ -744,7 +747,7 @@ describe('approved combat details', () => {
     timed.xp.Defence = XP_TABLE[30];
     timed.xp.Hitpoints = XP_TABLE[30];
     timed.hp = playerMaxHp(30);
-    startCombat(timed, 'meadow.beetle', 'Defence');
+    startCombat(timed, 'meadow.hare', 'Defence');
     let total = 0;
     for (let i = 0; i < 200; i++) {
       const step = stepCompletion(timed);
@@ -883,7 +886,7 @@ describe('gear stats', () => {
 
   it('adds Accuracy, Power and Guard only from gear that is equipped', () => {
     const sword = combatReady(9, 1, 30);
-    startCombat(sword, 'meadow.beetle', 'Strength');
+    startCombat(sword, 'meadow.hare', 'Strength');
     expect(sword.combat?.hitsPerKill).toBe(4);
     simulate(sword, 2400);
     expect(sword.stats.playerMisses).toBe(0);
@@ -893,7 +896,7 @@ describe('gear stats', () => {
     const plain = combatReady(9, 1, 30);
     plain.bank['gear.melee.bronze_dagger'] = 1;
     expect(equip(plain, 'gear.melee.bronze_dagger')).toBe(true);
-    startCombat(plain, 'meadow.beetle', 'Strength');
+    startCombat(plain, 'meadow.hare', 'Strength');
     expect(plain.combat?.hitsPerKill).toBe(5);
     simulate(plain, 2400);
     expect(150 - (plain.combat?.enemyHp ?? 0)).toBeGreaterThanOrEqual(29);
@@ -908,7 +911,7 @@ describe('gear stats', () => {
     guarded.bank['gear.shield.bronze'] = 1;
     equip(guarded, 'gear.armour.bronze_body');
     equip(guarded, 'gear.shield.bronze');
-    startCombat(guarded, 'meadow.beetle', 'Attack');
+    startCombat(guarded, 'meadow.hare', 'Attack');
     let guard = 0;
     while (guarded.stats.playerSwings < 400 && !guarded.paused && guard++ < 500) simulate(guarded, 2400);
     const attacks = guarded.stats.playerSwings;
@@ -920,7 +923,7 @@ describe('gear stats', () => {
     const open = combatReady(1, 4, 30);
     open.xp.Hitpoints = XP_TABLE[30];
     open.hp = playerMaxHp(30);
-    startCombat(open, 'meadow.beetle', 'Attack');
+    startCombat(open, 'meadow.hare', 'Attack');
     guard = 0;
     while (open.stats.playerSwings < attacks && guard++ < 500) simulate(open, 2400);
     const openRate = open.stats.enemyHits / open.stats.playerSwings;
@@ -993,7 +996,7 @@ describe('gear stats', () => {
       body: 'gear.armour.iron_body',
       shield: 'gear.shield.bronze',
     });
-    startCombat(saved!, 'meadow.beetle', 'Defence');
+    startCombat(saved!, 'meadow.hare', 'Defence');
     saved!.lastCredited = 0;
     const report = creditOffline(saved!, 180_000);
     expect(report.kills).toBeGreaterThan(0);
@@ -1020,8 +1023,8 @@ describe('switching enemy', () => {
     startCombat(state, 'meadow.beetle', 'Strength');
     simulate(state, 2400);
     const left = state.combat?.enemyHp ?? 0;
-    expect(left).toBeGreaterThanOrEqual(97);
-    expect(left).toBeLessThanOrEqual(102);
+    expect(left).toBeGreaterThanOrEqual(227);
+    expect(left).toBeLessThanOrEqual(239);
     const shown = mainHtml(state, combatView('meadow.hare'), 0);
     expect(shown).toContain('Burrowing hare');
     expect(shown).toContain('Lv 1</em> 150/150');
@@ -1072,7 +1075,7 @@ describe('activity bar and Activity tab', () => {
     fight.owned.push('Strength', 'Hitpoints');
     fight.xp.Strength = 0;
     fight.xp.Hitpoints = 0;
-    startCombat(fight, 'meadow.beetle', 'Strength');
+    startCombat(fight, 'meadow.hare', 'Strength');
     expect(activityHtml(fight)).toContain('M28 6');
   });
 
@@ -1092,6 +1095,7 @@ describe('activity bar and Activity tab', () => {
     fight.owned.push('Strength', 'Hitpoints');
     fight.xp.Strength = 0;
     fight.xp.Hitpoints = 0;
+    fight.enemyKills['meadow.beetle'] = 1;
     startCombat(fight, 'wood.fox', 'Strength');
     expect(activityDestination(fight, 'Woodcutting')).toEqual({
       tab: 'combat',

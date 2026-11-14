@@ -3,6 +3,7 @@ import {
   AUTO_EAT_FRACTION,
   COMBAT_STYLES,
   ENEMY_BY_ID,
+  enemyUnlocked,
   ENEMIES,
   type EnemyDef,
   type EquipSlot,
@@ -63,9 +64,10 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 
-export const SAVE_FORMAT = 2;
-/** Format-1 saves load with empty mastery maps and are written back as format 2. */
+export const SAVE_FORMAT = 3;
+/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Both migrate to 3. */
 const SAVE_FORMAT_V1 = 1;
+const SAVE_FORMAT_V2 = 2;
 export const SAVE_KEY = 'idle-game-demo-save';
 export const UNREADABLE_SAVE_KEY = 'idle-game-demo-save-unreadable';
 
@@ -141,6 +143,8 @@ export interface Save {
   mastery: Record<string, number>;
   /** Integer mastery XP per enemy. */
   enemyMastery: Record<string, number>;
+  /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
+  enemyKills: Record<string, number>;
 }
 
 /** Visual notes for the open tab. Offline catch-up does not collect these. */
@@ -236,6 +240,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     stats: emptyStats(),
     mastery: {},
     enemyMastery: {},
+    enemyKills: {},
   };
   return state;
 }
@@ -408,6 +413,7 @@ export function startProduce(state: Save, recipeId: string): boolean {
 
 export function startCombat(state: Save, enemyId: string, style: CombatStyle): boolean {
   if (!ENEMY_BY_ID[enemyId]) return false;
+  if (!enemyUnlocked(state.enemyKills, enemyId)) return false;
   if (!ownsCombatSkill(state)) return false;
   if (!state.owned.includes(style) || !isCombatStyle(style)) return false;
   const weapon = state.equipped.weapon;
@@ -571,6 +577,7 @@ function tryEat(state: Save, sink?: Sink, notes?: FloatNote[]): boolean {
 function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, opts: SimOptions): void {
   state.stats.kills += 1;
   state.stats.killsByEnemy[enemy.id] = (state.stats.killsByEnemy[enemy.id] ?? 0) + 1;
+  state.enemyKills[enemy.id] = (state.enemyKills[enemy.id] ?? 0) + 1;
   if (sink) sink.kills += 1;
   // Loot uses the mastery already earned. This kill's MXP is added afterwards.
   const factor = enemyLootFactor(state.enemyMastery, enemy.id);
@@ -1003,7 +1010,13 @@ export function deserialize(raw: string): Save | null {
     return null;
   }
   if (!isRecord(parsed)) return null;
-  if (parsed.saveFormat !== SAVE_FORMAT && parsed.saveFormat !== SAVE_FORMAT_V1) return null;
+  if (
+    parsed.saveFormat !== SAVE_FORMAT &&
+    parsed.saveFormat !== SAVE_FORMAT_V1 &&
+    parsed.saveFormat !== SAVE_FORMAT_V2
+  ) {
+    return null;
+  }
   if (typeof parsed.coins !== 'number' || !Number.isFinite(parsed.coins)) return null;
   if (!isRecord(parsed.xp)) return null;
   if (!Array.isArray(parsed.owned) || !Array.isArray(parsed.nodes)) return null;
@@ -1132,10 +1145,47 @@ export function deserialize(raw: string): Save | null {
     stats,
     mastery,
     enemyMastery,
+    enemyKills: {},
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
+  if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   return loaded;
+}
+
+/** Format 1 and 2 derive kills from mastery. Format 3 keeps the stored counts. */
+function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
+  if (format === SAVE_FORMAT) {
+    if (raw == null) {
+      state.enemyKills = killsFromMastery(state.enemyMastery);
+      return true;
+    }
+    const kills = readKills(raw);
+    if (!kills) return false;
+    state.enemyKills = kills;
+    return true;
+  }
+  state.enemyKills = killsFromMastery(state.enemyMastery);
+  return true;
+}
+
+function killsFromMastery(mastery: Record<string, number>): Record<string, number> {
+  const kills: Record<string, number> = {};
+  for (const [id, mxp] of Object.entries(mastery)) {
+    const count = Math.floor(mxp / ENEMY_MASTERY_XP);
+    if (count > 0) kills[id] = count;
+  }
+  return kills;
+}
+
+function readKills(value: unknown): Record<string, number> | null {
+  if (!isRecord(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, amount] of Object.entries(value)) {
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 0) return null;
+    if (amount > 0) out[key] = amount;
+  }
+  return out;
 }
 
 function migrateCombatScale(state: Save, stored: unknown): void {

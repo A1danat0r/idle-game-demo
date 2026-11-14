@@ -9,6 +9,7 @@ function fighter(attackLevel: number, enemyId: string, seed: number): Save {
   state.xp.Defence = XP_TABLE[30];
   state.xp.Hitpoints = XP_TABLE[30];
   state.hp = playerMaxHp(30);
+  state.enemyKills['meadow.beetle'] = 1;
   startCombat(state, enemyId, 'Attack');
   return state;
 }
@@ -17,15 +18,15 @@ function fighter(attackLevel: number, enemyId: string, seed: number): Save {
 export function hitRateReport(): string {
   const acc = ITEMS[STARTER_WEAPON].acc ?? 0;
   const rows: [number, string, number][] = [
-    [1, 'meadow.beetle', 0.904],
+    [1, 'meadow.hare', 0.904],
     [1, 'wood.fox', 0.82],
     [1, 'wood.jay', 0.796],
     [1, 'wood.poacher', 0.772],
-    [11, 'meadow.beetle', 1],
+    [11, 'meadow.hare', 1],
     [11, 'wood.fox', 0.94],
     [11, 'wood.jay', 0.916],
     [11, 'wood.poacher', 0.892],
-    [30, 'meadow.beetle', 1],
+    [30, 'meadow.hare', 1],
     [30, 'wood.fox', 1],
     [30, 'wood.jay', 1],
     [30, 'wood.poacher', 1],
@@ -45,10 +46,10 @@ export function hitRateReport(): string {
 
 /** Mean kill cycle at Attack 1, Strength 1, against a level-1 enemy. */
 export function killCycleReport(): string {
-  const state = fighter(1, 'meadow.beetle', 4);
+  const state = fighter(1, 'meadow.hare', 4);
   state.xp.Strength = 0;
   state.xp.Attack = 0;
-  startCombat(state, 'meadow.beetle', 'Defence');
+  startCombat(state, 'meadow.hare', 'Defence');
   let total = 0;
   let kills = 0;
   while (kills < 200 && !state.paused) {
@@ -80,7 +81,7 @@ export function samplePoacher(kills = 1000, seed = 7): string {
 
 export function meadowHour(seed: number): string {
   const state = bare(seed);
-  startCombat(state, 'meadow.beetle', 'Strength');
+  startCombat(state, 'meadow.hare', 'Strength');
   let guard = 0;
   while (state.stats.kills < 240 && !state.paused && guard++ < 300) stepCompletion(state);
   return `meadow seed ${seed}: pauses ${state.stats.pauses}, kills ${state.stats.kills}`;
@@ -90,7 +91,7 @@ export function meadowHour(seed: number): string {
 export function survivabilityReport(): string {
   const meadow = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((seed) => {
     const state = bare(seed);
-    startCombat(state, 'meadow.beetle', 'Strength');
+    startCombat(state, 'meadow.hare', 'Strength');
     let guard = 0;
     while (state.stats.kills < 240 && !state.paused && guard++ < 400) stepCompletion(state);
     return state.stats.pauses > 0 ? 1 : 0;
@@ -122,6 +123,7 @@ function pauseKill(seed: number): number {
   const state = bare(seed);
   state.bank['food.roast_minnows'] = 20;
   state.foodSlot = 'food.roast_minnows';
+  state.enemyKills['meadow.beetle'] = 1;
   startCombat(state, 'wood.poacher', 'Strength');
   let guard = 0;
   while (!state.paused && guard++ < 80) stepCompletion(state);
@@ -135,6 +137,7 @@ function shrimpFood(seed: number): number {
   state.hp = playerMaxHp(7);
   state.bank['food.cooked_shrimp'] = 40;
   state.foodSlot = 'food.cooked_shrimp';
+  state.enemyKills['meadow.beetle'] = 1;
   startCombat(state, 'wood.poacher', 'Strength');
   const before = state.stats.foodEaten;
   let guard = 0;
