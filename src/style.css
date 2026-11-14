@@ -75,6 +75,7 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 .fight { display: grid; grid-template-columns: 1fr 112px; gap: 6px; }
 .fight .scene { justify-content: space-between; align-items: flex-end; padding: 6px 4px 16px; margin: 0; background: linear-gradient(#141d33, #0d1a1a); }
 .fighter { display: flex; flex-direction: column; align-items: center; width: 84px; }
+svg.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
 .hp { font-size: 10px; width: 100%; } .hp b { font-size: 10.5px; } .hp em { color: var(--gold); font-style: normal; }
 .vs { align-self: center; width: 52px; font-size: 10px; text-align: center; }
 .enemies { margin: 0; padding: 6px; } .enemies h3 { font-size: 10.5px; }
@@ -98,6 +99,7 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 button.row { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; appearance: none; }
 button.cell { width: 100%; font: inherit; color: inherit; cursor: pointer; appearance: none; }
 button.mini { width: 100%; font: inherit; color: inherit; cursor: pointer; text-align: left; appearance: none; }
+button.mini svg { float: left; margin: 1px 6px 1px 0; }
 .invgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .invgrid .cell { padding: 14px 2px 4px; min-height: 88px; justify-content: space-between; }
 .invgrid .qty { position: absolute; right: 5px; top: 3px; font-size: 11px; font-weight: 700; color: #fff; }
@@ -125,7 +127,7 @@ button.mini { width: 100%; font: inherit; color: inherit; cursor: pointer; text-
 
 /* tabs */
 .tabs { display: flex; border-top: 1px solid var(--gold-d); background: #0a0f1c; padding: 4px 2px calc(4px + env(safe-area-inset-bottom)); }
-.tabs button { flex: 1; background: none; border: 0; color: var(--muted); font-size: 10.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0; border-radius: 6px; cursor: pointer; }
+.tabs button { flex: 1; min-width: 0; background: none; border: 0; color: var(--muted); font-size: 9.5px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 4px 0; border-radius: 6px; cursor: pointer; }
 .tabs svg { fill: none; stroke: currentColor; stroke-width: 1.8; }
 .tabs button.on { color: var(--gold); background: linear-gradient(#2a2516, transparent); box-shadow: inset 0 -2px 0 var(--gold); }
 

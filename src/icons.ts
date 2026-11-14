@@ -28,13 +28,3 @@ const shapes: Record<IconName, string> = {
 
 export const icon = (name: IconName, size = 40) =>
   `<svg width="${size}" height="${size}" viewBox="0 0 40 40" aria-hidden="true">${shapes[name]}</svg>`;
-
-export const chibi = (fill: string, w = 110, extra = '') => `
-<svg width="${w}" height="${w * 1.3}" viewBox="0 0 100 130" aria-label="character">
-  <ellipse cx="50" cy="126" rx="30" ry="4" fill="#000" opacity=".4"/>
-  <rect x="34" y="70" width="32" height="38" rx="12" fill="${fill}" stroke="${G}" stroke-width="1.5"/>
-  <rect x="36" y="104" width="10" height="20" rx="4" fill="${fill}"/><rect x="54" y="104" width="10" height="20" rx="4" fill="${fill}"/>
-  <circle cx="50" cy="42" r="32" fill="${fill}" stroke="${G}" stroke-width="1.5"/>
-  <circle cx="40" cy="46" r="4" fill="${G}"/><circle cx="60" cy="46" r="4" fill="${G}"/>
-  ${extra}
-</svg>`;

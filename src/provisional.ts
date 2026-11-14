@@ -29,7 +29,18 @@ export const SILENT_GAP_MS = 5000;
  */
 export const CATCHUP_REPORT_MIN_MS = 1000;
 
-/** Dev tools render only when the URL query is ?dev=1. */
+/** Remembered Debug switch. localStorage, so it survives reloads in the browser and in the installed app. */
+export const DEV_STORAGE_KEY = 'idle-game-demo-dev';
+
+/** Dev tools render when the URL query is ?dev=1. */
 export function devToolsRequested(search: string): boolean {
   return new URLSearchParams(search).get('dev') === '1';
+}
+
+/**
+ * Tools are on when this visit's link asks for them, or when the remembered switch is on.
+ * A stored "0" does not hide a link that still says ?dev=1.
+ */
+export function devToolsEnabled(search: string, stored: string | null): boolean {
+  return devToolsRequested(search) || stored === '1';
 }

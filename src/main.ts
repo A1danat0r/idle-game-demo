@@ -29,6 +29,7 @@ import {
   CATCHUP_REPORT_MIN_MS,
   SILENT_GAP_MS,
   TAB_LOCK_STALE_MS,
+  DEV_STORAGE_KEY,
   devToolsRequested,
 } from './provisional';
 import type { TabId } from './ui';
@@ -41,7 +42,8 @@ const TAB_KEY = 'idle-game-demo-tab';
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const overlay = document.querySelector<HTMLDivElement>('#overlay')!;
 const dev = document.querySelector<HTMLDivElement>('#dev')!;
-const devOn = devToolsRequested(location.search);
+if (devToolsRequested(location.search)) localStorage.setItem(DEV_STORAGE_KEY, '1');
+let devOn = localStorage.getItem(DEV_STORAGE_KEY) === '1' || devToolsRequested(location.search);
 const TAB_ID_KEY = 'idle-game-demo-tab-id';
 const tabId = sessionStorage.getItem(TAB_ID_KEY) ?? Math.random().toString(36).slice(2);
 sessionStorage.setItem(TAB_ID_KEY, tabId);
@@ -205,7 +207,7 @@ function tick(): void {
 }
 
 function render(): void {
-  const key = renderKey(state, view);
+  const key = renderKey(state, view, devOn ? 'dev' : '');
   if (key === drawnKey && app.querySelector('[data-activity]')) {
     patchLive();
     return;
@@ -217,7 +219,7 @@ function render(): void {
   app.innerHTML = shellHtml(
     headerHtml(state, devOn),
     message,
-    mainHtml(state, view, gameNow()),
+    mainHtml(state, view, gameNow(), devOn),
     activityHtml(state),
     tabsHtml(view),
   );
@@ -266,7 +268,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab) view.tab = target.dataset.tab as TabId;
@@ -310,6 +312,15 @@ app.addEventListener('click', (event) => {
   if (target.hasAttribute('data-resume')) resumeCombat(state);
   if (target.hasAttribute('data-about')) view.message = `${__BUILD_LABEL__} · ${__COMMIT_SHA__}`;
   if (target.hasAttribute('data-dev-open')) openDev();
+  if (target.hasAttribute('data-debug-toggle')) {
+    devOn = !devOn;
+    localStorage.setItem(DEV_STORAGE_KEY, devOn ? '1' : '0');
+    if (!devOn && devToolsRequested(location.search)) {
+      const url = new URL(location.href);
+      url.searchParams.delete('dev');
+      history.replaceState(null, '', url);
+    }
+  }
   afterChange(view.message);
 });
 
