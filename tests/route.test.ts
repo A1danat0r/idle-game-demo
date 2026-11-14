@@ -64,8 +64,9 @@ describe('reference route', () => {
     expect(result.levels.Defence).toBe(30);
     expect(result.levels.Mining).toBe(30);
     expect(result.levels.Smithing).toBe(30);
-    expect(result.levels.Hitpoints).toBeGreaterThanOrEqual(22);
-    expect(result.levels.Hitpoints).toBeLessThanOrEqual(24);
+    expect(result.elapsedHours).toBe(20.45);
+    expect(Math.round(result.earned)).toBe(55655);
+    expect(result.levels.Hitpoints).toBe(23);
     expect(result.kills).toBe(2559);
     expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
     expect(masteryLevel(result.state.enemyMastery['meadow.beetle'] ?? 0)).toBe(30);
@@ -87,5 +88,14 @@ describe('reference route', () => {
       result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
       result.nodes.length * 3000;
     expect(needed).toBe(37002);
+  });
+
+  it('finishes seed 5, including a pause during the ladder climb', () => {
+    const meadow = runReferenceRoute({ seed: 5, expectedLoot: true, meadowGrind: true });
+    expect(meadow.kills).toBeGreaterThan(0);
+    expect(meadow.levels.Strength).toBe(30);
+    const pine = runReferenceRoute({ seed: 5, expectedLoot: true });
+    expect(pine.kills).toBeGreaterThan(0);
+    expect(pine.levels.Strength).toBe(30);
   });
 });

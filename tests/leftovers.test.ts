@@ -18,13 +18,27 @@ describe('food-free damage', () => {
     expect(expectedEnemyHitDamage(poacher)).toBeCloseTo(25, 2);
     expect(expectedEnemyHitDamage(poacher)).toBeGreaterThan((poacher + 1) / 2);
 
-    // Defence 30, Attack 30, Strength 1. The old average calls the hare food-free; the ×10 roll does not.
+    // Defence 30, Attack 30, Strength 1, bronze sword. Regen is 10 HP per 6s, so this hare is food-free.
+    // The same setup with 1 HP per 6s is not: damage is about 2.7 and that regen is about 2.7.
     const state = newGame(0);
     state.owned.push('Strength', 'Attack', 'Defence', 'Hitpoints');
     state.xp.Strength = 0;
     state.xp.Attack = XP_TABLE[30];
     state.xp.Defence = XP_TABLE[30];
-    expect(foodFree('meadow.hare', state)).toBe(false);
+    expect(foodFree('meadow.hare', state)).toBe(true);
+  });
+
+  it('uses 10 HP per 6s for the poacher, so a safe loadout is food-free', () => {
+    const state = newGame(0);
+    state.owned.push('Strength', 'Attack', 'Defence', 'Hitpoints');
+    state.xp.Strength = XP_TABLE[30];
+    state.xp.Attack = XP_TABLE[30];
+    state.xp.Defence = XP_TABLE[30];
+    state.bank['gear.melee.iron_spear'] = 1;
+    state.equipped.weapon = 'gear.melee.iron_spear';
+    expect(foodFree('wood.poacher', state)).toBe(true);
+    state.xp.Defence = 0;
+    expect(foodFree('wood.poacher', state)).toBe(false);
   });
 });
 
