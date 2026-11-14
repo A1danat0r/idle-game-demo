@@ -150,24 +150,24 @@ function fightSeconds(state: Save, enemyLevel: number, coinValue: number): numbe
   return coinValue / (landed / chance * 2.4 + 3);
 }
 
+/**
+ * Expected damage over one kill is no more than regen. Regen is 10 HP per 6s,
+ * the same tick the fight uses (§2.5.1).
+ */
 export function foodFree(enemyId: string, state: Save): boolean {
-  return expectedFoodFree(enemyId, state, false);
-}
-
-/** Section 2.5.1 food-free check. Regen is 10 HP per 6s, the same tick the fight uses. */
-export function ladderFoodFree(enemyId: string, state: Save): boolean {
-  return expectedFoodFree(enemyId, state, true);
-}
-
-function expectedFoodFree(enemyId: string, state: Save, scaledRegen: boolean): boolean {
   const enemy = ENEMY_BY_ID[enemyId];
   const gear = equippedGear(state.equipped, state.bank);
   const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemy.level, gear.pow);
   const swings = expectedLandedHits(enemy.level, hits) / playerHitChance(formulaLevel(state, 'Attack'), enemy.level, gear.acc);
   const damage =
     swings * hitChance(enemy.level, formulaLevel(state, 'Defence'), gear.grd) * expectedEnemyHitDamage(enemy.maxHit);
-  const regen = ((scaledRegen ? REGEN_HP : 1) * (swings * 2.4 + 3)) / 6;
+  const regen = (REGEN_HP * (swings * 2.4 + 3)) / 6;
   return damage <= regen + 1e-9;
+}
+
+/** Same check the meadow ladder uses. Kept so callers can name the ladder rule. */
+export function ladderFoodFree(enemyId: string, state: Save): boolean {
+  return foodFree(enemyId, state);
 }
 
 function enemyCoinValue(state: Save, enemyId: string): number {
@@ -263,11 +263,15 @@ function craft(state: Save, recipeId: string, qty: number, clock: Clock, opts: S
 function climbLadder(state: Save, style: SkillId, clock: Clock, opts: SimOptions): void {
   for (const id of MEADOW_LADDER) {
     const need = id === 'meadow.beetle' ? 1 : RUNG_KILLS;
-    const have = state.enemyKills[id] ?? 0;
-    if (have >= need) continue;
+    if ((state.enemyKills[id] ?? 0) >= need) continue;
     if (id === 'meadow.beetle' && !ladderFoodFree(id, state)) break;
-    const left = need - have;
-    for (let i = 0; i < left; i += 1) fight(state, id, style, clock, opts);
+    let guard = 0;
+    while ((state.enemyKills[id] ?? 0) < need) {
+      if (++guard > 1000) throw new Error(`climb stuck on ${id}`);
+      const kills = state.enemyKills[id] ?? 0;
+      fight(state, id, style, clock, opts);
+      if (state.paused || (state.enemyKills[id] ?? 0) === kills) recoverPause(state, clock);
+    }
   }
 }
 
