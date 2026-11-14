@@ -40,7 +40,8 @@ import {
   type CatchupReport,
   type Save,
 } from './engine';
-import { chibi, enemyFigure, icon } from './icons';
+import { icon } from './icons';
+import { enemyFigure, playerFigure } from './sprites';
 import {
   actionXpMultiplier,
   globalXpBonus,
@@ -118,7 +119,7 @@ export function shellHtml(header: string, message: string, main: string, activit
 
 export function headerHtml(state: Save, devOn: boolean): string {
   return `<header class="top">
-    <div class="avatar">${chibi('#2d3a5c', 30)}</div>
+    <div class="avatar">${playerFigure(30)}</div>
     <div class="coins" data-coins>${coin(state.coins)}</div>
     ${devOn ? '<button type="button" class="devbtn" data-dev-open>Dev</button>' : ''}
     <button type="button" class="build" data-about><b>${esc(__BUILD_LABEL__)}</b>${esc(__COMMIT_SHA__)}</button>
@@ -392,7 +393,7 @@ function skillScene(skill: SkillId): string {
           : skill === 'Smithing'
             ? '<rect x="46" y="62" width="34" height="12" fill="#444"/>'
             : '<rect x="62" y="50" width="12" height="38" fill="#5a3b22"/><path d="M68 8 L96 56 H40 Z" fill="#2f5a3a"/>';
-  return `<div class="scene wc">${chibi('#2d3a5c', 70)}<svg width="110" height="90" viewBox="0 0 110 90">${prop}</svg></div>`;
+  return `<div class="scene wc">${playerFigure(70)}<svg width="110" height="90" viewBox="0 0 110 90">${prop}</svg></div>`;
 }
 
 function nodeRow(state: Save, node: (typeof NODES)[number]): string {
@@ -473,7 +474,7 @@ function combatHtml(state: Save, view: View): string {
   return `<div class="areahead"><div><h2>${esc(view.area)}</h2><small>${styles}</small></div><small>${areas}</small></div>
     <div class="fight">
       <div class="scene">
-        <div class="fighter">${chibi('#2d3a5c', 84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
+        <div class="fighter">${playerFigure(84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
         <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
         <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
       </div>
@@ -556,7 +557,7 @@ function equipmentHtml(state: Save): string {
   return `${title('Equipment')}
     <div class="equip">
       <div class="col">${slotButton(state, 'body', 'Body')}</div>
-      <div class="hero">${chibi('#151b2e', 120)}</div>
+      <div class="hero">${playerFigure(120)}</div>
       <div class="col">${slotButton(state, 'weapon', 'Weapon')}${slotButton(state, 'shield', 'Shield')}</div>
     </div>
     <p class="note center">A weapon must be equipped to fight. Body and shield may stay empty. Crafted gear is not equipped for you. Tools are never equipped.</p>

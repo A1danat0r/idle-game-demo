@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { afterAll, describe, expect, it } from 'vitest';
 import { ENEMIES } from '../src/content';
 import { newGame } from '../src/engine';
-import { enemyFigure } from '../src/icons';
+import { ENEMY_SPRITES, enemyFigure, playerFigure } from '../src/sprites';
 import { devToolsEnabled, devToolsRequested } from '../src/provisional';
 import { mainHtml, type View } from '../src/ui';
 
@@ -47,12 +47,24 @@ describe('skills order and enemy placeholders', () => {
     const figures = ENEMIES.map((enemy) => enemyFigure(enemy.id));
     expect(new Set(figures).size).toBe(ENEMIES.length);
     for (const enemy of ENEMIES) {
-      expect(enemyFigure(enemy.id)).toContain(`data-art="${enemy.id}"`);
+      expect(ENEMY_SPRITES[enemy.id], enemy.id).toBeTruthy();
+      const figure = enemyFigure(enemy.id);
+      expect(figure).toContain(`data-art="${enemy.id}"`);
+      expect(figure).toContain('image-rendering:pixelated');
+      expect(figure).toContain('shape-rendering="crispEdges"');
+      expect(figure).toContain('<rect ');
+      expect(figure).not.toContain('<ellipse');
+      expect(figure).not.toContain('<path');
     }
+    const player = playerFigure();
+    expect(player).toContain('data-art="player"');
+    expect(player).toContain('image-rendering:pixelated');
+    expect(player).not.toEqual(enemyFigure('meadow.hare'));
     const state = newGame(0);
     state.owned.push('Strength');
     const meadow = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Meadow verge' }, 0);
     const wood = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Woodland edge', selected: 'wood.fox' }, 0);
+    expect(meadow).toContain('data-art="player"');
     expect(meadow).toContain('data-art="meadow.hare"');
     expect(meadow).toContain('data-art="meadow.beetle"');
     expect(meadow).not.toContain('data-art="wood.fox"');
