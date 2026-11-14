@@ -20,6 +20,7 @@ import {
   startProduce,
   tabLockDecision,
   unequip,
+  confirmAccountReset,
   writeSave,
   type CatchupReport,
   type FloatNote,
@@ -49,6 +50,7 @@ const tabId = sessionStorage.getItem(TAB_ID_KEY) ?? Math.random().toString(36).s
 sessionStorage.setItem(TAB_ID_KEY, tabId);
 
 let offset = Number(sessionStorage.getItem(CLOCK_KEY) ?? '0') || 0;
+let persist = true;
 let drawnKey = '';
 let state: Save;
 let lastSave = 0;
@@ -95,18 +97,23 @@ function boot(): void {
   render();
   window.setInterval(tick, 200);
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) writeSave(localStorage, state);
+    if (document.hidden) persistSave();
     else {
       const report = creditOffline(state, gameNow());
-      writeSave(localStorage, state);
+      persistSave();
       if (shouldShow(report)) showReport(report);
       render();
     }
   });
-  window.addEventListener('pagehide', () => writeSave(localStorage, state));
+  window.addEventListener('pagehide', () => persistSave());
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).catch(() => undefined);
   }
+}
+
+function persistSave(): void {
+  if (!persist) return;
+  writeSave(localStorage, state);
 }
 
 function readLock(): { id: string; beat: number } | null {
@@ -193,14 +200,14 @@ function tick(): void {
   const report = advanceOpenTab(state, now, SILENT_GAP_MS, notes);
   if (!report && notes.length) queueNotes(notes);
   if (report) {
-    writeSave(localStorage, state);
+    persistSave();
     if (shouldShow(report)) showReport(report);
   } else {
     const mark = state.stats.actions + state.stats.kills;
     if (mark !== lastActions || now - lastSave >= 10_000) {
       lastActions = mark;
       lastSave = now;
-      writeSave(localStorage, state);
+      persistSave();
     }
   }
   render();
@@ -263,15 +270,18 @@ function fastForward(ms: number): void {
 
 function afterChange(message = ''): void {
   if (message) view.message = message;
-  writeSave(localStorage, state);
+  persistSave();
   render();
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
-  else if (target.dataset.tab) view.tab = target.dataset.tab as TabId;
+  else if (target.dataset.tab) {
+    view.tab = target.dataset.tab as TabId;
+    if (view.tab !== 'profile') view.resetConfirm = false;
+  }
   if (target.dataset.openSkill) openSkill(target.dataset.openSkill as SkillId);
   if (target.dataset.buySkill) {
     const skill = target.dataset.buySkill as SkillId;
@@ -312,6 +322,18 @@ app.addEventListener('click', (event) => {
   if (target.hasAttribute('data-resume')) resumeCombat(state);
   if (target.hasAttribute('data-about')) view.message = `${__BUILD_LABEL__} · ${__COMMIT_SHA__}`;
   if (target.hasAttribute('data-dev-open')) openDev();
+  if (target.hasAttribute('data-reset-ask')) view.resetConfirm = true;
+  if (target.hasAttribute('data-reset-cancel')) {
+    confirmAccountReset(localStorage, false);
+    view.resetConfirm = false;
+  }
+  if (target.hasAttribute('data-reset-confirm')) {
+    persist = false;
+    confirmAccountReset(localStorage, true);
+    sessionStorage.removeItem(CLOCK_KEY);
+    location.reload();
+    return;
+  }
   if (target.hasAttribute('data-debug-toggle')) {
     devOn = !devOn;
     localStorage.setItem(DEV_STORAGE_KEY, devOn ? '1' : '0');
