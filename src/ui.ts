@@ -1,5 +1,6 @@
 import {
   AREAS,
+  COMBAT_SKILLS,
   COMBAT_STYLES,
   ENEMIES,
   ENEMY_BY_ID,
@@ -39,7 +40,7 @@ import {
   type CatchupReport,
   type Save,
 } from './engine';
-import { chibi, icon } from './icons';
+import { chibi, enemyFigure, icon } from './icons';
 import {
   actionXpMultiplier,
   globalXpBonus,
@@ -49,7 +50,7 @@ import {
   sellMultiplier,
 } from './mastery';
 
-export const TAB_IDS = ['skills', 'skill', 'combat', 'inventory', 'equipment'] as const;
+export const TAB_IDS = ['skills', 'skill', 'combat', 'inventory', 'equipment', 'profile'] as const;
 export type TabId = (typeof TAB_IDS)[number];
 export type Filter = 'all' | 'material' | 'gear' | 'food';
 
@@ -208,7 +209,7 @@ export function activityDestination(state: Save, lastSkill: SkillId | null): Act
  * Identity of the interactive screen. Progress inside an action is intentionally
  * left out, so a tick can refresh bars without replacing the buttons under a finger.
  */
-export function renderKey(state: Save, view: View): string {
+export function renderKey(state: Save, view: View, extra = ''): string {
   const activity = state.activity;
   const act = !activity
     ? ''
@@ -218,6 +219,7 @@ export function renderKey(state: Save, view: View): string {
         ? `p:${activity.recipeId}`
         : `c:${activity.enemyId}:${activity.style}`;
   return JSON.stringify({
+    extra,
     view,
     paused: state.paused,
     act,
@@ -289,6 +291,7 @@ export function tabsHtml(view: View): string {
     combat: 'Combat',
     inventory: 'Inventory',
     equipment: 'Equip',
+    profile: 'Profile',
   };
   const paths: Record<TabId, string> = {
     skills: '<path d="M12 2 L15 9 L22 9 L16 14 L18 21 L12 17 L6 21 L8 14 L2 9 L9 9 Z"/>',
@@ -296,21 +299,38 @@ export function tabsHtml(view: View): string {
     combat: '<path d="M4 20 L18 6 M6 6 L20 20 M16 4 L20 4 L20 8 M4 16 L4 20 L8 20"/>',
     inventory: '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M9 8 V5 H15 V8"/>',
     equipment: '<path d="M12 3 L20 6 Q20 16 12 21 Q4 16 4 6 Z"/>',
+    profile: '<circle cx="12" cy="8" r="3.5"/><path d="M5 20 Q5 13 12 13 Q19 13 19 20"/>',
   };
   return `<nav class="tabs">${TAB_IDS.map((id) => `<button type="button" data-tab="${id}" class="${view.tab === id ? 'on' : ''}"><svg viewBox="0 0 24 24" width="22" height="22">${paths[id]}</svg>${esc(labels[id])}</button>`).join('')}</nav>`;
 }
 
-export function mainHtml(state: Save, view: View, now: number): string {
+export function mainHtml(state: Save, view: View, now: number, devOn = false): string {
   if (view.tab === 'skills') return skillsHtml(state);
   if (view.tab === 'skill') return skillHtml(state, view.skill);
   if (view.tab === 'combat') return combatHtml(state, view);
   if (view.tab === 'inventory') return inventoryHtml(state, view, now);
+  if (view.tab === 'profile') return profileHtml(devOn);
   return equipmentHtml(state);
+}
+
+function profileHtml(devOn: boolean): string {
+  return `${title('Profile')}
+    <div class="panel">
+      <h3>Build</h3>
+      <p class="aboutline"><b>${esc(__BUILD_LABEL__)}</b> ${esc(__COMMIT_SHA__)}</p>
+    </div>
+    <div class="panel">
+      <h3>Debug</h3>
+      <p class="note">Turns the dev tools on or off. Remembered on this device, including the installed app. A link with ?dev=1 still turns them on.</p>
+      <button type="button" class="tag btn" data-debug-toggle>${devOn ? 'Debug on' : 'Debug off'}</button>
+    </div>`;
 }
 
 function skillsHtml(state: Save): string {
   const next = skillPrice(state.purchaseCount);
-  const rows = SKILL_IDS.filter((skill) => skill !== 'Hitpoints' || state.owned.includes('Hitpoints'))
+  const rest = SKILL_IDS.filter((skill) => !(COMBAT_SKILLS as readonly string[]).includes(skill));
+  const rows = [...COMBAT_SKILLS, ...rest]
+    .filter((skill) => skill !== 'Hitpoints' || state.owned.includes('Hitpoints'))
     .map((skill) => skillRow(state, skill, next))
     .join('');
   const curve = SKILL_PRICES.slice(0, 7)
@@ -436,7 +456,7 @@ function combatHtml(state: Save, view: View): string {
     .join('');
   const areas = AREAS.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
   const list = enemies
-    .map((enemy) => `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`)
+    .map((enemy) => `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${enemyFigure(enemy.id, 28)}${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`)
     .join('');
   const drops = selected.drops
     .map((drop) => `<div class="cell t-base">${icon(ITEMS[drop.itemId].icon, 28)}<small>${esc(itemName(drop.itemId))}</small><span class="qty">${drop.num}/${drop.den} ×${drop.qty}</span></div>`)
@@ -455,7 +475,7 @@ function combatHtml(state: Save, view: View): string {
       <div class="scene">
         <div class="fighter">${chibi('#2d3a5c', 84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
         <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
-        <div class="fighter">${chibi('#4a2f2f', 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
+        <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}${weaponReady(state) ? `<button type="button" class="tag btn" data-fight="${selected.id}">Fight</button>` : '<p class="note">Equip a weapon first.</p>'}</div>
     </div>

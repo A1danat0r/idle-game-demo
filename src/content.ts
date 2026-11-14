@@ -47,6 +47,13 @@ export type SkillId = (typeof SKILL_IDS)[number];
 export const COMBAT_STYLES = ['Attack', 'Strength', 'Defence'] as const;
 export type CombatStyle = (typeof COMBAT_STYLES)[number];
 
+/**
+ * Skills grouped at the top of the Skills screen.
+ * Attack, Strength and Defence are the fight styles. Hitpoints is granted with the
+ * first of those and is neither a gathering nor a production skill.
+ */
+export const COMBAT_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints'] as const;
+
 export const GATHER_SKILLS = ['Woodcutting', 'Fishing', 'Mining'] as const;
 export const PRODUCE_SKILLS = ['Cooking', 'Smithing'] as const;
 
