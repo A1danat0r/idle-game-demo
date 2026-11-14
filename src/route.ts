@@ -1,5 +1,11 @@
 import {
   ENEMY_BY_ID,
+  MEADOW_LADDER,
+  RUNG_KILLS,
+  REGEN_HP,
+  enemyUnlocked,
+  expectedCoinValue,
+  expectedDropValue,
   ITEMS,
   NODE_BY_ID,
   NODES,
@@ -37,6 +43,8 @@ import {
 } from './engine';
 
 const PURCHASE_ORDER = ['Cooking', 'Mining', 'Smithing', 'Strength', 'Defence', 'Attack', 'Fishing'] as const;
+/** A_meadowgrind spends the coin grind on Meadow verge once a combat skill is owned. */
+let meadowCoinGrind = false;
 
 const KEEP = new Set([
   'gear.melee.bronze_sword',
@@ -143,14 +151,37 @@ function fightSeconds(state: Save, enemyLevel: number, coinValue: number): numbe
 }
 
 export function foodFree(enemyId: string, state: Save): boolean {
+  return expectedFoodFree(enemyId, state, false);
+}
+
+/** Section 2.5.1 food-free check. Regen is 10 HP per 6s, the same tick the fight uses. */
+export function ladderFoodFree(enemyId: string, state: Save): boolean {
+  return expectedFoodFree(enemyId, state, true);
+}
+
+function expectedFoodFree(enemyId: string, state: Save, scaledRegen: boolean): boolean {
   const enemy = ENEMY_BY_ID[enemyId];
   const gear = equippedGear(state.equipped, state.bank);
   const hits = hitsPerKill(formulaLevel(state, 'Strength'), enemy.level, gear.pow);
   const swings = expectedLandedHits(enemy.level, hits) / playerHitChance(formulaLevel(state, 'Attack'), enemy.level, gear.acc);
   const damage =
     swings * hitChance(enemy.level, formulaLevel(state, 'Defence'), gear.grd) * expectedEnemyHitDamage(enemy.maxHit);
-  const regen = (swings * 2.4 + 3) / 6;
+  const regen = ((scaledRegen ? REGEN_HP : 1) * (swings * 2.4 + 3)) / 6;
   return damage <= regen + 1e-9;
+}
+
+function enemyCoinValue(state: Save, enemyId: string): number {
+  const enemy = ENEMY_BY_ID[enemyId];
+  return (expectedDropValue(enemy.drops) + expectedCoinValue(enemy)) * enemyLootFactor(state.enemyMastery, enemyId);
+}
+
+/** Furthest food-free unlocked meadow rung. Hare if none of the later rungs qualify yet. */
+function meadowTrainId(state: Save): string {
+  let choice: string = MEADOW_LADDER[0];
+  for (const id of MEADOW_LADDER) {
+    if (enemyUnlocked(state.enemyKills, id) && ladderFoodFree(id, state)) choice = id;
+  }
+  return choice;
 }
 
 type Grind = { kind: 'gather'; nodeId: string } | { kind: 'combat'; enemyId: string };
@@ -167,15 +198,28 @@ function bestCoinActivity(state: Save): Grind {
       best = { kind: 'gather', nodeId: node.id };
     }
   }
+  const combats: { id: string; rate: number }[] = [];
   if (state.owned.some((skill) => skill === 'Attack' || skill === 'Strength' || skill === 'Defence')) {
-    const meadow = fightSeconds(state, 1, 6.25 * enemyLootFactor(state.enemyMastery, 'meadow.beetle'));
-    if (meadow > bestRate) {
-      bestRate = meadow;
-      best = { kind: 'combat', enemyId: 'meadow.beetle' };
+    const meadowId = meadowTrainId(state);
+    if (enemyUnlocked(state.enemyKills, meadowId) && ladderFoodFree(meadowId, state)) {
+      const enemy = ENEMY_BY_ID[meadowId];
+      combats.push({ id: meadowId, rate: fightSeconds(state, enemy.level, enemyCoinValue(state, meadowId)) });
     }
-    if (foodFree('wood.poacher', state)) {
-      const poacher = fightSeconds(state, 12, 12.5 * enemyLootFactor(state.enemyMastery, 'wood.poacher'));
-      if (poacher > bestRate) best = { kind: 'combat', enemyId: 'wood.poacher' };
+    if (enemyUnlocked(state.enemyKills, 'wood.poacher') && foodFree('wood.poacher', state)) {
+      combats.push({
+        id: 'wood.poacher',
+        rate: fightSeconds(state, 12, enemyCoinValue(state, 'wood.poacher')),
+      });
+    }
+  }
+  if (meadowCoinGrind && combats.length > 0) {
+    const picked = combats.reduce((bestId, row) => (row.rate > bestId.rate ? row : bestId));
+    return { kind: 'combat', enemyId: picked.id };
+  }
+  for (const row of combats) {
+    if (row.rate > bestRate) {
+      bestRate = row.rate;
+      best = { kind: 'combat', enemyId: row.id };
     }
   }
   return best;
@@ -216,6 +260,22 @@ function craft(state: Save, recipeId: string, qty: number, clock: Clock, opts: S
   }
 }
 
+function climbLadder(state: Save, style: SkillId, clock: Clock, opts: SimOptions): void {
+  for (const id of MEADOW_LADDER) {
+    const need = id === 'meadow.beetle' ? 1 : RUNG_KILLS;
+    const have = state.enemyKills[id] ?? 0;
+    if (have >= need) continue;
+    if (id === 'meadow.beetle' && !ladderFoodFree(id, state)) break;
+    const left = need - have;
+    for (let i = 0; i < left; i += 1) fight(state, id, style, clock, opts);
+  }
+}
+
+function fightMeadow(state: Save, style: SkillId, clock: Clock, opts: SimOptions): void {
+  climbLadder(state, style, clock, opts);
+  fight(state, meadowTrainId(state), style, clock, opts);
+}
+
 function fight(state: Save, enemyId: string, style: SkillId, clock: Clock, opts: SimOptions): void {
   const combatStyle = style === 'Attack' || style === 'Strength' || style === 'Defence' ? style : 'Strength';
   const active =
@@ -237,7 +297,9 @@ function grindOnce(state: Save, clock: Clock, opts: SimOptions): void {
     liquidate(state);
   } else {
     const style = (['Strength', 'Attack', 'Defence'] as const).find((skill) => owned(state, skill)) ?? 'Strength';
-    fight(state, choice.enemyId, style, clock, opts);
+    climbLadder(state, style, clock, opts);
+    const enemyId = choice.enemyId === 'wood.poacher' ? 'wood.poacher' : meadowTrainId(state);
+    fight(state, enemyId, style, clock, opts);
   }
   clock.grindMs += clock.ms - before;
 }
@@ -381,7 +443,7 @@ function doCycle(state: Save, act: Act, train: SkillId, clock: Clock, opts: SimO
     gather(state, 'mat.fish.trout', 1, clock, opts);
     liquidate(state);
   } else if (act === 'meadow') {
-    fight(state, 'meadow.beetle', train, clock, opts);
+    fightMeadow(state, train, clock, opts);
   } else if (act === 'charcoal') {
     charcoalCycle(state, clock, opts);
   } else if (act === 'bronze') {
@@ -413,7 +475,8 @@ function train(state: Save, skill: SkillId, target: number, act: Act, clock: Clo
   });
 }
 
-export function runReferenceRoute(options: { seed?: number; expectedLoot?: boolean } = {}): RouteResult {
+export function runReferenceRoute(options: { seed?: number; expectedLoot?: boolean; meadowGrind?: boolean } = {}): RouteResult {
+  meadowCoinGrind = options.meadowGrind === true;
   const expectedLoot = options.expectedLoot !== false;
   const opts: SimOptions = { expectedLoot };
   const state = newGame(0, options.seed ?? 1);

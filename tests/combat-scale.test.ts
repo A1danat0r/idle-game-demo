@@ -69,7 +69,7 @@ describe('check 21 variance', () => {
     state.xp.Strength = 0;
     state.hp = playerMaxHp(30);
     state.xp.Hitpoints = XP_TABLE[30];
-    startCombat(state, 'meadow.beetle', 'Attack');
+    startCombat(state, 'meadow.hare', 'Attack');
     const amounts: number[] = [];
     let guard = 0;
     while (amounts.length < 1000 && guard++ < 4000) {
@@ -93,7 +93,7 @@ describe('check 21 variance', () => {
     state.xp.Attack = XP_TABLE[30];
     state.xp.Strength = 0;
     state.hp = playerMaxHp(1);
-    startCombat(state, 'meadow.beetle', 'Attack');
+    startCombat(state, 'meadow.hare', 'Attack');
     for (let kill = 0; kill < 40; kill += 1) {
       const hits = state.stats.playerHits;
       let guard = 0;
@@ -110,6 +110,7 @@ describe('check 23 shown damage', () => {
     state.owned.push('Attack', 'Strength', 'Hitpoints');
     state.xp.Attack = XP_TABLE[30];
     state.hp = 200;
+    state.enemyKills['meadow.beetle'] = 1;
     startCombat(state, 'meadow.beetle', 'Strength');
     const notes: FloatNote[] = [];
     const before = state.combat?.enemyHp ?? 0;
@@ -161,16 +162,16 @@ describe('old-save HP migration', () => {
     });
     const loaded = deserialize(raw);
     expect(loaded).not.toBeNull();
-    expect(loaded!.saveFormat).toBe(2);
+    expect(loaded!.saveFormat).toBe(3);
     expect(loaded!.combatScale).toBe(10);
     expect(loaded!.hp).toBe(90);
-    expect(loaded!.combat?.enemyHp).toBe(150);
-    expect(loaded!.combat?.enemyMaxHp).toBe(150);
+    expect(loaded!.combat?.enemyHp).toBe(350);
+    expect(loaded!.combat?.enemyMaxHp).toBe(350);
     expect(loaded!.combat?.hitsLanded).toBe(0);
     expect(loaded!.progressMs).toBe(0);
     const again = deserialize(JSON.stringify(loaded));
     expect(again?.hp).toBe(90);
-    expect(again?.combat?.enemyHp).toBe(150);
+    expect(again?.combat?.enemyHp).toBe(350);
   });
 });
 
@@ -226,6 +227,7 @@ describe('check 25 loot bonus', () => {
     state.hp = playerMaxHp(30);
     state.xp.Hitpoints = XP_TABLE[30];
     state.enemyMastery['meadow.beetle'] = 618 * 102;
+    state.enemyKills['meadow.beetle'] = 1;
     startCombat(state, 'meadow.beetle', 'Strength');
     const before = state.coins;
     let guard = 0;

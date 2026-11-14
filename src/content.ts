@@ -338,6 +338,15 @@ const EXPECTED_LANDED: Record<string, number> = {
   '1:5': 5.3951,
   '1:4': 4.1455,
   '1:3': 3.424,
+  '2:5': 5.429,
+  '2:4': 4.432,
+  '2:3': 3.3361,
+  '3:5': 5.439,
+  '3:4': 4.2565,
+  '3:3': 3.5448,
+  '5:5': 5.4568,
+  '5:4': 4.3172,
+  '5:3': 3.4049,
   '8:5': 5.4703,
   '8:4': 4.4734,
   '8:3': 3.4329,
@@ -379,27 +388,23 @@ function enemy(
 export const ENEMIES: EnemyDef[] = [
   enemy('meadow.hare', 'Burrowing hare', 'Meadow verge', 1, [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 8 },
-    { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
     { itemId: 'mat.meat.hare', num: 1, den: 2, qty: 1 },
   ], null),
-  enemy('meadow.rat', 'Field rat', 'Meadow verge', 1, [
+  enemy('meadow.rat', 'Field rat', 'Meadow verge', 2, [
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 3 },
   ], null),
-  enemy('meadow.ram', 'Meadow ram', 'Meadow verge', 1, [
+  enemy('meadow.ram', 'Meadow ram', 'Meadow verge', 3, [
     { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 8 },
-    { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
     { itemId: 'mat.meat.mutton', num: 1, den: 2, qty: 1 },
   ], null),
-  enemy('meadow.moss', 'Moss crawler', 'Meadow verge', 1, [
+  enemy('meadow.moss', 'Moss crawler', 'Meadow verge', 3, [
     { itemId: 'mat.moss.spell', num: 1, den: 4, qty: 24 },
   ], null),
-  enemy('meadow.beetle', 'Thorn beetle', 'Meadow verge', 1, [
+  enemy('meadow.beetle', 'Thorn beetle', 'Meadow verge', 5, [
     { itemId: 'mat.ore.copper', num: 1, den: 4, qty: 5 },
     { itemId: 'mat.ore.tin', num: 1, den: 4, qty: 5 },
-    { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 5 },
-    { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 5 },
     { itemId: 'mat.part.beetle_carapace', num: 1, den: 8, qty: 1 },
-  ], null),
+  ], { min: 2, max: 3 }),
   enemy('wood.jay', 'Berry jay', 'Woodland edge', 10, [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 12 },
     { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 12 },
@@ -433,6 +438,37 @@ export const ENEMIES: EnemyDef[] = [
 ];
 
 export const ENEMY_BY_ID: Record<string, EnemyDef> = Object.fromEntries(ENEMIES.map((e) => [e.id, e]));
+
+/** Meadow verge, in unlock order. Twelve completed kills of one rung open the next. */
+export const MEADOW_LADDER = ['meadow.hare', 'meadow.rat', 'meadow.ram', 'meadow.moss', 'meadow.beetle'] as const;
+export const RUNG_KILLS = 12;
+
+/** Beetle kills, or any Woodland kill, open the whole ladder and Woodland edge. */
+export function woodlandOpen(kills: Record<string, number>): boolean {
+  if ((kills['meadow.beetle'] ?? 0) >= 1) return true;
+  return ENEMIES.some((enemy) => enemy.area === 'Woodland edge' && (kills[enemy.id] ?? 0) >= 1);
+}
+
+export function enemyUnlocked(kills: Record<string, number>, id: string): boolean {
+  const enemy = ENEMY_BY_ID[id];
+  if (!enemy) return false;
+  if (enemy.area === 'Woodland edge') return woodlandOpen(kills);
+  if (woodlandOpen(kills)) return true;
+  const index = MEADOW_LADDER.indexOf(id as (typeof MEADOW_LADDER)[number]);
+  if (index <= 0) return index === 0;
+  return (kills[MEADOW_LADDER[index - 1]] ?? 0) >= RUNG_KILLS;
+}
+
+/** Copy for a locked rung. Null when the enemy can be fought. */
+export function lockLine(kills: Record<string, number>, id: string): string | null {
+  if (enemyUnlocked(kills, id)) return null;
+  const enemy = ENEMY_BY_ID[id];
+  if (!enemy) return null;
+  if (enemy.area === 'Woodland edge') return 'Kill the Thorn beetle to open Woodland edge.';
+  const previous = ENEMY_BY_ID[MEADOW_LADDER[MEADOW_LADDER.indexOf(id as (typeof MEADOW_LADDER)[number]) - 1]];
+  const have = kills[previous.id] ?? 0;
+  return `Kill 12 ${previous.name.toLowerCase()}s to unlock (${have}/${RUNG_KILLS})`;
+}
 
 export function expectedDropValue(drops: DropDef[]): number {
   let total = 0;

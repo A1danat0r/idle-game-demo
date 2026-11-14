@@ -62,7 +62,7 @@ describe('action and combat floaters', () => {
       miss.xp.Defence = XP_TABLE[30];
       miss.xp.Hitpoints = XP_TABLE[30];
       miss.hp = 200;
-      startCombat(miss, 'meadow.beetle', 'Strength');
+      startCombat(miss, 'meadow.hare', 'Strength');
       const missed: FloatNote[] = [];
       advanceOpenTab(miss, 2400, 5000, missed);
       if (missed.some((note) => note.kind === 'miss' && note.side === 'player')) foundPlayerMiss = true;

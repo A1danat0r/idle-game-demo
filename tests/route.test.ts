@@ -73,4 +73,19 @@ describe('reference route', () => {
       ['mat.fish.trout', 'mat.ore.iron', 'mat.wood.oak'].sort(),
     );
   });
+
+  it('plays the meadow coin grind inside the same bands', () => {
+    const result = runReferenceRoute({ seed: 1, expectedLoot: true, meadowGrind: true });
+    console.log(formatRouteResult(result));
+    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.626);
+    expect(result.elapsedHours).toBeLessThanOrEqual(20.458);
+    expect(result.earned).toBeGreaterThanOrEqual(49_105);
+    expect(result.earned).toBeLessThanOrEqual(59_148);
+    expect(result.kills).toBe(2559);
+    expect(result.levels.Hitpoints).toBe(23);
+    const needed =
+      result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+      result.nodes.length * 3000;
+    expect(needed).toBe(37002);
+  });
 });
