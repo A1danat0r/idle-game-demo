@@ -60,6 +60,12 @@ function masteryLabel(id: string): string {
   return raw.replace(/ logs$/, '');
 }
 
+/** Heading over the four perk rows. A nameless track is just "Mastery". */
+export function masteryHeading(id: string): string {
+  const name = masteryLabel(id).trim();
+  return name ? `${name} mastery` : 'Mastery';
+}
+
 function itemNote(id: string, level: number, skillLevelNow: number, xpNow: number): { reached: boolean; note: string } {
   const recipe = RECIPE_BY_ID[id];
   if (recipe?.comingLater) return { reached: false, note: 'Coming later' };

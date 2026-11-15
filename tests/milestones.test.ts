@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { XP_TABLE } from '../src/content';
 import { activityHtml } from '../src/ui';
-import { newGame, startGather } from '../src/engine';
-import { activityNextLine, combatNextLine } from '../src/milestones';
+import { newGame, startGather, startProduce } from '../src/engine';
+import { activityNextLine, combatNextLine, masteryHeading } from '../src/milestones';
 import { mainHtml, type View } from '../src/ui';
 
 function view(tab: View['tab'], extra: Partial<View> = {}): View {
@@ -56,9 +56,32 @@ describe('milestone next row and sheet', () => {
     expect(html).toContain('Mastery 20: −5% action time');
     expect(html).toContain('Mastery 30: +5% XP');
     expect(html).toContain('Mastery 40: 5% double output');
-    expect(html).toContain('Used by');
+    expect(html).toContain('<h3>Used by</h3>');
+    expect(html).toContain('<h3>Pine mastery</h3>');
+    expect(masteryHeading('mat.wood.pine')).toBe('Pine mastery');
+    expect(masteryHeading('')).toBe('Mastery');
+    const usedAt = html.indexOf('<h3>Used by</h3>');
+    const masteryAt = html.indexOf('<h3>Pine mastery</h3>');
+    const perkAt = html.indexOf('Mastery 10: +5% sell');
+    const pickerAt = html.indexOf('data-milestone-track="mat.wood.oak"');
+    expect(usedAt).toBeGreaterThan(-1);
+    expect(masteryAt).toBeGreaterThan(usedAt);
+    expect(perkAt).toBeGreaterThan(masteryAt);
+    expect(pickerAt).toBeGreaterThan(perkAt);
     expect(html).toContain('Iron axe');
-    expect(html).toContain('data-milestone-track="mat.wood.oak"');
+  });
+
+  it('names the mastery track and hides Used by when nothing uses the skill', () => {
+    const cooking = newGame(0);
+    cooking.owned.push('Cooking');
+    cooking.xp.Cooking = 0;
+    cooking.bank['mat.fish.minnow'] = 2;
+    expect(startProduce(cooking, 'recipe.food.roast_minnows')).toBe(true);
+    const html = mainHtml(cooking, view('skill', { skill: 'Cooking', milestoneOpen: true }), 0);
+    expect(html).toContain('<h3>Roast minnows mastery</h3>');
+    expect(html).not.toContain('<h3>Used by</h3>');
+    expect(html).toContain('Mastery 10: +5% sell');
+    expect(html.indexOf('data-milestone-track=')).toBeGreaterThan(html.indexOf('<h3>Roast minnows mastery</h3>'));
   });
 
   it('shows the beetle row and sheet, and moves on after an offline jump', () => {
