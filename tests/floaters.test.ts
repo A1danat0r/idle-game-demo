@@ -16,6 +16,8 @@ describe('action and combat floaters', () => {
     expect(notes).toEqual([{ kind: 'action', skill: 'Mining', xp: 46, itemId: 'mat.ore.copper', qty: 1 }]);
     expect(formatActionNotes(notes as Extract<FloatNote, { kind: 'action' }>[]))
       .toBe('+46 XP\n+1 Copper ore');
+    expect(formatActionNotes([{ kind: 'action', skill: 'Construction', xp: 1, itemId: 'con.kit.pine_frame', qty: 4 }]))
+      .toBe('+1 XP\n+4 Pine frame kits');
   });
 
   it('merges a short burst into one popup and caps the screen', () => {

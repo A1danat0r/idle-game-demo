@@ -26,6 +26,7 @@ import {
   gearStatText,
   isCombatStyle,
   isFood,
+  countedLabel,
   countedName,
   itemName,
   lockLine,
@@ -517,7 +518,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const level = skillLevel(state, recipe.skill);
   const reached = level >= recipe.level;
   const active = state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id;
-  const inputs = recipe.inputs.map((input) => `${input.qty} ${itemName(input.id)}`).join(', ');
+  const inputs = recipe.inputs.map((input) => countedName(input.qty, input.id)).join(', ');
   const output = recipe.outputs[0];
   const missing = recipe.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
   const foundation = recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]
@@ -865,7 +866,7 @@ function masteryText(report: CatchupReport): string {
 function stackText(stacks: Record<string, number>): string {
   const parts = Object.entries(stacks).filter(([, qty]) => qty > 0);
   if (parts.length === 0) return 'none';
-  return parts.map(([id, qty]) => `${itemName(id)} ×${qty}`).join(', ');
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${qty}`).join(', ');
 }
 
 export function devHtml(): string {

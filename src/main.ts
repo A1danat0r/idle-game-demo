@@ -477,7 +477,7 @@ function openDev(): void {
     const qty = Number(dev.querySelector<HTMLInputElement>('[data-give-qty]')?.value ?? '1');
     if (!ITEMS[id] || !Number.isInteger(qty) || qty <= 0) return;
     state.bank[id] = (state.bank[id] ?? 0) + qty;
-    afterChange(`Added ${qty} ${id}.`);
+    afterChange(`Added ${countedName(qty, id)}.`);
   });
   dev.querySelector('[data-poacher]')?.addEventListener('click', () => show(samplePoacher()));
   dev.querySelector('[data-hit-rates]')?.addEventListener('click', () => show(hitRateReport()));

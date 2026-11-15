@@ -847,11 +847,27 @@ export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
 }
 
-/** Quantity plus the item name. A kit count other than 1 uses the plural. */
-export function countedName(qty: number, id: string): string {
+/**
+ * Last words that take a simple plural when the count is above 1.
+ * Names that already end in s, and mass nouns, are not in this set, so
+ * "Pine logs" and "Flax fibre" stay as written.
+ */
+const COUNTABLE_SINGULAR = new Set(['kit', 'block', 'bar', 'seed', 'cattail', 'tart']);
+
+function pluralizeCounted(name: string): string {
+  const last = name.slice(name.lastIndexOf(' ') + 1).toLowerCase();
+  return COUNTABLE_SINGULAR.has(last) ? `${name}s` : name;
+}
+
+/** Catalogue name, pluralized when the count is above 1 and the last word is countable. */
+export function countedLabel(qty: number, id: string): string {
   const name = itemName(id);
-  const label = qty === 1 || !name.endsWith(' kit') ? name : `${name}s`;
-  return `${qty} ${label}`;
+  return qty === 1 ? name : pluralizeCounted(name);
+}
+
+/** Quantity plus the item name. A count of 1 keeps the catalogue name. */
+export function countedName(qty: number, id: string): string {
+  return `${qty} ${countedLabel(qty, id)}`;
 }
 
 /**
