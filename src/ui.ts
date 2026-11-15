@@ -444,7 +444,7 @@ function skillHtml(state: Save, skill: SkillId | null): string {
     ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
   ].join('');
   const plot = skill === 'Farming' && state.plot
-    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))}</p>`
+    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
     : '';
   return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
     ${scene}
@@ -502,18 +502,30 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
     : null;
   const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
-  const right = !reached
-    ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
-    : active
-      ? `<span class="tag on">Active</span>`
-      : need
-        ? `<button type="button" class="tag btn" disabled>Start</button>`
-        : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
-  const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+  const built = !!recipe.oneTime && !!state.buildings[recipe.id];
+  const fee = recipe.rebuildFee ?? 0;
+  const canPay = state.coins + 1e-9 >= fee;
+  const later = !!recipe.comingLater;
+  const right = later
+    ? `<span class="tag">${lock}</span>`
+    : !reached
+      ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
+      : active
+        ? `<span class="tag on">Active</span>`
+        : built
+          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button></div>`
+          : need
+            ? `<button type="button" class="tag btn" disabled>Start</button>`
+            : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
+  const xp = fmtAmount(built ? 0 : recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
   const sell = output ? fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id)) : '0';
+  const heal = output ? ITEMS[output.id]?.heal : undefined;
   const title = actionTitle(recipe);
   const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${need ? ` · ${esc(need)}` : ''}</small></div>${right}</div>`;
+  const detail = later
+    ? `Coming later${heal ? ` · heals ${heal}` : ''}`
+    : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${need ? ` · ${esc(need)}` : ''}`;
+  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? (built ? ' · built' : ' · build') : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 
 function needLine(itemId: string): string {
@@ -569,7 +581,7 @@ function combatHtml(state: Save, view: View): string {
   const coins = selected.coins ? `<div class="cell t-coin">${icon('coin', 28)}<small>Coins</small><span class="qty">${selected.coins.min}–${selected.coins.max}</span></div>` : '';
   const foods = Object.keys(state.bank).filter((id) => isFood(id) && (state.bank[id] ?? 0) > 0);
   const food = state.foodSlot && (state.bank[state.foodSlot] ?? 0) > 0
-    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]} · heal ${ITEMS[state.foodSlot].heal}</small></div></div>`
+    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
     : `<div class="slot"><div><b>No food slotted</b><small>Pick a cooked food below</small></div></div>`;
   const foodList = foods
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
@@ -613,7 +625,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;
   const sell = selected
-    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}${gearStatText(selected.id) ? ` · ${esc(gearStatText(selected.id))}` : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
+    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}${selected.heal != null ? ` · heals ${selected.heal}` : ''}${gearStatText(selected.id) ? ` · ${esc(gearStatText(selected.id))}` : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
     : '';
   const shop = `<div class="panel"><h3>Shop</h3>${SHOP_ITEMS.map((id) => {
     const left = shopStock(state, id, now);

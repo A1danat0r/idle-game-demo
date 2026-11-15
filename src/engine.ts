@@ -458,18 +458,18 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!recipe) return false;
   if (!state.owned.includes(recipe.skill)) return false;
   if (skillLevel(state, recipe.skill) < recipe.level) return false;
-  if (recipe.locked) return false;
+  if (recipe.comingLater || recipe.locked) return false;
   if (recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]) return false;
   if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
   if (!hasInputs(state, recipeId)) return false;
+  const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
+  if (same) return true;
   if (recipe.oneTime && state.buildings[recipe.id]) {
     const fee = recipe.rebuildFee ?? 0;
     if (state.coins < fee) return false;
     state.coins = roundXp(state.coins - fee);
     noteSpent(state, fee);
   }
-  const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
-  if (same) return true;
   beginActivity(state);
   state.activity = { kind: 'produce', recipeId };
   return true;
@@ -849,6 +849,7 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
+    if (recipe.oneTime) state.activity = null;
     return;
   }
   const combat = state.combat;

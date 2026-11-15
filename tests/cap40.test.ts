@@ -34,7 +34,7 @@ describe('demo skill cap 40', () => {
     expect(CAP40_RECIPES).toHaveLength(76);
     expect(CAP40_NODES.length + CAP40_RECIPES.length).toBe(92);
     expect(NODES).toHaveLength(50);
-    expect(RECIPES).toHaveLength(40 + 131 + 76);
+    expect(RECIPES.filter((recipe) => !recipe.comingLater)).toHaveLength(40 + 131 + 76);
     for (const [id, seconds, xp, cost] of [
       ['mat.fish.eel', 4.6, 107, 6750],
       ['mat.crystal.quartz', 4.2, 98, 6750],
@@ -45,7 +45,7 @@ describe('demo skill cap 40', () => {
       expect(ITEMS[id].sell).toBe(10);
     }
     expect(NODES.find((node) => node.id === 'mat.fuel.coal')).toMatchObject({ level: 40, seconds: 4.6, xp: 185, cost: 12000 });
-    expect(NODES.find((node) => node.id === 'mat.fruit.plum')?.cost).toBe(8167);
+    expect(NODES.find((node) => node.id === 'mat.fruit.plum')?.cost).toBe(8168);
     expect(RECIPES.find((recipe) => recipe.id === 'recipe.tool.foraging.bronze_sickle')).toMatchObject({
       skill: 'Smithing',
       level: 2,
@@ -72,7 +72,7 @@ describe('demo skill cap 40', () => {
   });
 
   it('shows Quarry and Undercroft rows and keeps their actions disabled', () => {
-    const locked = RECIPES.filter((recipe) => recipe.locked);
+    const locked = RECIPES.filter((recipe) => recipe.locked?.includes('Quarry'));
     expect(locked).toHaveLength(21);
     expect(locked.filter((recipe) => recipe.locked?.includes('Quarry approaches'))).toHaveLength(8);
     expect(locked.filter((recipe) => recipe.locked?.includes('Quarry Undercroft'))).toHaveLength(13);

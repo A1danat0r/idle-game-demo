@@ -5,11 +5,12 @@ import { SLICE_ITEMS, SLICE_RECIPES } from './slice';
 /**
  * Paid node cost. Lv-1 nodes are free. The level gate is unchanged:
  * a node can be bought only once its level is reached.
- * round(3000 × (level/20)²).
+ * round(3000 × L × L / 400). The exact half at L=33 is 8,167.5, which rounds to 8,168.
+ * Evaluating 3000 × (L/20)² in floating point first rounds that case to 8,167.
  */
 export function nodeCost(level: number): number {
   if (level <= 1) return 0;
-  return Math.round(3000 * (level / 20) ** 2);
+  return Math.round((3000 * level * level) / 400);
 }
 
 /** Cumulative XP required to be each level. Level 1 is 0. Index 0 is unused. */
@@ -179,6 +180,8 @@ export interface RecipeDef {
   rebuildFee?: number;
   /** Visible row whose action stays disabled. The copy names the missing area or input. */
   locked?: string;
+  /** Catalogue recipe with no shipped timer. Preview only: no time, no XP, no Start. */
+  comingLater?: boolean;
   /** One-time building that must already be complete. */
   requiresBuilding?: string;
 }
@@ -285,9 +288,31 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.food.roast_perch', 'Cooking', 15, 2.7, 43, [{ id: 'mat.fish.perch', qty: 1 }], [{ id: 'food.roast_perch', qty: 1 }]),
   recipe('recipe.food.tortoise_herb_soup', 'Cooking', 18, 2.9, 46, [{ id: 'mat.meat.tortoise', qty: 1 }, { id: 'mat.herb.meadow', qty: 1 }], [{ id: 'food.tortoise_herb_soup', qty: 2 }]),
   recipe('recipe.mat.farm.fish_meal', 'Cooking', 20, 3.3, 77, [{ id: 'mat.fish.minnow', qty: 3 }, { id: 'mat.fuel.charcoal', qty: 1 }], [{ id: 'mat.farm.fish_meal', qty: 2 }]),
+  {
+    id: 'recipe.food.trout_mushroom_meal',
+    skill: 'Cooking',
+    level: 20,
+    seconds: 0,
+    xp: 0,
+    inputs: [{ id: 'mat.fish.trout', qty: 1 }, { id: 'mat.fungi.mushroom', qty: 1 }],
+    outputs: [{ id: 'food.trout_mushroom_meal', qty: 1 }],
+    comingLater: true,
+    locked: 'Coming later',
+  },
   recipe('recipe.food.roast_trout', 'Cooking', 22, 2.9, 67, [{ id: 'mat.fish.trout', qty: 1 }], [{ id: 'food.roast_trout', qty: 1 }]),
   recipe('recipe.food.baked_carp', 'Cooking', 25, 3.0, 70, [{ id: 'mat.fish.carp', qty: 1 }], [{ id: 'food.baked_carp', qty: 1 }]),
   recipe('recipe.mat.food.fish_stock', 'Cooking', 26, 3.2, 74, [{ id: 'mat.fish.perch', qty: 2 }], [{ id: 'mat.food.fish_stock', qty: 2 }]),
+  {
+    id: 'recipe.food.wheat_bread',
+    skill: 'Cooking',
+    level: 30,
+    seconds: 0,
+    xp: 0,
+    inputs: [{ id: 'mat.grain.wheat', qty: 2 }],
+    outputs: [{ id: 'food.wheat_bread', qty: 1 }],
+    comingLater: true,
+    locked: 'Coming later',
+  },
   recipe('recipe.gear.armour.bronze_body', 'Smithing', 1, 3.7, 30, [{ id: 'mat.bar.bronze', qty: 3 }], [{ id: 'gear.armour.bronze_body', qty: 1 }]),
   recipe('recipe.gear.melee.bronze_sword', 'Smithing', 1, 3.6, 29, [{ id: 'mat.bar.bronze', qty: 2 }], [{ id: 'gear.melee.bronze_sword', qty: 1 }]),
   recipe('recipe.gear.shield.bronze', 'Smithing', 1, 3.8, 30, [{ id: 'mat.bar.bronze', qty: 2 }, { id: 'mat.wood.pine', qty: 1 }], [{ id: 'gear.shield.bronze', qty: 1 }]),
@@ -326,6 +351,7 @@ export const RECIPES: RecipeDef[] = [
     outputs: row.outputs,
     oneTime: row.oneTime,
     rebuildFee: row.rebuildFee,
+    locked: row.id === 'activity.exploration.fitting_appraisal' ? 'Needs trout-and-mushroom meal (coming later)' : undefined,
   })),
   ...CAP40_RECIPES.map((row): RecipeDef => ({
     id: row.id,
@@ -337,7 +363,7 @@ export const RECIPES: RecipeDef[] = [
     outputs: row.outputs,
     oneTime: row.oneTime,
     rebuildFee: row.rebuildFee,
-    locked: row.locked,
+    locked: row.id === 'recipe.food.salmon_wheat_ration' ? 'Needs wheat bread (coming later)' : row.locked,
     requiresBuilding: row.requiresBuilding,
   })),
 ];
@@ -753,6 +779,23 @@ function addItems(): void {
   for (const [id, sell] of Object.entries(T310_SELLS)) {
     if (ITEMS[id]) ITEMS[id].sell = sell;
   }
+  // 10 × (5 + floor(recipe level / 2)), per item. The two coming-later foods use the same formula.
+  const foodHeals: Record<string, number> = {
+    'food.perch_wheat_cakes': 200,
+    'food.carp_garlic_bake': 210,
+    'food.garlic_mushroom_skillet': 220,
+    'food.boiled_crayfish': 220,
+    'food.root_vegetable_pottage': 220,
+    'food.plum_tart': 230,
+    'food.crayfish_turnip_pot': 240,
+    'food.mutton_turnip_hotpot': 250,
+    'food.salmon_wheat_ration': 250,
+    'food.wheat_bread': 200,
+    'food.trout_mushroom_meal': 150,
+  };
+  for (const [id, heal] of Object.entries(foodHeals)) {
+    if (ITEMS[id]) ITEMS[id].heal = heal;
+  }
 }
 
 addItems();
@@ -765,7 +808,11 @@ export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
 }
 
-/** Display names for activities that produce no item. Catalogue names, then the r2 table. */
+/**
+ * Display names that are not the output item.
+ * Exploration surveys keep these labels; the gather nodes keep the item names.
+ * Alternate routes are named so two rows in one skill are not the same title.
+ */
 const ACTION_NAMES: Record<string, string> = {
   'activity.construction.pine_work_area': 'Build pine work area',
   'activity.construction.stone_foundation': 'Build stone foundation',
@@ -773,15 +820,27 @@ const ACTION_NAMES: Record<string, string> = {
   'activity.construction.practice_workshop_assembly': 'Practice workshop assembly',
   'activity.construction.supply_racks': 'Build supply racks',
   'activity.construction.forge_extension': 'Build steel forge extension',
+  'activity.exploration.stream_survey': 'Stream survey',
+  'activity.exploration.riverbank_branch_agate': 'Riverbank branch — agate',
+  'activity.exploration.shallow_ruin': 'Shallow ruin',
+  'activity.exploration.riverbank_branch_slate': 'Riverbank branch — slate',
   'activity.exploration.fitting_appraisal': 'Fitting appraisal',
   'activity.exploration.bridge_approach_survey': 'Bridge approach survey',
+  'recipe.mat.bar.steel.slag_flux_route': 'Steel bar (slag flux)',
+  'recipe.ammo.arrow.steel.ash_route': 'Steel arrows (ash)',
+  'recipe.mat.cloth.waxed_linen.beeswax_route': 'Waxed linen (beeswax)',
+  'recipe.tool.fishing.reed_eel_trap.willow_frame_route': 'Reed eel trap (willow frame)',
+  'recipe.supply.paste.shellguard.beeswax_route': 'Shellguard paste (beeswax)',
+  'recipe.mat.tanning.bark_liquor.alum_route': 'Bark tanning liquor (alum)',
 };
 
 /** The name shown on a recipe row and in the activity bar. */
 export function actionTitle(recipe: { id: string; outputs: { id: string }[] }): string {
+  const named = ACTION_NAMES[recipe.id];
+  if (named) return named;
   const made = recipe.outputs[0];
   if (made) return itemName(made.id);
-  return ACTION_NAMES[recipe.id] ?? recipe.id;
+  return recipe.id;
 }
 
 export type EquipSlot = 'weapon' | 'body' | 'shield';

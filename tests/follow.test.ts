@@ -1,0 +1,208 @@
+import { describe, expect, it } from 'vitest';
+import {
+  ITEMS,
+  NODES,
+  RECIPES,
+  SKILL_IDS,
+  XP_TABLE,
+  actionTitle,
+  isFood,
+  itemName,
+  nodeCost,
+} from '../src/content';
+import { advanceOpenTab, cancelPlot, newGame, simulate, startProduce, stepCompletion } from '../src/engine';
+import { mainHtml, type View } from '../src/ui';
+
+function view(skill: View['skill']): View {
+  return {
+    tab: 'skill',
+    skill,
+    filter: 'all',
+    selected: null,
+    area: 'Meadow verge',
+    style: null,
+    message: '',
+  };
+}
+
+function rowHtml(html: string, title: string): string {
+  const at = html.indexOf(`<b>${title}</b>`);
+  expect(at, title).toBeGreaterThanOrEqual(0);
+  const start = html.lastIndexOf('<div class="row', at);
+  const next = html.indexOf('<div class="row', at);
+  return html.slice(start, next === -1 ? undefined : next);
+}
+
+describe('construction, crops, names, heals, and coming-later rows', () => {
+  it('stops a one-time build and charges the rebuild fee on the next start', () => {
+    const state = newGame(0);
+    state.owned.push('Construction');
+    state.xp.Construction = 0;
+    state.bank['mat.wood.pine'] = 20;
+    state.coins = 451;
+    expect(startProduce(state, 'activity.construction.pine_work_area')).toBe(true);
+    stepCompletion(state);
+    expect(state.activity).toBeNull();
+    expect(state.buildings['activity.construction.pine_work_area']).toBe(true);
+    simulate(state, 120_000);
+    expect(state.bank['mat.wood.pine']).toBe(15);
+    expect(state.coins).toBe(451);
+
+    const html = mainHtml(state, view('Construction'), 0);
+    const row = rowHtml(html, 'Build pine work area');
+    expect(row).toContain('Rebuild');
+    expect(row).toContain('451');
+    expect(row).toContain('built');
+    expect(row).toContain('0 XP');
+    expect(row).not.toContain('7212');
+
+    state.coins = 0;
+    expect(startProduce(state, 'activity.construction.pine_work_area')).toBe(false);
+    expect(state.bank['mat.wood.pine']).toBe(15);
+
+    state.coins = 626;
+    state.xp.Construction = XP_TABLE[20];
+    state.bank['con.kit.oak_bench'] = 6;
+    expect(startProduce(state, 'activity.construction.oak_workshop')).toBe(true);
+    stepCompletion(state);
+    expect(state.activity).toBeNull();
+    expect(state.coins).toBe(626);
+    expect(state.xp.Construction).toBe(XP_TABLE[20] + 10458);
+    expect(startProduce(state, 'activity.construction.oak_workshop')).toBe(true);
+    expect(state.coins).toBe(0);
+    stepCompletion(state);
+    expect(state.xp.Construction).toBe(XP_TABLE[20] + 10458);
+    expect(state.activity).toBeNull();
+
+    state.bank['mat.wood.oak'] = 9;
+    state.bank['mat.fitting.iron'] = 6;
+    expect(startProduce(state, 'activity.construction.practice_workshop_assembly')).toBe(true);
+    stepCompletion(state);
+    expect(state.activity?.kind).toBe('produce');
+    const before = state.xp.Construction;
+    stepCompletion(state);
+    expect(state.activity?.kind).toBe('produce');
+    expect(state.xp.Construction).toBeGreaterThan(before);
+  });
+
+  it('rounds node cost from the exact product and prices wild plums at 8,168', () => {
+    expect(nodeCost(33)).toBe(8168);
+    expect(nodeCost(23)).toBe(3968);
+    expect(Math.round(3000 * (33 / 20) ** 2)).toBe(8167);
+    expect(NODES.find((node) => node.id === 'mat.fruit.plum')?.cost).toBe(8168);
+  });
+
+  it('cancels a crop with no refund, XP, or mastery, and does not replant', () => {
+    const state = newGame(0);
+    state.owned.push('Farming');
+    state.xp.Farming = 0;
+    state.bank['mat.seed.flax'] = 1;
+    expect(startProduce(state, 'recipe.mat.fibre.flax')).toBe(true);
+    const planted = mainHtml(state, view('Farming'), 0);
+    expect(planted).toContain('data-cancel-plot');
+    expect(planted).toContain('Cancelling returns nothing');
+    cancelPlot(state);
+    expect(state.plot).toBeNull();
+    expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
+    expect(state.bank['mat.fibre.flax'] ?? 0).toBe(0);
+    expect(state.xp.Farming).toBe(0);
+    expect(state.mastery['recipe.mat.fibre.flax'] ?? 0).toBe(0);
+
+    state.bank['mat.seed.flax'] = 2;
+    startProduce(state, 'recipe.mat.fibre.flax');
+    const duration = state.plot?.remainingMs ?? 0;
+    advanceOpenTab(state, duration, 5_000, []);
+    expect(state.plot).toBeNull();
+    expect(state.bank['mat.seed.flax']).toBe(1);
+    expect(state.bank['mat.fibre.flax']).toBe(4);
+  });
+
+  it('names Exploration rows so no skill shows the same title twice', () => {
+    expect(itemName('mat.gem.weathered_agate')).toBe('Weathered agate');
+    expect(itemName('mat.relic.weathered_slate')).toBe('Weathered slate');
+    expect(actionTitle(RECIPES.find((recipe) => recipe.id === 'activity.exploration.stream_survey')!)).toBe('Stream survey');
+    expect(actionTitle(RECIPES.find((recipe) => recipe.id === 'activity.exploration.riverbank_branch_agate')!)).toBe('Riverbank branch — agate');
+    expect(actionTitle(RECIPES.find((recipe) => recipe.id === 'activity.exploration.shallow_ruin')!)).toBe('Shallow ruin');
+    expect(actionTitle(RECIPES.find((recipe) => recipe.id === 'activity.exploration.riverbank_branch_slate')!)).toBe('Riverbank branch — slate');
+    expect(actionTitle(RECIPES.find((recipe) => recipe.id === 'activity.exploration.fitting_appraisal')!)).toBe('Fitting appraisal');
+
+    const state = newGame(0);
+    state.owned.push('Exploration');
+    state.xp.Exploration = XP_TABLE[40];
+    const html = mainHtml(state, view('Exploration'), 0);
+    expect(html).toContain('Stream survey');
+    expect(html).toContain('Riverbank branch — agate');
+    expect(html).toContain('Shallow ruin');
+    expect(html).toContain('Riverbank branch — slate');
+    expect(html).toContain('Needs trout-and-mushroom meal (coming later)');
+
+    for (const skill of SKILL_IDS) {
+      const titles = [
+        ...NODES.filter((node) => node.skill === skill).map((node) => itemName(node.id)),
+        ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => actionTitle(recipe)),
+      ];
+      const seen = new Set<string>();
+      for (const title of titles) {
+        expect(seen.has(title), `${skill}: ${title}`).toBe(false);
+        seen.add(title);
+      }
+    }
+  });
+
+  it('heals the new foods, including the two that are only in the bank', () => {
+    expect(ITEMS['food.perch_wheat_cakes'].heal).toBe(200);
+    expect(ITEMS['food.carp_garlic_bake'].heal).toBe(210);
+    expect(ITEMS['food.garlic_mushroom_skillet'].heal).toBe(220);
+    expect(ITEMS['food.boiled_crayfish'].heal).toBe(220);
+    expect(ITEMS['food.root_vegetable_pottage'].heal).toBe(220);
+    expect(ITEMS['food.plum_tart'].heal).toBe(230);
+    expect(ITEMS['food.crayfish_turnip_pot'].heal).toBe(240);
+    expect(ITEMS['food.mutton_turnip_hotpot'].heal).toBe(250);
+    expect(ITEMS['food.salmon_wheat_ration'].heal).toBe(250);
+    expect(ITEMS['food.wheat_bread'].heal).toBe(200);
+    expect(ITEMS['food.trout_mushroom_meal'].heal).toBe(150);
+    expect(ITEMS['food.roast_hare'].heal).toBe(50);
+    expect(ITEMS['mat.food.cured_boar'].heal).toBeUndefined();
+    expect(isFood('food.wheat_bread')).toBe(true);
+    expect(isFood('food.trout_mushroom_meal')).toBe(true);
+    expect(isFood('mat.food.cured_boar')).toBe(false);
+  });
+
+  it('shows wheat bread and the trout meal as Coming later, and locks what needs them', () => {
+    const state = newGame(0);
+    state.owned.push('Cooking', 'Exploration');
+    state.xp.Cooking = XP_TABLE[40];
+    state.xp.Exploration = XP_TABLE[40];
+    state.bank['mat.grain.wheat'] = 4;
+    state.bank['mat.fish.trout'] = 2;
+    state.bank['mat.fungi.mushroom'] = 2;
+    state.bank['food.wheat_bread'] = 1;
+    state.bank['food.trout_mushroom_meal'] = 1;
+    state.bank['mat.fish.salmon'] = 1;
+    expect(startProduce(state, 'recipe.food.wheat_bread')).toBe(false);
+    expect(startProduce(state, 'recipe.food.trout_mushroom_meal')).toBe(false);
+    expect(startProduce(state, 'recipe.food.salmon_wheat_ration')).toBe(false);
+    expect(startProduce(state, 'activity.exploration.fitting_appraisal')).toBe(false);
+    expect(state.bank['mat.grain.wheat']).toBe(4);
+    expect(state.bank['food.wheat_bread']).toBe(1);
+
+    const cooking = mainHtml(state, view('Cooking'), 0);
+    for (const title of ['Wheat bread', 'Trout-and-mushroom meal']) {
+      const row = rowHtml(cooking, title);
+      expect(row).toContain('Coming later');
+      expect(row).not.toContain('XP');
+      expect(row).not.toContain('Start');
+      expect(row).not.toContain('data-recipe');
+    }
+    expect(cooking.match(/Coming later/g)).toHaveLength(2);
+    const ration = rowHtml(cooking, 'Salmon-and-wheat ration');
+    expect(ration).toContain('Needs wheat bread (coming later)');
+    expect(ration).toContain('disabled');
+    expect(ration).toContain('XP');
+
+    const exploration = mainHtml(state, view('Exploration'), 0);
+    const fitting = rowHtml(exploration, 'Fitting appraisal');
+    expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(fitting).toContain('disabled');
+  });
+});

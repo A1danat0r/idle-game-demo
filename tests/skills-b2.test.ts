@@ -5,6 +5,7 @@ import {
   creditOffline,
   newGame,
   startCombat,
+  simulate,
   startProduce,
   stepCompletion,
 } from '../src/engine';
@@ -68,6 +69,12 @@ describe('B2 production, farming, and combat styles', () => {
     const step = stepCompletion(state);
     expect(step.type).toBe('action');
     expect(state.buildings['activity.construction.pine_work_area']).toBe(true);
+    expect(state.activity).toBeNull();
+    expect(state.bank['mat.wood.pine']).toBe(15);
+    expect(state.xp.Construction).toBe(7212);
+    expect(state.coins).toBe(451);
+    simulate(state, 60_000);
+    expect(state.bank['mat.wood.pine']).toBe(15);
     expect(state.xp.Construction).toBe(7212);
     expect(state.coins).toBe(451);
     state.bank['mat.wood.pine'] = 20;

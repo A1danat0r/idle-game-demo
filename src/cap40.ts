@@ -141,7 +141,7 @@ export const CAP40_NODES: Cap40Node[] = [
   { id: "mat.tree.bark_strip", skill: "Woodcutting", level: 30, seconds: 3.7, xp: 86, cost: 6750 },
   { id: "mat.wood.willow_rods", skill: "Woodcutting", level: 30, seconds: 3.8, xp: 88, cost: 6750 },
   { id: "mat.seed.garlic", skill: "Foraging", level: 32, seconds: 4.1, xp: 95, cost: 7680 },
-  { id: "mat.fruit.plum", skill: "Foraging", level: 33, seconds: 4.1, xp: 95, cost: 8167 },
+  { id: "mat.fruit.plum", skill: "Foraging", level: 33, seconds: 4.1, xp: 95, cost: 8168 },
   { id: "mat.seed.turnip", skill: "Foraging", level: 35, seconds: 4.2, xp: 98, cost: 9188 },
   { id: "mat.cutting.emberleaf", skill: "Foraging", level: 40, seconds: 4.4, xp: 177, cost: 12000 },
   { id: "mat.herb.emberleaf", skill: "Foraging", level: 40, seconds: 4.5, xp: 181, cost: 12000 },
