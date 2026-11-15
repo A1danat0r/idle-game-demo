@@ -668,8 +668,7 @@ export function milestoneSheetHtml(state: Save, view: View): string {
       const items = group.items
         .map((item) => `<div class="row ${item.reached ? '' : 'dim'}"><div class="grow"><b>${esc(item.title)}</b><small>Level ${group.level} · ${esc(item.note)}</small></div></div>`)
         .join('');
-      const remain = group.xpRemaining != null ? `<p class="note">${fmt(group.xpRemaining)} XP remaining</p>` : '';
-      return `<h3>Level ${group.level}</h3>${remain}${items}`;
+      return `<h3>Level ${group.level}</h3>${items}`;
     })
     .join('');
   const tools = usedBy(track.skill)

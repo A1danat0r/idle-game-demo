@@ -47,7 +47,11 @@ describe('milestone next row and sheet', () => {
     for (const name of ['Pine logs', 'Resin', 'Maple logs', 'Oak logs', 'Bark strips', 'Willow rods', 'Ash logs', 'Ash spear shafts']) {
       expect(html).toContain(name);
     }
-    expect(html).toContain('29,546 XP remaining');
+    expect(html).toContain('Level 1 · Reached');
+    expect(html).toContain('Level 20 · 29,546 XP to go');
+    expect(html).toContain('1,274 MXP to go');
+    expect(html).not.toContain('XP remaining');
+    expect(html).not.toContain('Level 20 · Lv 20');
     expect(html).toContain('Mastery 10: +5% sell');
     expect(html).toContain('Mastery 20: −5% action time');
     expect(html).toContain('Mastery 30: +5% XP');

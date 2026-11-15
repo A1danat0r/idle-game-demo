@@ -36,8 +36,6 @@ export interface UnlockItem {
 export interface UnlockGroup {
   level: number;
   items: UnlockItem[];
-  /** Set only on the next group the skill has not reached. */
-  xpRemaining: number | null;
 }
 
 function joinNames(titles: string[]): string {
@@ -62,34 +60,36 @@ function masteryLabel(id: string): string {
   return raw.replace(/ logs$/, '');
 }
 
-function itemNote(id: string, level: number, skillLevelNow: number): { reached: boolean; note: string } {
+function itemNote(id: string, level: number, skillLevelNow: number, xpNow: number): { reached: boolean; note: string } {
   const recipe = RECIPE_BY_ID[id];
   if (recipe?.comingLater) return { reached: false, note: 'Coming later' };
   if (recipe?.locked) return { reached: false, note: recipe.locked };
-  if (skillLevelNow < level) return { reached: false, note: `Lv ${level}` };
+  if (skillLevelNow < level) {
+    const left = Math.max(0, (XP_TABLE[level] ?? 0) - xpNow);
+    return { reached: false, note: `${fmt(left)} XP to go` };
+  }
   return { reached: true, note: 'Reached' };
 }
 
 /** Shipped unlocks of one skill, in catalogue order, grouped by level. */
 export function unlockGroups(state: Save, skill: SkillId): UnlockGroup[] {
   const now = skillLevel(state, skill);
+  const xpNow = state.xp[skill] ?? 0;
   const items: UnlockItem[] = [];
   for (const node of NODES) {
     if (node.skill !== skill) continue;
-    const mark = itemNote(node.id, node.level, now);
+    const mark = itemNote(node.id, node.level, now, xpNow);
     items.push({ id: node.id, title: itemName(node.id), level: node.level, ...mark });
   }
   for (const recipe of RECIPES) {
     if (recipe.skill !== skill) continue;
-    const mark = itemNote(recipe.id, recipe.level, now);
+    const mark = itemNote(recipe.id, recipe.level, now, xpNow);
     items.push({ id: recipe.id, title: actionTitle(recipe), level: recipe.level, ...mark });
   }
   const levels = [...new Set(items.map((item) => item.level))].sort((a, b) => a - b);
-  const nextLevel = levels.find((level) => level > now) ?? null;
   return levels.map((level) => ({
     level,
     items: items.filter((item) => item.level === level),
-    xpRemaining: level === nextLevel ? Math.max(0, (XP_TABLE[level] ?? 0) - (state.xp[skill] ?? 0)) : null,
   }));
 }
 
@@ -206,13 +206,10 @@ export function trackSeconds(id: string): number {
 export function masterySheetLines(state: Save, id: string): { label: string; detail: string }[] {
   const mxp = state.mastery[id] ?? 0;
   const level = masteryLevel(mxp);
-  const seconds = trackSeconds(id);
-  const per = actionMasteryXp(seconds);
   return PERK_LEVELS.map((perk) => {
     const reached = level >= perk;
     const remaining = Math.max(0, masteryThreshold(perk) - mxp);
-    const actions = reached ? 0 : Math.ceil(remaining / Math.max(1, per));
-    const detail = reached ? 'Reached' : `${fmt(remaining)} MXP · ${fmt(actions)} actions`;
+    const detail = reached ? 'Reached' : `${fmt(remaining)} MXP to go`;
     return { label: `Mastery ${perk}: ${PERK_LABEL[perk]}`, detail };
   });
 }
