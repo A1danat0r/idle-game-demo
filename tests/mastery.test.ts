@@ -35,7 +35,9 @@ describe('check 19 mastery', () => {
     expect(masteryLevel(6_071)).toBe(9);
     expect(masteryLevel(6_072)).toBe(10);
     expect(masteryLevel(63_049)).toBe(30);
-    expect(masteryLevel(63_050)).toBe(MASTERY_CAP);
+    expect(masteryLevel(63_050)).toBe(30);
+    expect(masteryLevel(114_027)).toBe(MASTERY_CAP);
+    expect(masteryLevel(114_028)).toBe(MASTERY_CAP);
     expect(NODES).toHaveLength(50);
     expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' || recipe.skill === 'Smithing')).toHaveLength(67);
     const outputs = new Map<string, string>();
@@ -85,14 +87,13 @@ describe('check 19 mastery', () => {
     advanceOpenTab(state, state.lastCredited + Math.round(2.6 * 0.95 * 1000), 5000, levelNotes);
     expect(masteryLevel(state.mastery['mat.wood.pine'])).toBe(30);
     expect(state.mastery['mat.wood.pine']).toBeGreaterThanOrEqual(63_049);
-    expect(actionXpMultiplier(state.mastery, 'mat.wood.pine', 'Woodcutting')).toBeCloseTo(1.08);
-    expect(globalXpBonus(state.mastery, 'Woodcutting')).toBeCloseTo(0.03);
+    expect(actionXpMultiplier(state.mastery, 'mat.wood.pine', 'Woodcutting')).toBeCloseTo(1.05);
+    expect(globalXpBonus(state.mastery, 'Woodcutting')).toBe(0);
     expect(state.xp.Woodcutting).toBeCloseTo(xpBefore + 42);
     expect(levelNotes.some((note) => note.kind === 'toast' && note.text === 'Pine logs mastery 30: +5% XP')).toBe(true);
-    expect(levelNotes.some((note) => note.kind === 'toast' && note.text === '+3% Woodcutting XP')).toBe(true);
     const shown = state.xp.Woodcutting ?? 0;
     advanceOpenTab(state, state.lastCredited + Math.round(2.6 * 0.95 * 1000), 5000, []);
-    expect(state.xp.Woodcutting).toBeCloseTo(shown + 42 * 1.08);
+    expect(state.xp.Woodcutting).toBeCloseTo(shown + 42 * 1.05);
     expect(state.mastery['mat.wood.pine']).toBeGreaterThan(63_049);
 
     const smith = newGame(0);
@@ -105,7 +106,7 @@ describe('check 19 mastery', () => {
     expect(smith.mastery['recipe.mat.bar.iron']).toBe(49);
   });
 
-  it('adds 102 MXP per Thorn beetle kill and +10% loot after the 619th', () => {
+  it('adds 102 MXP per Thorn beetle kill and +10% loot after the 1118th', () => {
     const enemy = ENEMIES.find((row) => row.id === 'meadow.beetle');
     expect(enemy).toBeTruthy();
     const base = expectedCoinValue(enemy!) + expectedDropValue(enemy!.drops);
@@ -113,9 +114,10 @@ describe('check 19 mastery', () => {
     state.owned.push('Strength', 'Attack', 'Defence', 'Hitpoints');
     state.xp.Attack = XP_TABLE[30];
     state.xp.Defence = XP_TABLE[30];
-    state.hp = 70;
-    state.enemyMastery['meadow.beetle'] = 618 * 102;
-    expect(masteryLevel(state.enemyMastery['meadow.beetle'])).toBe(29);
+    state.hp = 700;
+    state.enemyMastery['meadow.beetle'] = 1117 * 102;
+    expect(state.enemyMastery['meadow.beetle']).toBe(113934);
+    expect(masteryLevel(state.enemyMastery['meadow.beetle'])).toBe(39);
     expect(enemyLootFactor(state.enemyMastery, 'meadow.beetle')).toBe(1);
     state.enemyKills['meadow.beetle'] = 1;
     expect(startCombat(state, 'meadow.beetle', 'Strength')).toBe(true);
@@ -123,8 +125,9 @@ describe('check 19 mastery', () => {
     let guard = 0;
     while (state.stats.kills < 1 && guard++ < 40) stepCompletion(state, { expectedLoot: true });
     expect(state.stats.kills).toBe(1);
-    expect(state.enemyMastery['meadow.beetle']).toBe(619 * 102);
-    expect(masteryLevel(state.enemyMastery['meadow.beetle'])).toBe(30);
+    expect(state.enemyMastery['meadow.beetle']).toBe(1118 * 102);
+    expect(state.enemyMastery['meadow.beetle']).toBe(114036);
+    expect(masteryLevel(state.enemyMastery['meadow.beetle'])).toBe(40);
     expect(state.coins - coinsBefore).toBeCloseTo(base);
     const boostedBefore = state.coins;
     while (state.stats.kills < 2 && guard++ < 80) stepCompletion(state, { expectedLoot: true });

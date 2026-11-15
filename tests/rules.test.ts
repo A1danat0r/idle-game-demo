@@ -645,8 +645,8 @@ describe('save, offline, shop', () => {
       mxp += 26;
     }
     expect(report.actions).toBe(expectedActions);
-    expect(masteryLevel(state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
-    expect(state.bank['mat.wood.pine']).toBe(report.actions);
+    expect(masteryLevel(state.mastery['mat.wood.pine'] ?? 0)).toBe(40);
+    expect(state.bank['mat.wood.pine']).toBeGreaterThanOrEqual(report.actions);
     expect(state.xp.Woodcutting).toBe(XP_CAP);
     expect(state.lastCredited).toBe(now);
     expect(report.stopped).toBe('window');

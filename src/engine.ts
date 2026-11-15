@@ -42,6 +42,7 @@ import {
   playerHitChance,
   isCombatStyle,
   isFood,
+  actionTitle,
   itemName,
   levelForXp,
   playerMaxHp,
@@ -140,6 +141,8 @@ export interface Save {
   progressMs: number;
   hp: number;
   paused: boolean;
+  /** Why combat is paused. Absent on saves from before thrown weapons were consumed. */
+  pauseCause?: 'hp' | 'knives' | 'javelins' | null;
   combat: CombatProgress | null;
   foodSlot: string | null;
   shop: Record<string, ShopCounter>;
@@ -250,6 +253,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     hp: playerMaxHp(1),
     combatScale: COMBAT_HP_SCALE,
     paused: false,
+    pauseCause: null,
     combat: null,
     foodSlot: null,
     shop: {},
@@ -335,6 +339,12 @@ export function actionDurationMs(state: Save, id: string): number {
   return actionSeconds(state, id) * 1000;
 }
 
+/** Lv 40 mastery: 5% chance to double items. XP and mastery XP stay single. */
+function doubledOutput(state: Save, actionId: string): boolean {
+  if (masteryLevel(state.mastery[actionId] ?? 0) < 40) return false;
+  return nextUnit(state) < 0.05;
+}
+
 function roundXp(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -381,8 +391,9 @@ function takeItem(state: Save, id: string, qty: number, sink?: Sink): boolean {
   if ((state.bank[id] ?? 0) === 0) {
     if (state.foodSlot === id) state.foodSlot = null;
     let lostWeapon = false;
+    const keepThrown = id.startsWith('ammo.thrown.');
     for (const slot of ['weapon', 'body', 'shield'] as const) {
-      if (state.equipped[slot] === id) {
+      if (state.equipped[slot] === id && !keepThrown) {
         state.equipped[slot] = null;
         if (slot === 'weapon') lostWeapon = true;
       }
@@ -410,15 +421,18 @@ export function nodeUsable(state: Save, nodeId: string): boolean {
 export function activityLabel(state: Save): string {
   const activity = state.activity;
   if (!activity) return 'Idle';
-  if (state.paused && activity.kind === 'combat') return 'Combat paused – out of HP';
+  if (state.paused && activity.kind === 'combat') {
+    if (state.pauseCause === 'knives') return 'Combat paused – out of throwing knives';
+    if (state.pauseCause === 'javelins') return 'Combat paused – out of javelins';
+    return 'Combat paused – out of HP';
+  }
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     return `${node.skill} · ${itemName(activity.nodeId)}`;
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPE_BY_ID[activity.recipeId];
-    const made = recipe.outputs[0];
-    return `${recipe.skill} · ${made ? itemName(made.id) : recipe.id}`;
+    return `${recipe.skill} · ${actionTitle(recipe)}`;
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
   return `Combat · ${enemy.name}`;
@@ -509,7 +523,10 @@ function spawnEnemy(state: Save): void {
 
 export function resumeCombat(state: Save): boolean {
   if (!state.paused || state.activity?.kind !== 'combat') return false;
+  const weapon = state.equipped.weapon;
+  if (!weapon || (state.bank[weapon] ?? 0) <= 0) return false;
   state.paused = false;
+  state.pauseCause = null;
   spawnEnemy(state);
   return true;
 }
@@ -687,9 +704,17 @@ function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, 
   grantEnemyMastery(state, enemy.id, opts);
 }
 
+function thrownKind(itemId: string): 'knives' | 'javelins' | null {
+  if (!itemId.startsWith('ammo.thrown.')) return null;
+  if (itemId.includes('javelin')) return 'javelins';
+  if (itemId.includes('knife')) return 'knives';
+  return null;
+}
+
 function markPaused(state: Save, sink?: Sink): void {
   state.hp = 0;
   state.paused = true;
+  state.pauseCause = 'hp';
   state.stats.pauses += 1;
   // Completed kills only. A pause during the first fight is 0.
   state.stats.pauseAtKill.push(state.stats.kills);
@@ -726,10 +751,34 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
   if (state.hp <= 0) markPaused(state, sink);
 }
 
+function pauseForThrown(state: Save, kind: 'knives' | 'javelins', sink?: Sink): void {
+  state.paused = true;
+  state.pauseCause = kind;
+  state.stats.pauses += 1;
+  state.stats.pauseAtKill.push(state.stats.kills);
+  if (sink) sink.stopped = 'paused';
+}
+
+/** One thrown weapon is used per swing, including a miss. An empty stack does not swing. */
+function consumeThrow(state: Save, sink?: Sink): boolean {
+  const weapon = state.equipped.weapon;
+  if (!weapon) return true;
+  const kind = thrownKind(weapon);
+  if (!kind) return true;
+  if ((state.bank[weapon] ?? 0) <= 0) {
+    pauseForThrown(state, kind, sink);
+    return false;
+  }
+  takeItem(state, weapon, 1, sink);
+  return true;
+}
+
 function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): void {
   const activity = state.activity;
   const combat = state.combat;
   if (!activity || activity.kind !== 'combat' || !combat || combat.phase !== 'fight') return;
+  const thrown = state.equipped.weapon ? thrownKind(state.equipped.weapon) : null;
+  if (!consumeThrow(state, sink)) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   const hits = combat.hitsPerKill;
   combat.swings += 1;
@@ -739,6 +788,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
     opts.notes?.push({ kind: 'miss', side: 'player' });
+    if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForThrown(state, thrown, sink);
     return;
   }
   state.stats.playerHits += 1;
@@ -757,6 +807,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
     combat.killAtMs = state.progressMs;
     grantKillRewards(state, enemy, sink, opts);
   }
+  if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForThrown(state, thrown, sink);
 }
 
 function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void {
@@ -764,9 +815,10 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
   if (!activity || state.paused) return;
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
-    giveItem(state, node.id, 1, sink);
+    const qty = doubledOutput(state, node.id) ? 2 : 1;
+    giveItem(state, node.id, qty, sink);
     const gained = addXp(state, node.skill, node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
-    opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty: 1 });
+    opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty });
     grantActionMastery(state, node.id, node.skill, node.seconds, opts);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
@@ -782,7 +834,8 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
       return;
     }
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
-    for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
+    const doubled = doubledOutput(state, recipe.id);
+    for (const made of recipe.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
     const rebuilding = recipe.oneTime && state.buildings[recipe.id];
     if (recipe.oneTime && !rebuilding) state.buildings[recipe.id] = true;
     const gained = rebuilding
@@ -791,7 +844,7 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     grantActionMastery(state, recipe.id, recipe.skill, recipe.seconds, opts);
     const made = recipe.outputs[0];
     if (made) {
-      opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty });
+      opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty * (doubled ? 2 : 1) });
     }
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
@@ -1267,6 +1320,12 @@ export function deserialize(raw: string): Save | null {
     progressMs: typeof parsed.progressMs === 'number' ? parsed.progressMs : 0,
     hp: parsed.hp,
     paused: parsed.paused,
+    pauseCause:
+      parsed.pauseCause === 'hp' || parsed.pauseCause === 'knives' || parsed.pauseCause === 'javelins'
+        ? parsed.pauseCause
+        : parsed.paused
+          ? 'hp'
+          : null,
     combat,
     foodSlot: typeof parsed.foodSlot === 'string' ? parsed.foodSlot : null,
     shop,

@@ -1,4 +1,5 @@
 import {
+  actionTitle,
   AREAS,
   TEASER_AREA,
   TEASER_COPY,
@@ -180,7 +181,11 @@ const SKILL_ICON: Record<SkillId, IconName> = {
 export function activityIcon(state: Save): IconName {
   const activity = state.activity;
   if (!activity) return 'idle';
-  if (activity.kind === 'combat') return 'sword';
+  if (activity.kind === 'combat') {
+    if (activity.style === 'Ranged') return 'bow';
+    if (activity.style === 'Magic') return 'staff';
+    return 'sword';
+  }
   if (activity.kind === 'gather') {
     return ITEMS[activity.nodeId]?.icon ?? SKILL_ICON[NODE_BY_ID[activity.nodeId]?.skill ?? 'Woodcutting'];
   }
@@ -506,7 +511,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
         : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
   const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
   const sell = output ? fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id)) : '0';
-  const title = output ? itemName(output.id) : recipe.id.replace(/^activity\./, '').replaceAll('_', ' ');
+  const title = actionTitle(recipe);
   const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
   return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${need ? ` · ${esc(need)}` : ''}</small></div>${right}</div>`;
 }
@@ -661,10 +666,12 @@ function worn(state: Save, slot: 'weapon' | 'body' | 'shield'): string | null {
 }
 
 function slotButton(state: Save, slot: 'weapon' | 'body' | 'shield', label: string): string {
-  const id = worn(state, slot);
+  const equippedThrown = slot === 'weapon' && state.equipped.weapon?.startsWith('ammo.thrown.') ? state.equipped.weapon : null;
+  const id = equippedThrown ?? worn(state, slot);
   const item = id ? ITEMS[id] : null;
   const stats = id ? gearStatText(id) : '';
-  return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
+  const stack = equippedThrown ? ` ×${state.bank[equippedThrown] ?? 0}` : '';
+  return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) + stack : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
 }
 
 function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string): string {
@@ -673,7 +680,8 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
   return ids
     .map((id) => {
       const on = state.equipped[slot] === id;
-      return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
+      const stack = id.startsWith('ammo.thrown.') ? ` ×${state.bank[id] ?? 0}` : '';
+      return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
     })
     .join('');
 }

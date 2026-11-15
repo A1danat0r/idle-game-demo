@@ -59,8 +59,8 @@ describe('demo skill cap 40', () => {
       xp: 53,
       inputs: [{ id: 'mat.bar.iron', qty: 1 }, { id: 'mat.binding.flax', qty: 1 }],
     });
-    expect(ITEMS['tool.foraging.bronze_sickle'].sell).toBe(4);
-    expect(ITEMS['tool.foraging.iron_sickle'].sell).toBe(4);
+    expect(ITEMS['tool.foraging.bronze_sickle'].sell).toBe(9);
+    expect(ITEMS['tool.foraging.iron_sickle'].sell).toBe(32);
     const forge = RECIPES.find((recipe) => recipe.id === 'activity.construction.forge_extension');
     expect(forge).toMatchObject({
       seconds: 6.8,
@@ -99,17 +99,18 @@ describe('demo skill cap 40', () => {
     expect(html).toContain('disabled');
   });
 
-  it('keeps shown mastery at 30 while MXP can pass the threshold', () => {
-    expect(MASTERY_CAP).toBe(30);
-    expect(masteryThreshold(30)).toBe(63049);
-    expect(masteryLevel(63049)).toBe(30);
-    expect(masteryLevel(114027)).toBe(30);
+  it('shows mastery up to 40 and keeps MXP past 114,027', () => {
+    expect(MASTERY_CAP).toBe(40);
+    expect(masteryThreshold(31)).toBe(67472);
+    expect(masteryThreshold(40)).toBe(114027);
+    expect(masteryLevel(114027)).toBe(40);
+    expect(masteryLevel(114028)).toBe(40);
     const state = newGame(0);
-    state.mastery['mat.wood.pine'] = 63049;
+    state.mastery['mat.wood.pine'] = 114027;
     state.activity = { kind: 'gather', nodeId: 'mat.wood.pine' };
     stepCompletion(state);
-    expect(state.mastery['mat.wood.pine']).toBeGreaterThan(63049);
-    expect(masteryLevel(state.mastery['mat.wood.pine'])).toBe(30);
+    expect(state.mastery['mat.wood.pine']).toBeGreaterThan(114027);
+    expect(masteryLevel(state.mastery['mat.wood.pine'])).toBe(40);
   });
 
   it('lets a Magic focus share the weapon slot with a shield, and a bow clears the shield', () => {

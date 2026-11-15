@@ -1,4 +1,5 @@
 import { CAP40_ITEMS, CAP40_NODES, CAP40_RECIPES } from './cap40';
+import { T310_SELLS } from './sells';
 import { SLICE_ITEMS, SLICE_RECIPES } from './slice';
 
 /**
@@ -125,6 +126,8 @@ export type IconName =
   | 'hide'
   | 'food'
   | 'sword'
+  | 'bow'
+  | 'staff'
   | 'shield'
   | 'body'
   | 'bar'
@@ -747,6 +750,9 @@ function addItems(): void {
     const listed = CAP40_ITEMS.find((row) => row.id === node.id);
     if (listed && ITEMS[node.id]) ITEMS[node.id].sell = listed.sell;
   }
+  for (const [id, sell] of Object.entries(T310_SELLS)) {
+    if (ITEMS[id]) ITEMS[id].sell = sell;
+  }
 }
 
 addItems();
@@ -757,6 +763,25 @@ export function isFood(id: string): boolean {
 
 export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
+}
+
+/** Display names for activities that produce no item. Catalogue names, then the r2 table. */
+const ACTION_NAMES: Record<string, string> = {
+  'activity.construction.pine_work_area': 'Build pine work area',
+  'activity.construction.stone_foundation': 'Build stone foundation',
+  'activity.construction.oak_workshop': 'Build oak workshop',
+  'activity.construction.practice_workshop_assembly': 'Practice workshop assembly',
+  'activity.construction.supply_racks': 'Build supply racks',
+  'activity.construction.forge_extension': 'Build steel forge extension',
+  'activity.exploration.fitting_appraisal': 'Fitting appraisal',
+  'activity.exploration.bridge_approach_survey': 'Bridge approach survey',
+};
+
+/** The name shown on a recipe row and in the activity bar. */
+export function actionTitle(recipe: { id: string; outputs: { id: string }[] }): string {
+  const made = recipe.outputs[0];
+  if (made) return itemName(made.id);
+  return ACTION_NAMES[recipe.id] ?? recipe.id;
 }
 
 export type EquipSlot = 'weapon' | 'body' | 'shield';

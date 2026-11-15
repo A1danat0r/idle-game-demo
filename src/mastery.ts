@@ -1,7 +1,7 @@
 import { ENEMY_BY_ID, NODE_BY_ID, NODES, RECIPE_BY_ID, RECIPES, itemName, type SkillId } from './content';
 
-/** Shown mastery stops at 30. Stored MXP may continue past the level-30 threshold. */
-export const MASTERY_CAP = 30;
+/** Shown mastery stops at 40. Stored MXP may continue past 114,027. */
+export const MASTERY_CAP = 40;
 /** One kill. round(10 × 10.2s), the 3-hit kill cycle. */
 export const ENEMY_MASTERY_XP = 102;
 
@@ -95,17 +95,19 @@ export function trackName(id: string): string {
   return ENEMY_BY_ID[id]?.name ?? id;
 }
 
-/** Perk lines for crossing 10, 20, or 30. One action crosses at most one of these. */
+/** Perk lines for crossing 10, 20, 30, or 40. One action crosses at most one of these. */
 export function levelUpLines(name: string, before: number, after: number, kind: 'node' | 'enemy'): string[] {
   const lines: string[] = [];
   if (kind === 'node') {
     if (before < 10 && after >= 10) lines.push(`${name} mastery 10: sell value +5%`);
     if (before < 20 && after >= 20) lines.push(`${name} mastery 20: actions 5% faster`);
     if (before < 30 && after >= 30) lines.push(`${name} mastery 30: +5% XP`);
+    if (before < 40 && after >= 40) lines.push(`${name} mastery 40: 5% chance to double the output`);
   } else {
     if (before < 10 && after >= 10) lines.push(`${name} mastery 10`);
     if (before < 20 && after >= 20) lines.push(`${name} mastery 20`);
-    if (before < 30 && after >= 30) lines.push(`${name} mastery 30: loot value +10%`);
+    if (before < 30 && after >= 30) lines.push(`${name} mastery 30`);
+    if (before < 40 && after >= 40) lines.push(`${name} mastery 40: loot value +10%`);
   }
   return lines;
 }
