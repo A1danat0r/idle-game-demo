@@ -475,6 +475,33 @@ export function startProduce(state: Save, recipeId: string): boolean {
   return true;
 }
 
+/** Half of each kit input, rounded down. r2 names kits, not the other materials. */
+export function dismantleRefund(recipeId: string): { id: string; qty: number }[] {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe?.oneTime) return [];
+  const refund: { id: string; qty: number }[] = [];
+  for (const input of recipe.inputs) {
+    if (!input.id.startsWith('con.kit.')) continue;
+    const qty = Math.floor(input.qty / 2);
+    if (qty > 0) refund.push({ id: input.id, qty });
+  }
+  return refund;
+}
+
+/**
+ * Remove a built structure. The ×0.937 step stays only while the building flag is set,
+ * so clearing the flag removes the step. r2 does not grant XP for this.
+ * Returns false when it is not a standing one-time structure, or while that build is running.
+ */
+export function dismantleBuilding(state: Save, recipeId: string): boolean {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe?.oneTime || !state.buildings[recipe.id]) return false;
+  if (state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id) return false;
+  for (const refund of dismantleRefund(recipe.id)) giveItem(state, refund.id, refund.qty);
+  delete state.buildings[recipe.id];
+  return true;
+}
+
 export function startCombat(state: Save, enemyId: string, style: CombatStyle): boolean {
   if (!ENEMY_BY_ID[enemyId]) return false;
   if (!enemyUnlocked(state.enemyKills, enemyId)) return false;

@@ -1,6 +1,6 @@
 import './style.css';
 import { hitRateReport, killCycleReport, meadowHour, samplePoacher, survivabilityReport } from './checks';
-import { ITEMS, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
+import { ITEMS, itemName, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
 import {
   advanceOpenTab,
   buyNode,
@@ -18,6 +18,8 @@ import {
   startCombat,
   startGather,
   cancelPlot,
+  dismantleBuilding,
+  dismantleRefund,
   startProduce,
   tabLockDecision,
   unequip,
@@ -279,7 +281,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-cancel-plot], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab) {
@@ -302,6 +304,14 @@ app.addEventListener('click', (event) => {
     view.message = startProduce(state, target.dataset.recipe) ? '' : 'Missing inputs.';
   }
   if (target.hasAttribute('data-cancel-plot')) cancelPlot(state);
+  if (target.dataset.dismantle) {
+    const id = target.dataset.dismantle;
+    const refund = dismantleRefund(id);
+    const returned = refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ');
+    view.message = dismantleBuilding(state, id)
+      ? returned ? `Returned ${returned}.` : 'Returned no kits.'
+      : 'That structure is not standing.';
+  }
   if (target.dataset.enemy) view.selected = target.dataset.enemy;
   if (target.dataset.style && isCombatStyle(target.dataset.style as SkillId)) view.style = target.dataset.style as CombatStyle;
   if (target.dataset.area === 'Meadow verge' || target.dataset.area === 'Woodland edge' || target.dataset.area === '???') {

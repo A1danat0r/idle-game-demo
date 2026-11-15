@@ -37,6 +37,7 @@ import {
 import {
   actionSeconds,
   activityLabel,
+  dismantleRefund,
   formulaLevel,
   maxHp,
   nodeUsable,
@@ -513,7 +514,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
       : active
         ? `<span class="tag on">Active</span>`
         : built
-          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button></div>`
+          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button><button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button></div>`
           : need
             ? `<button type="button" class="tag btn" disabled>Start</button>`
             : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
@@ -522,9 +523,15 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const heal = output ? ITEMS[output.id]?.heal : undefined;
   const title = actionTitle(recipe);
   const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
+  const refund = built ? dismantleRefund(recipe.id) : [];
+  const refundText = !built
+    ? ''
+    : refund.length
+      ? ` · returns ${refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ')}`
+      : ' · returns no kits';
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
-    : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${need ? ` · ${esc(need)}` : ''}`;
+    : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${refundText}${need ? ` · ${esc(need)}` : ''}`;
   return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? (built ? ' · built' : ' · build') : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 

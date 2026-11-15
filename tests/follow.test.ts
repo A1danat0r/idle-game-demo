@@ -4,13 +4,24 @@ import {
   NODES,
   RECIPES,
   SKILL_IDS,
+  TOOL_TIME_FACTOR,
   XP_TABLE,
   actionTitle,
   isFood,
   itemName,
   nodeCost,
 } from '../src/content';
-import { advanceOpenTab, cancelPlot, newGame, simulate, startProduce, stepCompletion } from '../src/engine';
+import {
+  actionSeconds,
+  advanceOpenTab,
+  cancelPlot,
+  dismantleBuilding,
+  dismantleRefund,
+  newGame,
+  simulate,
+  startProduce,
+  stepCompletion,
+} from '../src/engine';
 import { mainHtml, type View } from '../src/ui';
 
 function view(skill: View['skill']): View {
@@ -204,5 +215,71 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     const fitting = rowHtml(exploration, 'Fitting appraisal');
     expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
     expect(fitting).toContain('disabled');
+  });
+
+  it('dismantles a built structure for half its kits, rounded down, and drops the step', () => {
+    const state = newGame(0);
+    state.owned.push('Construction', 'Crafting', 'Cooking', 'Smithing', 'Alchemy');
+    state.xp.Construction = 500;
+    state.coins = 80;
+    state.buildings['activity.construction.oak_workshop'] = true;
+    state.buildings['activity.construction.pine_work_area'] = true;
+    state.buildings['activity.construction.supply_racks'] = true;
+    state.buildings['activity.construction.stone_foundation'] = true;
+    state.buildings['activity.construction.forge_extension'] = true;
+    const focus = 'recipe.gear.magic.pine_focus';
+    const base = RECIPES.find((recipe) => recipe.id === focus)!.seconds;
+    expect(actionSeconds(state, focus)).toBeCloseTo(base * TOOL_TIME_FACTOR ** 2);
+    expect(dismantleRefund('activity.construction.oak_workshop')).toEqual([{ id: 'con.kit.oak_bench', qty: 1 }]);
+    expect(dismantleBuilding(state, 'activity.construction.oak_workshop')).toBe(true);
+    expect(state.bank['con.kit.oak_bench']).toBe(1);
+    expect(state.buildings['activity.construction.oak_workshop']).toBeUndefined();
+    expect(state.xp.Construction).toBe(500);
+    expect(state.coins).toBe(80);
+    expect(actionSeconds(state, focus)).toBeCloseTo(base * TOOL_TIME_FACTOR);
+
+    expect(dismantleRefund('activity.construction.supply_racks')).toEqual([{ id: 'con.kit.pine_frame', qty: 2 }]);
+    expect(dismantleBuilding(state, 'activity.construction.supply_racks')).toBe(true);
+    expect(state.bank['con.kit.pine_frame']).toBe(2);
+    expect(state.bank['mat.wire.bronze'] ?? 0).toBe(0);
+    expect(state.bank['con.mat.roof_tiles'] ?? 0).toBe(0);
+
+    state.bank['mat.wood.pine'] = 0;
+    expect(dismantleRefund('activity.construction.pine_work_area')).toEqual([]);
+    expect(dismantleBuilding(state, 'activity.construction.pine_work_area')).toBe(true);
+    expect(state.bank['mat.wood.pine'] ?? 0).toBe(0);
+    expect(actionSeconds(state, focus)).toBeCloseTo(base);
+
+    const cook = 'recipe.food.roast_hare';
+    const cookBase = RECIPES.find((recipe) => recipe.id === cook)!.seconds;
+    expect(actionSeconds(state, cook)).toBeCloseTo(cookBase * TOOL_TIME_FACTOR);
+    expect(dismantleBuilding(state, 'activity.construction.stone_foundation')).toBe(true);
+    expect(state.buildings['activity.construction.forge_extension']).toBe(true);
+    expect(actionSeconds(state, cook)).toBeCloseTo(cookBase);
+    const smith = 'recipe.mat.bar.bronze';
+    const smithBase = RECIPES.find((recipe) => recipe.id === smith)!.seconds;
+    expect(actionSeconds(state, smith)).toBeCloseTo(smithBase * TOOL_TIME_FACTOR);
+    expect(dismantleRefund('activity.construction.forge_extension')).toEqual([{ id: 'con.kit.hearth_block', qty: 1 }]);
+    expect(dismantleBuilding(state, 'activity.construction.forge_extension')).toBe(true);
+    expect(state.bank['con.kit.hearth_block']).toBe(1);
+    expect(actionSeconds(state, smith)).toBeCloseTo(smithBase);
+
+    expect(dismantleBuilding(state, 'activity.construction.practice_workshop_assembly')).toBe(false);
+    expect(dismantleBuilding(state, 'activity.construction.oak_workshop')).toBe(false);
+    state.buildings['activity.construction.oak_workshop'] = true;
+    state.activity = { kind: 'produce', recipeId: 'activity.construction.oak_workshop' };
+    expect(dismantleBuilding(state, 'activity.construction.oak_workshop')).toBe(false);
+    expect(state.buildings['activity.construction.oak_workshop']).toBe(true);
+
+    const shown = newGame(0);
+    shown.owned.push('Construction');
+    shown.xp.Construction = XP_TABLE[20];
+    shown.coins = 626;
+    shown.buildings['activity.construction.oak_workshop'] = true;
+    const html = mainHtml(shown, view('Construction'), 0);
+    const row = rowHtml(html, 'Build oak workshop');
+    expect(row).toContain('Dismantle');
+    expect(row).toContain('returns 1 Oak bench kit');
+    expect(row).toContain('Rebuild');
   });
 });
