@@ -302,7 +302,9 @@ app.addEventListener('click', (event) => {
   }
   if (target.dataset.enemy) view.selected = target.dataset.enemy;
   if (target.dataset.style && isCombatStyle(target.dataset.style as SkillId)) view.style = target.dataset.style as CombatStyle;
-  if (target.dataset.area === 'Meadow verge' || target.dataset.area === 'Woodland edge') view.area = target.dataset.area;
+  if (target.dataset.area === 'Meadow verge' || target.dataset.area === 'Woodland edge' || target.dataset.area === '???') {
+    view.area = target.dataset.area;
+  }
   if (target.dataset.fight) {
     const style = view.style && state.owned.includes(view.style) ? view.style : firstStyle();
     if (style) {

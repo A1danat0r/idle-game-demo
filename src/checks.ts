@@ -10,6 +10,7 @@ function fighter(attackLevel: number, enemyId: string, seed: number): Save {
   state.xp.Hitpoints = XP_TABLE[30];
   state.hp = playerMaxHp(30);
   state.enemyKills['meadow.beetle'] = 1;
+  if (enemyId.startsWith('wood.') && enemyId !== 'wood.fox') state.enemyKills['wood.poacher'] = 1;
   startCombat(state, enemyId, 'Attack');
   return state;
 }
@@ -20,12 +21,12 @@ export function hitRateReport(): string {
   const rows: [number, string, number][] = [
     [1, 'meadow.hare', 0.904],
     [1, 'wood.fox', 0.82],
-    [1, 'wood.jay', 0.796],
-    [1, 'wood.poacher', 0.772],
+    [1, 'wood.jay', 0.808],
+    [1, 'wood.poacher', 0.748],
     [11, 'meadow.hare', 1],
     [11, 'wood.fox', 0.94],
-    [11, 'wood.jay', 0.916],
-    [11, 'wood.poacher', 0.892],
+    [11, 'wood.jay', 0.928],
+    [11, 'wood.poacher', 0.868],
     [30, 'meadow.hare', 1],
     [30, 'wood.fox', 1],
     [30, 'wood.jay', 1],
@@ -66,7 +67,7 @@ export function samplePoacher(kills = 1000, seed = 7): string {
   const state = fighter(30, 'wood.poacher', seed);
   let guard = 0;
   while (state.stats.kills < kills && !state.paused && guard++ < kills + 5) {
-    simulate(state, 4 * 2400 + 3000);
+    simulate(state, 6 * 2400 + 3000);
   }
   const mean = state.stats.coinsFromKills / state.stats.kills;
   const loot = state.stats.lootValue / state.stats.kills;
@@ -124,6 +125,7 @@ function pauseKill(seed: number): number {
   state.bank['food.roast_minnows'] = 20;
   state.foodSlot = 'food.roast_minnows';
   state.enemyKills['meadow.beetle'] = 1;
+  state.enemyKills['wood.poacher'] = 1;
   startCombat(state, 'wood.poacher', 'Strength');
   let guard = 0;
   while (!state.paused && guard++ < 80) stepCompletion(state);
@@ -138,6 +140,7 @@ function shrimpFood(seed: number): number {
   state.bank['food.cooked_shrimp'] = 40;
   state.foodSlot = 'food.cooked_shrimp';
   state.enemyKills['meadow.beetle'] = 1;
+  state.enemyKills['wood.poacher'] = 1;
   startCombat(state, 'wood.poacher', 'Strength');
   const before = state.stats.foodEaten;
   let guard = 0;

@@ -135,7 +135,7 @@ describe('check 19 mastery', () => {
     state.mastery['mat.wood.pine'] = 100;
     state.enemyMastery['meadow.beetle'] = 204;
     const loaded = deserialize(serialize(state));
-    expect(loaded?.saveFormat).toBe(3);
+    expect(loaded?.saveFormat).toBe(4);
     expect(loaded?.mastery).toEqual({ 'mat.wood.pine': 100 });
     expect(loaded?.enemyMastery).toEqual({ 'meadow.beetle': 204 });
 
@@ -185,7 +185,7 @@ describe('check 19 mastery', () => {
     });
     const loaded = deserialize(raw);
     expect(loaded).not.toBeNull();
-    expect(loaded!.saveFormat).toBe(3);
+    expect(loaded!.saveFormat).toBe(4);
     expect(loaded!.mastery).toEqual({});
     expect(loaded!.enemyMastery).toEqual({});
     expect(loaded!.xp.Woodcutting).toBe(80);
