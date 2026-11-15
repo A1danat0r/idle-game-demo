@@ -26,6 +26,7 @@ import {
   gearStatText,
   isCombatStyle,
   isFood,
+  countedName,
   itemName,
   lockLine,
   type IconName,
@@ -57,6 +58,7 @@ import {
   activityTrack,
   combatNextLine,
   combatSheetLines,
+  masteryHeading,
   masterySheetLines,
   trackChoices,
   trackSeconds,
@@ -281,6 +283,7 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     enemyMastery: state.enemyMastery,
     shop: state.shop,
     purchaseCount: state.purchaseCount,
+    plot: state.plot ? `${state.plot.recipeId}:${state.plot.ready ? 1 : 0}` : '',
   });
 }
 
@@ -547,7 +550,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const refundText = !standing
     ? ''
     : refund.length
-      ? ` · returns ${refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ')}`
+      ? ` · returns ${refund.map((part) => countedName(part.qty, part.id)).join(', ')}`
       : ' · returns no kits';
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
@@ -674,13 +677,14 @@ export function milestoneSheetHtml(state: Save, view: View): string {
   const tools = usedBy(track.skill)
     .map((row) => `<div class="row"><div class="grow"><b>${esc(row.title)}</b><small>${esc(row.skill)} ${row.level}</small></div></div>`)
     .join('');
+  const usedHeading = tools ? '<h3>Used by</h3>' : '';
   const perks = masterySheetLines(state, picked)
     .map((row) => `<div class="row"><div class="grow"><b>${esc(row.label)}</b><small>${esc(row.detail)}</small></div></div>`)
     .join('');
   const picker = trackChoices(track.skill)
     .map((choice) => `<button type="button" class="tag ${choice.id === picked ? 'on' : ''}" data-milestone-track="${choice.id}">${esc(choice.title)}</button>`)
     .join('');
-  return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(track.skill)}</h2><div class="list">${groups}<h3>Used by</h3>${tools}${perks}<div class="chips">${picker}</div></div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
+  return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(track.skill)}</h2><div class="list">${groups}${usedHeading}${tools}<h3>${esc(masteryHeading(picked))}</h3>${perks}<div class="chips">${picker}</div></div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
 }
 
 function inventoryHtml(state: Save, view: View, now: number): string {
@@ -728,8 +732,18 @@ function fightButton(enemyId: string | null, enabled: boolean): string {
   return `<button type="button" class="tag btn"${target}${disabled}>Fight</button>`;
 }
 
+function emptyThrownNote(itemId: string): string | null {
+  if (itemId.includes('javelin')) return 'Out of javelins.';
+  if (itemId.includes('knife')) return 'Out of throwing knives.';
+  return null;
+}
+
 function fightControl(state: Save, enemyId: string, style: CombatStyle | null): string {
-  if (!weaponReady(state)) return '<p class="note">Equip a weapon first.</p>';
+  if (!weaponReady(state)) {
+    const worn = state.equipped.weapon;
+    const note = worn ? emptyThrownNote(worn) : null;
+    return `<p class="note">${esc(note ?? 'Equip a weapon first.')}</p>`;
+  }
   const gate = lockLine(state.enemyKills, enemyId);
   const worn = state.equipped.weapon ?? '';
   const styleGate = style && !weaponFitsStyle(worn, style) ? styleNeed(style) : null;

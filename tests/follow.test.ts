@@ -8,6 +8,7 @@ import {
   XP_TABLE,
   actionTitle,
   isFood,
+  countedName,
   itemName,
   nodeCost,
 } from '../src/content';
@@ -24,7 +25,7 @@ import {
   startProduce,
   stepCompletion,
 } from '../src/engine';
-import { mainHtml, type View } from '../src/ui';
+import { mainHtml, renderKey, type View } from '../src/ui';
 
 function view(skill: View['skill']): View {
   return {
@@ -111,10 +112,21 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     state.xp.Farming = 0;
     state.bank['mat.seed.flax'] = 1;
     expect(startProduce(state, 'recipe.mat.fibre.flax')).toBe(true);
-    const planted = mainHtml(state, view('Farming'), 0);
+    const screen = view('Farming');
+    const planted = mainHtml(state, screen, 0);
     expect(planted).toContain('data-cancel-plot');
+    expect(planted).toContain('Growing');
     expect(planted).toContain('Cancelling returns nothing');
+    const growing = renderKey(state, screen);
+    const left = state.plot?.remainingMs ?? 0;
+    if (state.plot) state.plot.remainingMs = Math.max(0, left - 400);
+    expect(renderKey(state, screen)).toBe(growing);
+    if (state.plot) state.plot.remainingMs = left;
     cancelPlot(state);
+    expect(renderKey(state, screen)).not.toBe(growing);
+    const cleared = mainHtml(state, screen, 0);
+    expect(cleared).not.toContain('data-cancel-plot');
+    expect(cleared).not.toContain('Growing');
     expect(state.plot).toBeNull();
     expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
     expect(state.bank['mat.fibre.flax'] ?? 0).toBe(0);
@@ -275,14 +287,18 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
 
     const shown = newGame(0);
     shown.owned.push('Construction');
-    shown.xp.Construction = XP_TABLE[20];
+    shown.xp.Construction = XP_TABLE[30];
     shown.coins = 626;
     shown.buildings['activity.construction.oak_workshop'] = true;
+    shown.buildings['activity.construction.supply_racks'] = true;
     const html = mainHtml(shown, view('Construction'), 0);
     const row = rowHtml(html, 'Build oak workshop');
     expect(row).toContain('Dismantle');
     expect(row).toContain('returns 1 Oak bench kit');
     expect(row).toContain('Rebuild');
+    expect(rowHtml(html, 'Build supply racks')).toContain('returns 2 Pine frame kits');
+    expect(countedName(2, 'con.kit.pine_frame')).toBe('2 Pine frame kits');
+    expect(`Returned ${countedName(2, 'con.kit.pine_frame')}.`).toBe('Returned 2 Pine frame kits.');
   });
 
   it('charges the rebuild fee and no XP after a dismantle', () => {
