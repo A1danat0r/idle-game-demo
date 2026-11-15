@@ -1,24 +1,29 @@
+import { CAP40_ITEMS, CAP40_NODES, CAP40_RECIPES } from './cap40';
+import { T310_SELLS } from './sells';
 import { SLICE_ITEMS, SLICE_RECIPES } from './slice';
 
 /**
  * Paid node cost. Lv-1 nodes are free. The level gate is unchanged:
  * a node can be bought only once its level is reached.
- * round(3000 × (level/20)²).
+ * round(3000 × L × L / 400). The exact half at L=33 is 8,167.5, which rounds to 8,168.
+ * Evaluating 3000 × (L/20)² in floating point first rounds that case to 8,167.
  */
 export function nodeCost(level: number): number {
   if (level <= 1) return 0;
-  return Math.round(3000 * (level / 20) ** 2);
+  return Math.round((3000 * level * level) / 400);
 }
 
 /** Cumulative XP required to be each level. Level 1 is 0. Index 0 is unused. */
 export const XP_TABLE: readonly number[] = [
   0, 0, 1138, 2358, 3665, 5065, 6567, 8175, 9899, 11747, 13726, 15848, 18122, 20559, 23170, 25968,
   28967, 32181, 35626, 39317, 43272, 47511, 52054, 56922, 62139, 67730, 73722, 80143, 87024, 94398,
-  102301,
+  102301, 110770, 119846, 129572, 139996, 151166, 163136, 175965, 189713, 204446,
+  220234,
 ];
 
-export const XP_CAP = XP_TABLE[30];
-export const LEVEL_CAP = 30;
+/** E1 cumulative XP for level 40. Past this, the action still produces items and coins. */
+export const XP_CAP = XP_TABLE[40];
+export const LEVEL_CAP = 40;
 
 /**
  * Skill purchase k (1-based) is index k-1.
@@ -89,6 +94,26 @@ export function weaponFitsStyle(itemId: string, style: CombatStyle): boolean {
   return itemId.startsWith('gear.melee.');
 }
 
+/** Demo arrows a bow may draw, highest tier first. Bolts and other arrow items are not in this list. */
+export const DEMO_ARROW_TIERS = ['ammo.arrow.steel', 'ammo.arrow.iron', 'ammo.arrow.bronze'] as const;
+
+export function isBow(itemId: string): boolean {
+  return itemId.includes('bow');
+}
+
+/** Bows and the steel spear. Equipping one clears the shield, and a shield clears them. */
+export function isTwoHanded(itemId: string): boolean {
+  return isBow(itemId) || itemId === 'gear.melee.steel_spear';
+}
+
+/** The arrow a bow will use next, or null when none of the demo tiers are banked. */
+export function arrowToUse(bank: Record<string, number>): string | null {
+  for (const id of DEMO_ARROW_TIERS) {
+    if ((bank[id] ?? 0) > 0) return id;
+  }
+  return null;
+}
+
 /** Buying any fight style grants Hitpoints. Ranged and Magic are fight styles even before their weapons are in. */
 export function grantsHitpoints(skill: SkillId): boolean {
   return skill === 'Attack' || skill === 'Strength' || skill === 'Defence' || skill === 'Ranged' || skill === 'Magic';
@@ -122,6 +147,8 @@ export type IconName =
   | 'hide'
   | 'food'
   | 'sword'
+  | 'bow'
+  | 'staff'
   | 'shield'
   | 'body'
   | 'bar'
@@ -159,7 +186,7 @@ export interface NodeDef {
 
 export interface RecipeDef {
   id: string;
-  skill: 'Cooking' | 'Smithing' | 'Crafting' | 'Alchemy' | 'Construction' | 'Enchanting' | 'Farming' | 'Exploration';
+  skill: 'Woodcutting' | 'Cooking' | 'Smithing' | 'Crafting' | 'Alchemy' | 'Construction' | 'Enchanting' | 'Farming' | 'Exploration';
   level: number;
   seconds: number;
   xp: number;
@@ -171,6 +198,12 @@ export interface RecipeDef {
   oneTime?: boolean;
   /** Coins charged to rebuild a one-time structure. No XP on a rebuild. */
   rebuildFee?: number;
+  /** Visible row whose action stays disabled. The copy names the missing area or input. */
+  locked?: string;
+  /** Catalogue recipe with no shipped timer. Preview only: no time, no XP, no Start. */
+  comingLater?: boolean;
+  /** One-time building that must already be complete. */
+  requiresBuilding?: string;
 }
 
 export interface DropDef {
@@ -240,6 +273,14 @@ export const NODES: NodeDef[] = [
   node('mat.seed.wheat', 'Foraging', 30, 4.1, 95),
   node('mat.gem.weathered_agate', 'Exploration', 1, 3.4, 27),
   node('mat.relic.weathered_slate', 'Exploration', 10, 3.8, 30),
+  ...CAP40_NODES.map((row): NodeDef => ({
+    id: row.id,
+    skill: row.skill as NodeDef['skill'],
+    level: row.level,
+    seconds: row.seconds,
+    xp: row.xp,
+    cost: row.cost,
+  })),
 ];
 
 export const NODE_BY_ID: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.id, n]));
@@ -267,9 +308,31 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.food.roast_perch', 'Cooking', 15, 2.7, 43, [{ id: 'mat.fish.perch', qty: 1 }], [{ id: 'food.roast_perch', qty: 1 }]),
   recipe('recipe.food.tortoise_herb_soup', 'Cooking', 18, 2.9, 46, [{ id: 'mat.meat.tortoise', qty: 1 }, { id: 'mat.herb.meadow', qty: 1 }], [{ id: 'food.tortoise_herb_soup', qty: 2 }]),
   recipe('recipe.mat.farm.fish_meal', 'Cooking', 20, 3.3, 77, [{ id: 'mat.fish.minnow', qty: 3 }, { id: 'mat.fuel.charcoal', qty: 1 }], [{ id: 'mat.farm.fish_meal', qty: 2 }]),
+  {
+    id: 'recipe.food.trout_mushroom_meal',
+    skill: 'Cooking',
+    level: 20,
+    seconds: 0,
+    xp: 0,
+    inputs: [{ id: 'mat.fish.trout', qty: 1 }, { id: 'mat.fungi.mushroom', qty: 1 }],
+    outputs: [{ id: 'food.trout_mushroom_meal', qty: 1 }],
+    comingLater: true,
+    locked: 'Coming later',
+  },
   recipe('recipe.food.roast_trout', 'Cooking', 22, 2.9, 67, [{ id: 'mat.fish.trout', qty: 1 }], [{ id: 'food.roast_trout', qty: 1 }]),
   recipe('recipe.food.baked_carp', 'Cooking', 25, 3.0, 70, [{ id: 'mat.fish.carp', qty: 1 }], [{ id: 'food.baked_carp', qty: 1 }]),
   recipe('recipe.mat.food.fish_stock', 'Cooking', 26, 3.2, 74, [{ id: 'mat.fish.perch', qty: 2 }], [{ id: 'mat.food.fish_stock', qty: 2 }]),
+  {
+    id: 'recipe.food.wheat_bread',
+    skill: 'Cooking',
+    level: 30,
+    seconds: 0,
+    xp: 0,
+    inputs: [{ id: 'mat.grain.wheat', qty: 2 }],
+    outputs: [{ id: 'food.wheat_bread', qty: 1 }],
+    comingLater: true,
+    locked: 'Coming later',
+  },
   recipe('recipe.gear.armour.bronze_body', 'Smithing', 1, 3.7, 30, [{ id: 'mat.bar.bronze', qty: 3 }], [{ id: 'gear.armour.bronze_body', qty: 1 }]),
   recipe('recipe.gear.melee.bronze_sword', 'Smithing', 1, 3.6, 29, [{ id: 'mat.bar.bronze', qty: 2 }], [{ id: 'gear.melee.bronze_sword', qty: 1 }]),
   recipe('recipe.gear.shield.bronze', 'Smithing', 1, 3.8, 30, [{ id: 'mat.bar.bronze', qty: 2 }, { id: 'mat.wood.pine', qty: 1 }], [{ id: 'gear.shield.bronze', qty: 1 }]),
@@ -308,6 +371,20 @@ export const RECIPES: RecipeDef[] = [
     outputs: row.outputs,
     oneTime: row.oneTime,
     rebuildFee: row.rebuildFee,
+    locked: row.id === 'activity.exploration.fitting_appraisal' ? 'Needs trout-and-mushroom meal (coming later)' : undefined,
+  })),
+  ...CAP40_RECIPES.map((row): RecipeDef => ({
+    id: row.id,
+    skill: row.skill as RecipeDef['skill'],
+    level: row.level,
+    seconds: row.seconds,
+    xp: row.xp,
+    inputs: row.inputs,
+    outputs: row.outputs,
+    oneTime: row.oneTime,
+    rebuildFee: row.rebuildFee,
+    locked: row.id === 'recipe.food.salmon_wheat_ration' ? 'Needs wheat bread (coming later)' : row.locked,
+    requiresBuilding: row.requiresBuilding,
   })),
 ];
 
@@ -330,6 +407,7 @@ export const BUILDING_STEPS: Record<string, SkillId[]> = {
   'activity.construction.stone_foundation': ['Cooking'],
   'activity.construction.oak_workshop': ['Crafting'],
   'activity.construction.supply_racks': ['Alchemy'],
+  'activity.construction.forge_extension': ['Smithing'],
 };
 
 /** Catalogue tool factor, approved at t252. Each tier multiplies action time. */
@@ -710,9 +788,50 @@ function addItems(): void {
     { id: 'ammo.thrown.iron_javelin', name: 'Iron javelins', sell: 8 },
   ];
   for (const row of ammo) item({ ...row, kind: 'ammo', icon: 'ammo' });
-  for (const row of SLICE_ITEMS) {
+  for (const row of [...SLICE_ITEMS, ...CAP40_ITEMS]) {
     if (ITEMS[row.id]) continue;
     item({ id: row.id, name: row.name, sell: row.sell, icon: row.icon as IconName, kind: row.kind as ItemKind });
+  }
+  for (const node of CAP40_NODES) {
+    const listed = CAP40_ITEMS.find((row) => row.id === node.id);
+    if (listed && ITEMS[node.id]) ITEMS[node.id].sell = listed.sell;
+  }
+  for (const [id, sell] of Object.entries(T310_SELLS)) {
+    if (ITEMS[id]) ITEMS[id].sell = sell;
+  }
+  // 10 × (5 + floor(recipe level / 2)), per item. The two coming-later foods use the same formula.
+  const foodHeals: Record<string, number> = {
+    'food.perch_wheat_cakes': 200,
+    'food.carp_garlic_bake': 210,
+    'food.garlic_mushroom_skillet': 220,
+    'food.boiled_crayfish': 220,
+    'food.root_vegetable_pottage': 220,
+    'food.plum_tart': 230,
+    'food.crayfish_turnip_pot': 240,
+    'food.mutton_turnip_hotpot': 250,
+    'food.salmon_wheat_ration': 250,
+    'food.wheat_bread': 200,
+    'food.trout_mushroom_meal': 150,
+  };
+  for (const [id, heal] of Object.entries(foodHeals)) {
+    if (ITEMS[id]) ITEMS[id].heal = heal;
+  }
+  const gearStats: Record<string, { acc: number; pow: number; grd: number }> = {
+    'gear.melee.steel_sword': { acc: 10, pow: 10, grd: 0 },
+    'gear.melee.steel_spear': { acc: 11, pow: 11, grd: 0 },
+    'gear.armour.steel_body': { acc: 0, pow: 0, grd: 9 },
+    'gear.shield.willow_buckler': { acc: 0, pow: 0, grd: 3 },
+    'gear.armour.carapace_cuirass': { acc: 0, pow: 0, grd: 7 },
+    'gear.armour.boarhide_brigandine': { acc: 0, pow: 0, grd: 6 },
+    'gear.armour.hemp_robes': { acc: 0, pow: 0, grd: 2 },
+    'gear.magic.ash_focus': { acc: 8, pow: 8, grd: 0 },
+    'gear.ranged.ash_bow': { acc: 8, pow: 8, grd: 0 },
+    'gear.shield.serpent_targe': { acc: 0, pow: 0, grd: 5 },
+    'gear.armour.serpent_jerkin': { acc: 0, pow: 0, grd: 6 },
+    'gear.melee.horn_hafted_mace': { acc: 0, pow: 10, grd: 0 },
+  };
+  for (const [id, stats] of Object.entries(gearStats)) {
+    if (ITEMS[id]) Object.assign(ITEMS[id], stats);
   }
 }
 
@@ -724,6 +843,41 @@ export function isFood(id: string): boolean {
 
 export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
+}
+
+/**
+ * Display names that are not the output item.
+ * Exploration surveys keep these labels; the gather nodes keep the item names.
+ * Alternate routes are named so two rows in one skill are not the same title.
+ */
+const ACTION_NAMES: Record<string, string> = {
+  'activity.construction.pine_work_area': 'Build pine work area',
+  'activity.construction.stone_foundation': 'Build stone foundation',
+  'activity.construction.oak_workshop': 'Build oak workshop',
+  'activity.construction.practice_workshop_assembly': 'Practice workshop assembly',
+  'activity.construction.supply_racks': 'Build supply racks',
+  'activity.construction.forge_extension': 'Build steel forge extension',
+  'activity.exploration.stream_survey': 'Stream survey',
+  'activity.exploration.riverbank_branch_agate': 'Riverbank branch — agate',
+  'activity.exploration.shallow_ruin': 'Shallow ruin',
+  'activity.exploration.riverbank_branch_slate': 'Riverbank branch — slate',
+  'activity.exploration.fitting_appraisal': 'Fitting appraisal',
+  'activity.exploration.bridge_approach_survey': 'Bridge approach survey',
+  'recipe.mat.bar.steel.slag_flux_route': 'Steel bar (slag flux)',
+  'recipe.ammo.arrow.steel.ash_route': 'Steel arrows (ash)',
+  'recipe.mat.cloth.waxed_linen.beeswax_route': 'Waxed linen (beeswax)',
+  'recipe.tool.fishing.reed_eel_trap.willow_frame_route': 'Reed eel trap (willow frame)',
+  'recipe.supply.paste.shellguard.beeswax_route': 'Shellguard paste (beeswax)',
+  'recipe.mat.tanning.bark_liquor.alum_route': 'Bark tanning liquor (alum)',
+};
+
+/** The name shown on a recipe row and in the activity bar. */
+export function actionTitle(recipe: { id: string; outputs: { id: string }[] }): string {
+  const named = ACTION_NAMES[recipe.id];
+  if (named) return named;
+  const made = recipe.outputs[0];
+  if (made) return itemName(made.id);
+  return recipe.id;
 }
 
 export type EquipSlot = 'weapon' | 'body' | 'shield';
@@ -747,6 +901,12 @@ export const EQUIP_SLOTS: { id: EquipSlot; label: string }[] = [
 ];
 
 /** Weapons, body armour, and shields are the only equippable demo items. Tools are never equipped. */
+/** True when every recipe that makes this item is locked, so it cannot be worn yet. */
+export function gearLocked(itemId: string): boolean {
+  const makers = RECIPES.filter((recipe) => recipe.outputs.some((output) => output.id === itemId));
+  return makers.length > 0 && makers.every((recipe) => !!recipe.locked);
+}
+
 export function equipSlotFor(itemId: string): EquipSlot | null {
   if (itemId.startsWith('gear.melee.')) return 'weapon';
   if (itemId.startsWith('gear.ranged.')) return 'weapon';

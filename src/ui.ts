@@ -1,4 +1,8 @@
 import {
+  actionTitle,
+  arrowToUse,
+  gearLocked,
+  isBow,
   AREAS,
   TEASER_AREA,
   TEASER_COPY,
@@ -16,6 +20,7 @@ import {
   SKILL_PRICES,
   SHOP_ITEMS,
   SHOP_PRICE,
+  LEVEL_CAP,
   XP_TABLE,
   equippedGear,
   gearStatText,
@@ -35,6 +40,7 @@ import {
 import {
   actionSeconds,
   activityLabel,
+  dismantleRefund,
   formulaLevel,
   maxHp,
   nodeUsable,
@@ -108,7 +114,7 @@ function activityMastery(state: Save): { pct: number } | null {
 
 function xpView(xp: number): { level: number; pct: number; text: string } {
   const level = levelForXp(xp);
-  if (level >= 30) return { level, pct: 100, text: `${fmtXp(xp)} XP · cap` };
+  if (level >= LEVEL_CAP) return { level, pct: 100, text: `${fmtXp(xp)} XP · cap` };
   const prev = XP_TABLE[level];
   const next = XP_TABLE[level + 1];
   return { level, pct: ((xp - prev) / (next - prev)) * 100, text: `${fmtXp(xp)} / ${fmt(next)} XP` };
@@ -179,7 +185,11 @@ const SKILL_ICON: Record<SkillId, IconName> = {
 export function activityIcon(state: Save): IconName {
   const activity = state.activity;
   if (!activity) return 'idle';
-  if (activity.kind === 'combat') return 'sword';
+  if (activity.kind === 'combat') {
+    if (activity.style === 'Ranged') return 'bow';
+    if (activity.style === 'Magic') return 'staff';
+    return 'sword';
+  }
   if (activity.kind === 'gather') {
     return ITEMS[activity.nodeId]?.icon ?? SKILL_ICON[NODE_BY_ID[activity.nodeId]?.skill ?? 'Woodcutting'];
   }
@@ -438,7 +448,7 @@ function skillHtml(state: Save, skill: SkillId | null): string {
     ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
   ].join('');
   const plot = skill === 'Farming' && state.plot
-    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))}</p>`
+    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
     : '';
   return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
     ${scene}
@@ -491,20 +501,42 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const inputs = recipe.inputs.map((input) => `${input.qty} ${itemName(input.id)}`).join(', ');
   const output = recipe.outputs[0];
   const missing = recipe.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
-  const need = missing ? needLine(missing.id) : null;
+  const foundation = recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]
+    ? 'Needs stone foundation (Construction)'
+    : null;
+  const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
-  const right = !reached
-    ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
-    : active
-      ? `<span class="tag on">Active</span>`
-      : need
-        ? `<button type="button" class="tag btn" disabled>Start</button>`
-        : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
-  const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+  const standing = !!recipe.oneTime && !!state.buildings[recipe.id];
+  const known = standing || (!!recipe.oneTime && !!state.buildingsEver?.[recipe.id]);
+  const fee = recipe.rebuildFee ?? 0;
+  const canPay = state.coins + 1e-9 >= fee;
+  const later = !!recipe.comingLater;
+  const right = later
+    ? `<span class="tag">${lock}</span>`
+    : !reached
+      ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
+      : active
+        ? `<span class="tag on">Active</span>`
+        : known
+          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button>${standing ? `<button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button>` : ''}</div>`
+          : need
+            ? `<button type="button" class="tag btn" disabled>Start</button>`
+            : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
+  const xp = fmtAmount(known ? 0 : recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
   const sell = output ? fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id)) : '0';
-  const title = output ? itemName(output.id) : recipe.id.replace(/^activity\./, '').replaceAll('_', ' ');
+  const heal = output ? ITEMS[output.id]?.heal : undefined;
+  const title = actionTitle(recipe);
   const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${need ? ` · ${esc(need)}` : ''}</small></div>${right}</div>`;
+  const refund = standing ? dismantleRefund(recipe.id) : [];
+  const refundText = !standing
+    ? ''
+    : refund.length
+      ? ` · returns ${refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ')}`
+      : ' · returns no kits';
+  const detail = later
+    ? `Coming later${heal ? ` · heals ${heal}` : ''}`
+    : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${refundText}${need ? ` · ${esc(need)}` : ''}`;
+  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${standing ? ' · built' : recipe.oneTime && !known ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 
 function needLine(itemId: string): string {
@@ -560,7 +592,7 @@ function combatHtml(state: Save, view: View): string {
   const coins = selected.coins ? `<div class="cell t-coin">${icon('coin', 28)}<small>Coins</small><span class="qty">${selected.coins.min}–${selected.coins.max}</span></div>` : '';
   const foods = Object.keys(state.bank).filter((id) => isFood(id) && (state.bank[id] ?? 0) > 0);
   const food = state.foodSlot && (state.bank[state.foodSlot] ?? 0) > 0
-    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]} · heal ${ITEMS[state.foodSlot].heal}</small></div></div>`
+    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
     : `<div class="slot"><div><b>No food slotted</b><small>Pick a cooked food below</small></div></div>`;
   const foodList = foods
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
@@ -575,6 +607,7 @@ function combatHtml(state: Save, view: View): string {
           <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
         </div>
         ${fightControl(state, selected.id, style)}
+        ${arrowLine(state)}
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}</div>
     </div>
@@ -582,6 +615,14 @@ function combatHtml(state: Save, view: View): string {
       <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
       <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>
     </div>`;
+}
+
+function arrowLine(state: Save): string {
+  const weapon = state.equipped.weapon;
+  if (!weapon || !isBow(weapon)) return '';
+  const arrow = arrowToUse(state.bank);
+  const text = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
+  return `<p class="note" data-arrows>${esc(text)}</p>`;
 }
 
 function inventoryHtml(state: Save, view: View, now: number): string {
@@ -604,7 +645,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;
   const sell = selected
-    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}${gearStatText(selected.id) ? ` · ${esc(gearStatText(selected.id))}` : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
+    ? `<div class="panel detail">${icon(selected.icon, 36)}<div class="grow"><b>${esc(selected.name)}</b><small>Sells for ${selected.sell} each, instantly${selected.kind === 'tool' ? ' · owning it sets the tool tier' : ''}${selected.heal != null ? ` · heals ${selected.heal}` : ''}${gearStatText(selected.id) ? ` · ${esc(gearStatText(selected.id))}` : ''}</small></div><button type="button" class="tag btn sell" data-sell="1">Sell 1</button><button type="button" class="tag btn sell" data-sell="all">Sell all</button></div>`
     : '';
   const shop = `<div class="panel"><h3>Shop</h3>${SHOP_ITEMS.map((id) => {
     const left = shopStock(state, id, now);
@@ -657,10 +698,12 @@ function worn(state: Save, slot: 'weapon' | 'body' | 'shield'): string | null {
 }
 
 function slotButton(state: Save, slot: 'weapon' | 'body' | 'shield', label: string): string {
-  const id = worn(state, slot);
+  const equippedThrown = slot === 'weapon' && state.equipped.weapon?.startsWith('ammo.thrown.') ? state.equipped.weapon : null;
+  const id = equippedThrown ?? worn(state, slot);
   const item = id ? ITEMS[id] : null;
   const stats = id ? gearStatText(id) : '';
-  return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
+  const stack = equippedThrown ? ` ×${state.bank[equippedThrown] ?? 0}` : '';
+  return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) + stack : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
 }
 
 function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string): string {
@@ -669,7 +712,11 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
   return ids
     .map((id) => {
       const on = state.equipped[slot] === id;
-      return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
+      const stack = id.startsWith('ammo.thrown.') ? ` ×${state.bank[id] ?? 0}` : '';
+      if (gearLocked(id)) {
+        return `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · Locked</small></div></div>`;
+      }
+      return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
     })
     .join('');
 }
@@ -766,7 +813,7 @@ export function devHtml(): string {
     <button type="button" class="tag btn" data-ff-apply>Advance</button>
     <label>Set coins <input data-set-coins type="number" min="0" step="1" value="0"></label>
     <button type="button" class="tag btn" data-apply-coins>Apply coins</button>
-    <label>Skill level <input data-set-skill value="Fishing"> <input data-set-level type="number" min="1" max="30" value="10"></label>
+    <label>Skill level <input data-set-skill value="Fishing"> <input data-set-level type="number" min="1" max="40" value="10"></label>
     <button type="button" class="tag btn" data-apply-level>Apply level</button>
     <label>Give item <input data-give-id value="food.roast_minnows"> <input data-give-qty type="number" min="1" value="20"></label>
     <button type="button" class="tag btn" data-apply-give>Give</button>

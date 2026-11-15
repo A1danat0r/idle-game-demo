@@ -9,6 +9,8 @@ const shapes: Record<IconName, string> = {
   berry: `<circle cx="14" cy="22" r="6" fill="#b03a6a"/><circle cx="25" cy="22" r="6" fill="#8a2f5a"/><circle cx="20" cy="13" r="6" fill="#c2457a"/>`,
   herb: `<path d="M20 34 L20 14" stroke="#4c8a3c" stroke-width="2"/><ellipse cx="14" cy="16" rx="6" ry="3" fill="#6ab04c" transform="rotate(-30 14 16)"/><ellipse cx="26" cy="12" rx="6" ry="3" fill="#6ab04c" transform="rotate(30 26 12)"/><ellipse cx="14" cy="26" rx="6" ry="3" fill="#6ab04c" transform="rotate(-30 14 26)"/>`,
   sword: `<path d="M28 6 L32 8 L16 26 L13 24 Z" fill="#c9ced6"/><path d="M10 22 L18 30" stroke="${G}" stroke-width="3"/><path d="M13 27 L8 32" stroke="#7a5230" stroke-width="3"/>`,
+  bow: `<path d="M12 6 Q4 20 12 34" fill="none" stroke="#c4a36a" stroke-width="3"/><path d="M12 8 L32 20 L12 32" fill="none" stroke="${G}" stroke-width="1.5"/><path d="M28 18 L34 20 L28 22" fill="#c9ced6"/>`,
+  staff: `<path d="M20 8 L20 34" stroke="#7a5230" stroke-width="3"/><circle cx="20" cy="8" r="4" fill="#6a4cc8"/><path d="M14 34 H26" stroke="#7a5230" stroke-width="3"/>`,
   shield: `<path d="M20 5 L33 10 Q33 26 20 35 Q7 26 7 10 Z" fill="#b07a3a" stroke="${G}" stroke-width="2"/><path d="M20 10 V30 M12 16 H28" stroke="${D}" stroke-width="2"/>`,
   body: `<path d="M12 8 L28 8 L34 16 L29 18 L29 34 L11 34 L11 18 L6 16 Z" fill="#9a7048"/>`,
   food: `<ellipse cx="20" cy="26" rx="14" ry="6" fill="#d9d2c0"/><ellipse cx="20" cy="22" rx="9" ry="6" fill="#b5652e"/>`,

@@ -70,8 +70,8 @@ describe('profile stats', () => {
     state.stats.kills = 99;
     state.enemyKills['meadow.hare'] = 12;
     state.enemyKills['meadow.rat'] = 2;
-    state.enemyMastery['meadow.hare'] = masteryThreshold(30);
-    state.mastery['mat.wood.pine'] = masteryThreshold(30);
+    state.enemyMastery['meadow.hare'] = masteryThreshold(40);
+    state.mastery['mat.wood.pine'] = masteryThreshold(40);
     state.mastery['recipe.mat.bar.bronze'] = masteryThreshold(30);
     const stats = deriveProfileStats(state);
     expect(stats.totalLevel).toBe(1 + 2);
@@ -171,12 +171,12 @@ describe('account reset', () => {
 });
 
 describe('profile rules', () => {
-  it('caps each displayed skill level at 30 and includes Hitpoints', () => {
+  it('caps each displayed skill level at 40 and includes Hitpoints', () => {
     const state = newGame(0);
     state.xp.Woodcutting = XP_CAP + 50_000;
     state.xp.Hitpoints = XP_TABLE[10];
     const stats = deriveProfileStats(state);
-    expect(stats.totalLevel).toBe(30 + 10);
+    expect(stats.totalLevel).toBe(40 + 10);
   });
 
   it('counts kills from enemyKills when the stats log disagrees', () => {
@@ -232,7 +232,7 @@ describe('profile rules', () => {
     state.enemyKills['meadow.rat'] = 12;
     state.enemyKills['meadow.ram'] = 12;
     state.enemyKills['meadow.moss'] = 12;
-    state.enemyMastery['meadow.beetle'] = masteryThreshold(30);
+    state.enemyMastery['meadow.beetle'] = masteryThreshold(40);
     startCombat(state, 'meadow.beetle', 'Attack');
     const before = state.coins;
     const step = stepCompletion(state);

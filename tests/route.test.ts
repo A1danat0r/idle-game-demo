@@ -56,22 +56,22 @@ describe('reference route', () => {
     expect(result.state.equipped.weapon).toBe('gear.melee.iron_spear');
     expect(result.state.equipped.body).toBeNull();
     expect(result.state.equipped.shield).toBeNull();
-    expect(result.levels.Woodcutting).toBe(30);
+    expect(result.levels.Woodcutting).toBe(40);
+    expect(result.levels.Mining).toBe(37);
     expect(result.levels.Fishing).toBe(30);
     expect(result.levels.Cooking).toBe(30);
     expect(result.levels.Attack).toBe(30);
     expect(result.levels.Strength).toBe(30);
     expect(result.levels.Defence).toBe(30);
-    expect(result.levels.Mining).toBe(30);
     expect(result.levels.Smithing).toBe(30);
-    expect(result.elapsedHours).toBe(20.45);
+    expect(result.elapsedHours).toBe(20.42);
     // Seed-1 play credits bone EV on the 36 climb kills (+9). Check 9 stays on the
     // pre-bone sheet total 55,637; the with-bones sheet total is 55,646.
-    expect(Math.round(result.earned)).toBe(55664);
+    expect(Math.round(result.earned)).toBe(55213);
     expect(result.levels.Hitpoints).toBe(23);
     expect(result.kills).toBe(2559);
-    expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
-    expect(masteryLevel(result.state.enemyMastery['meadow.beetle'] ?? 0)).toBe(30);
+    expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(40);
+    expect(masteryLevel(result.state.enemyMastery['meadow.beetle'] ?? 0)).toBe(40);
     expect(result.nodes.map((node) => node.id).sort()).toEqual(
       ['mat.fish.trout', 'mat.ore.iron', 'mat.wood.oak'].sort(),
     );
@@ -88,7 +88,7 @@ describe('reference route', () => {
     expect(result.levels.Hitpoints).toBe(23);
     expect(result.elapsedHours).toBe(18.76);
     // Same +9 bone EV. Pre-bone sheet 50,995; with-bones sheet 51,004.
-    expect(Math.round(result.earned)).toBe(51023);
+    expect(Math.round(result.earned)).toBe(50551);
     const needed =
       result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
       result.nodes.length * 3000;

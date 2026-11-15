@@ -220,13 +220,13 @@ describe('check 24 number formatting', () => {
 });
 
 describe('check 25 loot bonus', () => {
-  it('starts the beetle coin bonus on the 620th kill', () => {
+  it('starts the beetle coin bonus on the 1119th kill', () => {
     const state = newGame(0, 11);
     state.owned.push('Strength', 'Attack', 'Hitpoints');
     state.xp.Attack = XP_TABLE[30];
     state.hp = playerMaxHp(30);
     state.xp.Hitpoints = XP_TABLE[30];
-    state.enemyMastery['meadow.beetle'] = 618 * 102;
+    state.enemyMastery['meadow.beetle'] = 1117 * 102;
     state.enemyKills['meadow.beetle'] = 1;
     startCombat(state, 'meadow.beetle', 'Strength');
     const before = state.coins;
@@ -234,7 +234,7 @@ describe('check 25 loot bonus', () => {
     while (state.stats.kills < 1 && guard++ < 30) simulate(state, 2400, undefined, { expectedLoot: true });
     const first = state.coins - before;
     const base = first;
-    expect(state.enemyMastery['meadow.beetle']).toBe(619 * 102);
+    expect(state.enemyMastery['meadow.beetle']).toBe(1118 * 102);
     const mid = state.coins;
     while (state.stats.kills < 2 && guard++ < 60) simulate(state, 2400, undefined, { expectedLoot: true });
     const second = state.coins - mid;

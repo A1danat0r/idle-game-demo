@@ -42,12 +42,17 @@ import {
   playerHitChance,
   isCombatStyle,
   isFood,
+  actionTitle,
   itemName,
   levelForXp,
   playerMaxHp,
   BUILDING_STEPS,
   grantsHitpoints,
   skillPrice,
+  arrowToUse,
+  gearLocked,
+  isBow,
+  isTwoHanded,
   weaponFitsStyle,
   type CombatStyle,
   type SkillId,
@@ -140,6 +145,8 @@ export interface Save {
   progressMs: number;
   hp: number;
   paused: boolean;
+  /** Why combat is paused. Absent on saves from before thrown weapons were consumed. */
+  pauseCause?: 'hp' | 'knives' | 'javelins' | 'arrows' | null;
   combat: CombatProgress | null;
   foodSlot: string | null;
   shop: Record<string, ShopCounter>;
@@ -155,8 +162,10 @@ export interface Save {
   enemyMastery: Record<string, number>;
   /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
   enemyKills: Record<string, number>;
-  /** Construction completions, keyed by activity id. Empty until that skill exists. */
+  /** Standing Construction structures. The ×0.937 step uses this map only. */
   buildings: Record<string, boolean>;
+  /** One-time structures completed at least once. Dismantle clears `buildings` and leaves this set. Format 4. */
+  buildingsEver: Record<string, boolean>;
   /** The one Farming plot. Null when nothing is planted. */
   plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
@@ -250,6 +259,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     hp: playerMaxHp(1),
     combatScale: COMBAT_HP_SCALE,
     paused: false,
+    pauseCause: null,
     combat: null,
     foodSlot: null,
     shop: {},
@@ -261,6 +271,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     enemyMastery: {},
     enemyKills: {},
     buildings: {},
+    buildingsEver: {},
     plot: null,
   };
   return state;
@@ -335,6 +346,12 @@ export function actionDurationMs(state: Save, id: string): number {
   return actionSeconds(state, id) * 1000;
 }
 
+/** Lv 40 mastery: 5% chance to double items. XP and mastery XP stay single. */
+function doubledOutput(state: Save, actionId: string): boolean {
+  if (masteryLevel(state.mastery[actionId] ?? 0) < 40) return false;
+  return nextUnit(state) < 0.05;
+}
+
 function roundXp(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -381,8 +398,9 @@ function takeItem(state: Save, id: string, qty: number, sink?: Sink): boolean {
   if ((state.bank[id] ?? 0) === 0) {
     if (state.foodSlot === id) state.foodSlot = null;
     let lostWeapon = false;
+    const keepThrown = id.startsWith('ammo.thrown.');
     for (const slot of ['weapon', 'body', 'shield'] as const) {
-      if (state.equipped[slot] === id) {
+      if (state.equipped[slot] === id && !keepThrown) {
         state.equipped[slot] = null;
         if (slot === 'weapon') lostWeapon = true;
       }
@@ -410,15 +428,19 @@ export function nodeUsable(state: Save, nodeId: string): boolean {
 export function activityLabel(state: Save): string {
   const activity = state.activity;
   if (!activity) return 'Idle';
-  if (state.paused && activity.kind === 'combat') return 'Combat paused – out of HP';
+  if (state.paused && activity.kind === 'combat') {
+    if (state.pauseCause === 'knives') return 'Combat paused – out of throwing knives';
+    if (state.pauseCause === 'javelins') return 'Combat paused – out of javelins';
+    if (state.pauseCause === 'arrows') return 'Combat paused – out of arrows';
+    return 'Combat paused – out of HP';
+  }
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     return `${node.skill} · ${itemName(activity.nodeId)}`;
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPE_BY_ID[activity.recipeId];
-    const made = recipe.outputs[0];
-    return `${recipe.skill} · ${made ? itemName(made.id) : recipe.id}`;
+    return `${recipe.skill} · ${actionTitle(recipe)}`;
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
   return `Combat · ${enemy.name}`;
@@ -444,19 +466,54 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!recipe) return false;
   if (!state.owned.includes(recipe.skill)) return false;
   if (skillLevel(state, recipe.skill) < recipe.level) return false;
+  if (recipe.comingLater || recipe.locked) return false;
+  if (recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]) return false;
   if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
   if (!hasInputs(state, recipeId)) return false;
-  if (recipe.oneTime && state.buildings[recipe.id]) {
+  const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
+  if (same) return true;
+  if (recipe.oneTime && structureKnown(state, recipe.id)) {
     const fee = recipe.rebuildFee ?? 0;
     if (state.coins < fee) return false;
     state.coins = roundXp(state.coins - fee);
     noteSpent(state, fee);
   }
-  const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
-  if (same) return true;
   beginActivity(state);
   state.activity = { kind: 'produce', recipeId };
   return true;
+}
+
+/** Half of each kit input, rounded down. r2 names kits, not the other materials. */
+export function dismantleRefund(recipeId: string): { id: string; qty: number }[] {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe?.oneTime) return [];
+  const refund: { id: string; qty: number }[] = [];
+  for (const input of recipe.inputs) {
+    if (!input.id.startsWith('con.kit.')) continue;
+    const qty = Math.floor(input.qty / 2);
+    if (qty > 0) refund.push({ id: input.id, qty });
+  }
+  return refund;
+}
+
+/**
+ * Remove a built structure. The ×0.937 step stays only while the building flag is set,
+ * so clearing the flag removes the step. r2 does not grant XP for this.
+ * Returns false when it is not a standing one-time structure, or while that build is running.
+ */
+export function dismantleBuilding(state: Save, recipeId: string): boolean {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe?.oneTime || !state.buildings[recipe.id]) return false;
+  if (state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id) return false;
+  for (const refund of dismantleRefund(recipe.id)) giveItem(state, refund.id, refund.qty);
+  state.buildingsEver[recipe.id] = true;
+  delete state.buildings[recipe.id];
+  return true;
+}
+
+/** True once a one-time structure has been completed, including after it is dismantled. */
+function structureKnown(state: Save, recipeId: string): boolean {
+  return !!state.buildingsEver[recipeId] || !!state.buildings[recipeId];
 }
 
 export function startCombat(state: Save, enemyId: string, style: CombatStyle): boolean {
@@ -507,7 +564,11 @@ function spawnEnemy(state: Save): void {
 
 export function resumeCombat(state: Save): boolean {
   if (!state.paused || state.activity?.kind !== 'combat') return false;
+  const weapon = state.equipped.weapon;
+  if (!weapon || (state.bank[weapon] ?? 0) <= 0) return false;
+  if (isBow(weapon) && !arrowToUse(state.bank)) return false;
   state.paused = false;
+  state.pauseCause = null;
   spawnEnemy(state);
   return true;
 }
@@ -607,9 +668,10 @@ export function buyShop(state: Save, itemId: string, now: number): boolean {
 
 export function equip(state: Save, itemId: string): boolean {
   const slot = equipSlotFor(itemId);
-  if (!slot || (state.bank[itemId] ?? 0) <= 0) return false;
+  if (!slot || (state.bank[itemId] ?? 0) <= 0 || gearLocked(itemId)) return false;
   state.equipped[slot] = itemId;
-  if (slot === 'weapon' && itemId.includes('bow')) state.equipped.shield = null;
+  if (slot === 'weapon' && isTwoHanded(itemId)) state.equipped.shield = null;
+  if (slot === 'shield' && isTwoHanded(state.equipped.weapon ?? '')) state.equipped.weapon = null;
   return true;
 }
 
@@ -684,9 +746,17 @@ function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, 
   grantEnemyMastery(state, enemy.id, opts);
 }
 
+function thrownKind(itemId: string): 'knives' | 'javelins' | null {
+  if (!itemId.startsWith('ammo.thrown.')) return null;
+  if (itemId.includes('javelin')) return 'javelins';
+  if (itemId.includes('knife')) return 'knives';
+  return null;
+}
+
 function markPaused(state: Save, sink?: Sink): void {
   state.hp = 0;
   state.paused = true;
+  state.pauseCause = 'hp';
   state.stats.pauses += 1;
   // Completed kills only. A pause during the first fight is 0.
   state.stats.pauseAtKill.push(state.stats.kills);
@@ -723,10 +793,54 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
   if (state.hp <= 0) markPaused(state, sink);
 }
 
+function pauseForAmmo(state: Save, kind: 'knives' | 'javelins' | 'arrows', sink?: Sink): void {
+  state.paused = true;
+  state.pauseCause = kind;
+  state.stats.pauses += 1;
+  state.stats.pauseAtKill.push(state.stats.kills);
+  if (sink) sink.stopped = 'paused';
+}
+
+/** One thrown weapon is used per swing, including a miss. An empty stack does not swing. */
+function consumeThrow(state: Save, sink?: Sink): boolean {
+  const weapon = state.equipped.weapon;
+  if (!weapon) return true;
+  const kind = thrownKind(weapon);
+  if (!kind) return true;
+  if ((state.bank[weapon] ?? 0) <= 0) {
+    pauseForAmmo(state, kind, sink);
+    return false;
+  }
+  takeItem(state, weapon, 1, sink);
+  return true;
+}
+
+/** One arrow per shot, including a miss, while a bow is equipped. An empty bank does not shoot. */
+function consumeArrow(state: Save, sink?: Sink): boolean {
+  const weapon = state.equipped.weapon;
+  if (!weapon || !isBow(weapon)) return true;
+  const arrow = arrowToUse(state.bank);
+  if (!arrow) {
+    pauseForAmmo(state, 'arrows', sink);
+    return false;
+  }
+  takeItem(state, arrow, 1, sink);
+  return true;
+}
+
+function arrowsSpent(state: Save, sink?: Sink): void {
+  if (state.equipped.weapon && isBow(state.equipped.weapon) && !arrowToUse(state.bank)) {
+    pauseForAmmo(state, 'arrows', sink);
+  }
+}
+
 function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): void {
   const activity = state.activity;
   const combat = state.combat;
   if (!activity || activity.kind !== 'combat' || !combat || combat.phase !== 'fight') return;
+  const thrown = state.equipped.weapon ? thrownKind(state.equipped.weapon) : null;
+  if (!consumeThrow(state, sink)) return;
+  if (!consumeArrow(state, sink)) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   const hits = combat.hitsPerKill;
   combat.swings += 1;
@@ -736,6 +850,8 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
     opts.notes?.push({ kind: 'miss', side: 'player' });
+    if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForAmmo(state, thrown, sink);
+    arrowsSpent(state, sink);
     return;
   }
   state.stats.playerHits += 1;
@@ -754,6 +870,8 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
     combat.killAtMs = state.progressMs;
     grantKillRewards(state, enemy, sink, opts);
   }
+  if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForAmmo(state, thrown, sink);
+  arrowsSpent(state, sink);
 }
 
 function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void {
@@ -761,9 +879,10 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
   if (!activity || state.paused) return;
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
-    giveItem(state, node.id, 1, sink);
+    const qty = doubledOutput(state, node.id) ? 2 : 1;
+    giveItem(state, node.id, qty, sink);
     const gained = addXp(state, node.skill, node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
-    opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty: 1 });
+    opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty });
     grantActionMastery(state, node.id, node.skill, node.seconds, opts);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
@@ -779,20 +898,25 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
       return;
     }
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
-    for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
-    const rebuilding = recipe.oneTime && state.buildings[recipe.id];
-    if (recipe.oneTime && !rebuilding) state.buildings[recipe.id] = true;
+    const doubled = doubledOutput(state, recipe.id);
+    for (const made of recipe.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
+    const rebuilding = recipe.oneTime && structureKnown(state, recipe.id);
+    if (recipe.oneTime) {
+      state.buildingsEver[recipe.id] = true;
+      state.buildings[recipe.id] = true;
+    }
     const gained = rebuilding
       ? 0
       : addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
     grantActionMastery(state, recipe.id, recipe.skill, recipe.seconds, opts);
     const made = recipe.outputs[0];
     if (made) {
-      opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty });
+      opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty * (doubled ? 2 : 1) });
     }
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
+    if (recipe.oneTime) state.activity = null;
     return;
   }
   const combat = state.combat;
@@ -1264,6 +1388,12 @@ export function deserialize(raw: string): Save | null {
     progressMs: typeof parsed.progressMs === 'number' ? parsed.progressMs : 0,
     hp: parsed.hp,
     paused: parsed.paused,
+    pauseCause:
+      parsed.pauseCause === 'hp' || parsed.pauseCause === 'knives' || parsed.pauseCause === 'javelins' || parsed.pauseCause === 'arrows'
+        ? parsed.pauseCause
+        : parsed.paused
+          ? 'hp'
+          : null,
     combat,
     foodSlot: typeof parsed.foodSlot === 'string' ? parsed.foodSlot : null,
     shop,
@@ -1275,13 +1405,14 @@ export function deserialize(raw: string): Save | null {
     enemyMastery,
     enemyKills: {},
     buildings: {},
+    buildingsEver: {},
     plot: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
-  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings)) return null;
+  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
   loaded.plot = readPlot(parsed.plot);
   return loaded;
 }
@@ -1308,19 +1439,24 @@ function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
   return true;
 }
 
-/** Format 4 stores buildings. Older saves load with an empty map. */
-function migrateBuildings(state: Save, format: number, raw: unknown): boolean {
+/**
+ * Format 4 stores standing buildings and `buildingsEver`.
+ * A format-4 save that lacks `buildingsEver` treats every standing id as ever-built.
+ * Older saves load with both maps empty.
+ */
+function migrateBuildings(state: Save, format: number, raw: unknown, everRaw: unknown): boolean {
   if (format !== SAVE_FORMAT) {
     state.buildings = {};
+    state.buildingsEver = {};
     return true;
   }
-  if (raw == null) {
-    state.buildings = {};
-    return true;
-  }
-  const buildings = readBuildings(raw);
+  const buildings = raw == null ? {} : readBuildings(raw);
   if (!buildings) return false;
+  const buildingsEver = everRaw == null ? { ...buildings } : readBuildings(everRaw);
+  if (!buildingsEver) return false;
+  for (const id of Object.keys(buildings)) buildingsEver[id] = true;
   state.buildings = buildings;
+  state.buildingsEver = buildingsEver;
   return true;
 }
 
