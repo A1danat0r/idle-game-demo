@@ -305,7 +305,7 @@ app.addEventListener('click', (event) => {
   if (target.dataset.area === 'Meadow verge' || target.dataset.area === 'Woodland edge' || target.dataset.area === '???') {
     view.area = target.dataset.area;
   }
-  if (target.dataset.fight) {
+  if (target.dataset.fight && !target.hasAttribute('disabled')) {
     const style = view.style && state.owned.includes(view.style) ? view.style : firstStyle();
     if (style) {
       startCombat(state, target.dataset.fight, style);

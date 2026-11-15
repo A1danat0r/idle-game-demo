@@ -79,10 +79,14 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 .price small { font-size: 9.5px; } .free { color: #7be08a; font-size: 13px; }
 
 /* combat */
-.areahead { display: flex; justify-content: space-between; align-items: flex-end; margin: 2px 0 6px; }
-.areahead h2 { font-size: 18px; }
-.fight { display: grid; grid-template-columns: 1fr 112px; gap: 6px; }
-.fight .scene { justify-content: space-between; align-items: flex-end; padding: 6px 4px 16px; margin: 0; background: linear-gradient(#141d33, #0d1a1a); }
+.areahead { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0 0 4px; }
+.areahead h2 { font-size: 16px; line-height: 1.1; }
+.chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.fight { display: grid; grid-template-columns: 1fr 112px; gap: 6px; align-items: start; }
+.stage { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
+.stage .tag.btn { align-self: center; }
+.fight .scene { justify-content: space-between; align-items: flex-end; padding: 6px 4px 8px; margin: 0; background: linear-gradient(#141d33, #0d1a1a); }
+button.tag.btn:disabled { color: var(--muted); background: #1c2438; border-color: #4a5370; cursor: default; opacity: 1; }
 .fighter { display: flex; flex-direction: column; align-items: center; width: 84px; }
 svg.pixel { image-rendering: pixelated; image-rendering: crisp-edges; }
 .hp { font-size: 10px; width: 100%; } .hp b { font-size: 10.5px; } .hp em { color: var(--gold); font-style: normal; }
