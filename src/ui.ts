@@ -43,7 +43,7 @@ import {
 } from './engine';
 import { icon } from './icons';
 import { enemyFigure, playerFigure } from './sprites';
-import { deriveProfileStats } from './profile';
+import { deriveProfileStats, formatPlayed, formatSavedAt } from './profile';
 import {
   actionXpMultiplier,
   globalXpBonus,
@@ -340,12 +340,16 @@ function profileHtml(state: Save, devOn: boolean, resetConfirm: boolean): string
         <div><small>Total XP</small><b>${fmtXp(stats.totalXp)}</b></div>
         <div><small>Coins</small><b>${fmtCoins(stats.coins)}</b></div>
         <div><small>Kills</small><b>${fmt(stats.kills)}</b></div>
+        <div><small>Time played</small><b>${esc(formatPlayed(stats.timePlayed))}</b></div>
+        <div><small>Coins earned</small><b>${fmtCoins(stats.coinsEarned)}</b></div>
+        <div><small>Coins spent</small><b>${fmtCoins(stats.coinsSpent)}</b></div>
         <div><small>Coins from kills</small><b>${fmtCoins(stats.coinsFromKills)}</b></div>
         <div><small>Coins from sales</small><b>${fmtCoins(stats.coinsFromSales)}</b></div>
         <div><small>Enemies mastered</small><b>${fmt(stats.enemiesMastered)}</b></div>
         <div><small>Nodes mastered</small><b>${fmt(stats.nodesMastered)}</b></div>
       </div>
       <p class="statline"><span>Ladder open</span><b>${esc(stats.ladderOpen)}</b></p>
+      <p class="statline"><span>Last save</span><b>${esc(formatSavedAt(stats.savedAt))}</b></p>
     </div>
     <div class="panel">
       <h3>Kills</h3>

@@ -1,17 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { XP_TABLE } from '../src/content';
+import { OFFLINE_CAP_MS, SHOP_PRICE, XP_CAP, XP_TABLE } from '../src/content';
 import {
   SAVE_KEY,
   UNREADABLE_SAVE_KEY,
+  advanceOpenTab,
+  buyShop,
+  buySkill,
   confirmAccountReset,
+  creditOffline,
+  deserialize,
   loadAndCredit,
   newGame,
+  sell,
   serialize,
+  startCombat,
+  stepCompletion,
+  writeSave,
   type StorageLike,
 } from '../src/engine';
 import { masteryThreshold } from '../src/mastery';
-import { DEV_STORAGE_KEY } from '../src/provisional';
-import { deriveProfileStats } from '../src/profile';
+import { DEV_STORAGE_KEY, SILENT_GAP_MS } from '../src/provisional';
+import { deriveProfileStats, formatPlayed, formatSavedAt } from '../src/profile';
 import { mainHtml, type View } from '../src/ui';
 
 class Mem implements StorageLike {
@@ -58,7 +67,7 @@ describe('profile stats', () => {
     state.coins = 1200;
     state.stats.coinsFromKills = 80;
     state.stats.coinsFromSales = 40;
-    state.stats.kills = 14;
+    state.stats.kills = 99;
     state.enemyKills['meadow.hare'] = 12;
     state.enemyKills['meadow.rat'] = 2;
     state.enemyMastery['meadow.hare'] = masteryThreshold(30);
@@ -131,5 +140,160 @@ describe('account reset', () => {
     expect(loaded.state.activity).toBeNull();
     expect(loaded.state.lastCredited).toBe(later);
     expect(loaded.state.enemyKills).toEqual({});
+    expect(loaded.state.stats.timePlayed).toBe(0);
+    expect(loaded.state.stats.coinsEarned).toBe(0);
+    expect(loaded.state.stats.coinsSpent).toBe(0);
+    expect(loaded.state.saveFormat).toBe(3);
+  });
+
+  it('resets when the Debug switch has never been set', () => {
+    const storage = new Mem();
+    const played = newGame(5_000);
+    played.stats.timePlayed = 60_000;
+    played.stats.coinsEarned = 12;
+    played.stats.coinsSpent = 4;
+    played.lastCredited = 5_000;
+    played.activity = { kind: 'gather', nodeId: 'mat.wood.pine' };
+    storage.setItem(SAVE_KEY, serialize(played));
+    expect(storage.getItem(DEV_STORAGE_KEY)).toBeNull();
+    expect(confirmAccountReset(storage, true)).toBe(true);
+    expect(storage.getItem(DEV_STORAGE_KEY)).toBeNull();
+    const loaded = loadAndCredit(storage, 5_000 + 3_600_000);
+    expect(loaded.report).toBeNull();
+    expect(loaded.state.stats.timePlayed).toBe(0);
+    expect(loaded.state.stats.coinsEarned).toBe(0);
+    expect(loaded.state.stats.coinsSpent).toBe(0);
+    expect(loaded.state.saveFormat).toBe(3);
+    expect(loaded.state.lastCredited).toBe(5_000 + 3_600_000);
   });
 });
+
+describe('profile rules', () => {
+  it('caps each displayed skill level at 30 and includes Hitpoints', () => {
+    const state = newGame(0);
+    state.xp.Woodcutting = XP_CAP + 50_000;
+    state.xp.Hitpoints = XP_TABLE[10];
+    const stats = deriveProfileStats(state);
+    expect(stats.totalLevel).toBe(30 + 10);
+  });
+
+  it('counts kills from enemyKills when the stats log disagrees', () => {
+    const state = newGame(0);
+    state.stats.kills = 40;
+    state.enemyKills['meadow.hare'] = 2;
+    expect(deriveProfileStats(state).kills).toBe(2);
+    expect(deriveProfileStats(state).killsByEnemy).toEqual([{ id: 'meadow.hare', name: 'Burrowing hare', kills: 2 }]);
+  });
+
+  it('credits tick time and caps offline time at 24 hours', () => {
+    const online = newGame(1_000);
+    online.lastCredited = 1_000;
+    advanceOpenTab(online, 1_000 + 2_000, SILENT_GAP_MS);
+    expect(online.stats.timePlayed).toBe(2_000);
+    expect(formatPlayed(3 * 3_600_000 + 12 * 60_000)).toBe('3h 12m');
+    expect(formatPlayed(45 * 60_000)).toBe('45m');
+
+    const away = newGame(0);
+    away.lastCredited = 0;
+    away.activity = { kind: 'gather', nodeId: 'mat.wood.pine' };
+    const report = creditOffline(away, OFFLINE_CAP_MS + 5 * 3_600_000);
+    expect(report.creditedMs).toBe(OFFLINE_CAP_MS);
+    expect(away.stats.timePlayed).toBe(OFFLINE_CAP_MS);
+  });
+
+  it('counts coins earned and spent in play, and ignores a direct coin edit', () => {
+    const state = newGame(0);
+    state.coins = 5_000;
+    expect(buySkill(state, 'Fishing')).toBe(true);
+    expect(state.stats.coinsSpent).toBe(750);
+    expect(state.stats.coinsEarned).toBe(0);
+    state.bank['mat.wood.pine'] = 4;
+    expect(state.stats.coinsFromSales).toBe(0);
+    expect(sell(state, 'mat.wood.pine', 4)).toBe(true);
+    expect(state.stats.coinsFromSales).toBe(4);
+    expect(state.stats.coinsEarned).toBe(4);
+    state.coins = 9_999;
+    expect(state.stats.coinsEarned).toBe(4);
+    expect(state.stats.coinsSpent).toBe(750);
+    state.coins = 100;
+    expect(buyShop(state, 'mat.meat.hare', 0)).toBe(true);
+    expect(state.stats.coinsSpent).toBe(750 + SHOP_PRICE);
+    expect(state.stats.coinsEarned).toBe(4);
+  });
+
+  it('adds mastery bonus coins to lifetime earnings, not to coins from kills', () => {
+    const state = newGame(0, 1);
+    state.owned.push('Strength', 'Attack', 'Hitpoints');
+    state.xp.Attack = XP_TABLE[30];
+    state.hp = 700;
+    state.enemyKills['meadow.hare'] = 12;
+    state.enemyKills['meadow.rat'] = 12;
+    state.enemyKills['meadow.ram'] = 12;
+    state.enemyKills['meadow.moss'] = 12;
+    state.enemyMastery['meadow.beetle'] = masteryThreshold(30);
+    startCombat(state, 'meadow.beetle', 'Attack');
+    const before = state.coins;
+    const step = stepCompletion(state);
+    expect(step.type).toBe('kill');
+    const gained = state.coins - before;
+    expect(gained).toBeGreaterThan(state.stats.coinsFromKills);
+    expect(state.stats.coinsEarned).toBeCloseTo(gained, 5);
+    expect(state.stats.coinsFromKills).toBeGreaterThan(0);
+  });
+
+  it('leaves hare kill coins at 0 because a hare drops items, not coins', () => {
+    const state = newGame(0, 2);
+    state.owned.push('Strength', 'Attack', 'Hitpoints');
+    state.xp.Attack = XP_TABLE[30];
+    state.hp = 700;
+    startCombat(state, 'meadow.hare', 'Attack');
+    expect(stepCompletion(state).type).toBe('kill');
+    expect(stepCompletion(state).type).toBe('kill');
+    expect(state.enemyKills['meadow.hare']).toBe(2);
+    expect(state.stats.kills).toBe(2);
+    expect(state.stats.coinsFromKills).toBe(0);
+    expect(state.stats.coinsEarned).toBe(0);
+  });
+
+  it('shows unknown for an old save and a local time after a write', () => {
+    const old = deserialize(JSON.stringify({ ...bare(3), stats: { actions: 0, kills: 0, pauses: 0, foodEaten: 0, coinsFromKills: 0, coinsFromSales: 0, lootValue: 0, killsByEnemy: {}, pauseAtKill: [], playerSwings: 0, playerHits: 0, playerMisses: 0, enemyHits: 0 } }));
+    expect(old?.stats.timePlayed).toBe(0);
+    expect(old?.stats.coinsEarned).toBe(0);
+    expect(old?.stats.coinsSpent).toBe(0);
+    expect(formatSavedAt(old?.savedAt)).toBe('unknown');
+    const storage = new Mem();
+    const fresh = newGame(0);
+    writeSave(storage, fresh);
+    const stamped = deserialize(storage.getItem(SAVE_KEY)!);
+    expect(stamped?.savedAt).toEqual(fresh.savedAt);
+    expect(formatSavedAt(stamped?.savedAt)).toBe(new Date(fresh.savedAt!).toLocaleString());
+    expect(formatSavedAt(stamped?.savedAt)).not.toBe('unknown');
+  });
+});
+
+function bare(format: number) {
+  return {
+    saveFormat: format,
+    coins: 0,
+    xp: { Woodcutting: 0 },
+    owned: ['Woodcutting'],
+    purchaseCount: 0,
+    nodes: [],
+    bank: { 'gear.melee.bronze_sword': 1 },
+    equipped: { weapon: 'gear.melee.bronze_sword', body: null, shield: null },
+    activity: null,
+    progressMs: 0,
+    hp: 120,
+    paused: false,
+    combat: null,
+    foodSlot: null,
+    shop: {},
+    lastCredited: 0,
+    rngState: 1,
+    regenMs: 0,
+    combatScale: 10,
+    mastery: {},
+    enemyMastery: {},
+    enemyKills: {},
+  };
+}

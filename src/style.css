@@ -8,7 +8,7 @@ html, body, button, .row, .gearpick { touch-action: manipulation; }
 body { background: #05080f; }
 #app { width: 100%; max-width: 430px; height: 100vh; height: 100dvh; margin: 0 auto; display: flex; flex-direction: column;
   background: radial-gradient(circle at 50% 0, #1a2440, var(--bg) 60%); overflow: hidden; }
-main { flex: 1; overflow-y: auto; padding: 6px 10px 12px; }
+main { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 6px 10px 72px; }
 small { display: block; font-size: 11px; color: var(--muted); }
 b { font-weight: 600; }
 h2, h3 { font-family: Georgia, 'Times New Roman', serif; color: var(--gold); letter-spacing: .5px; }

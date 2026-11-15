@@ -1,4 +1,4 @@
-import { ENEMIES, ENEMY_BY_ID, MEADOW_LADDER, NODES, SKILL_IDS, enemyUnlocked } from './content';
+import { ENEMIES, ENEMY_BY_ID, LEVEL_CAP, MEADOW_LADDER, NODES, SKILL_IDS, enemyUnlocked } from './content';
 import { skillLevel, type Save } from './engine';
 import { MASTERY_CAP, masteryLevel } from './mastery';
 
@@ -14,6 +14,10 @@ export interface ProfileStats {
   coins: number;
   coinsFromKills: number;
   coinsFromSales: number;
+  coinsEarned: number;
+  coinsSpent: number;
+  timePlayed: number;
+  savedAt: number | null;
   kills: number;
   killsByEnemy: EnemyKillLine[];
   /** Furthest Meadow rung the save can fight. */
@@ -25,9 +29,11 @@ export interface ProfileStats {
 /** Numbers the Profile screen can show from the save as it already exists. */
 export function deriveProfileStats(state: Save): ProfileStats {
   let totalLevel = 0;
-  for (const skill of SKILL_IDS) totalLevel += skillLevel(state, skill);
+  for (const skill of SKILL_IDS) totalLevel += Math.min(LEVEL_CAP, skillLevel(state, skill));
   let totalXp = 0;
   for (const amount of Object.values(state.xp)) totalXp += amount ?? 0;
+  let killTotal = 0;
+  for (const count of Object.values(state.enemyKills)) killTotal += count ?? 0;
   const killsByEnemy = ENEMIES.flatMap((enemy) => {
     const kills = state.enemyKills[enemy.id] ?? 0;
     return kills > 0 ? [{ id: enemy.id, name: enemy.name, kills }] : [];
@@ -50,10 +56,28 @@ export function deriveProfileStats(state: Save): ProfileStats {
     coins: state.coins,
     coinsFromKills: state.stats.coinsFromKills,
     coinsFromSales: state.stats.coinsFromSales,
-    kills: state.stats.kills,
+    coinsEarned: state.stats.coinsEarned,
+    coinsSpent: state.stats.coinsSpent,
+    timePlayed: state.stats.timePlayed,
+    savedAt: state.savedAt ?? null,
+    kills: killTotal,
     killsByEnemy,
     ladderOpen,
     enemiesMastered,
     nodesMastered,
   };
+}
+
+/** Credited play time, floored to minutes. Hours appear once an hour has passed. */
+export function formatPlayed(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 60_000));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+/** Local date and time of the last write. Missing timestamps stay unknown. */
+export function formatSavedAt(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms)) return 'unknown';
+  return new Date(ms).toLocaleString();
 }
