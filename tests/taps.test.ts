@@ -80,18 +80,25 @@ describe('touches while the loop ticks', () => {
     let landed = 0;
     for (let i = 0; i < 10; i += 1) {
       await page.locator('[data-tab="skills"]').evaluate((el) => (el as HTMLElement).click());
-      const point = await page.locator('[data-tab="combat"]').evaluate((el) => {
-        const rect = el.getBoundingClientRect();
-        const x = rect.x + rect.width / 2;
-        const y = rect.y + rect.height / 2;
-        const under = document.elementFromPoint(x, y);
-        return {
-          x,
-          y,
-          hit: !!under?.closest('[data-tab="combat"]'),
-          under: under?.textContent?.trim().slice(0, 40) ?? '',
-        };
-      });
+      // A gather tick can replace the tab bar between the locator resolving and this read.
+      // A detached button reports a 0×0 box at the origin, so elementFromPoint hits the header.
+      let point = { x: 0, y: 0, hit: false, under: '' };
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        point = await page.locator('[data-tab="combat"]').evaluate((el) => {
+          const rect = el.getBoundingClientRect();
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          const under = document.elementFromPoint(x, y);
+          return {
+            x,
+            y,
+            hit: rect.width > 0 && rect.height > 0 && !!under?.closest('[data-tab="combat"]'),
+            under: under?.textContent?.trim().slice(0, 40) ?? '',
+          };
+        });
+        if (point.hit) break;
+        await page.waitForTimeout(40);
+      }
       expect(point.hit, point.under).toBe(true);
       await session.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
