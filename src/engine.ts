@@ -45,8 +45,10 @@ import {
   itemName,
   levelForXp,
   playerMaxHp,
+  BUILDING_STEPS,
   grantsHitpoints,
   skillPrice,
+  weaponFitsStyle,
   type CombatStyle,
   type SkillId,
 } from './content';
@@ -155,6 +157,8 @@ export interface Save {
   enemyKills: Record<string, number>;
   /** Construction completions, keyed by activity id. Empty until that skill exists. */
   buildings: Record<string, boolean>;
+  /** The one Farming plot. Null when nothing is planted. */
+  plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
   savedAt?: number;
 }
@@ -257,6 +261,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     enemyMastery: {},
     enemyKills: {},
     buildings: {},
+    plot: null,
   };
   return state;
 }
@@ -306,12 +311,20 @@ export function actionSeconds(state: Save, id: string): number {
       node.skill === 'Woodcutting' || node.skill === 'Mining' || node.skill === 'Fishing' || node.skill === 'Foraging'
         ? toolTier(state, node.skill)
         : 0;
-    const factor = TOOL_TIME_FACTOR ** tier;
+    const factor = TOOL_TIME_FACTOR ** (tier + buildingSteps(state, node.skill));
     return node.seconds * factor * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
   }
   const recipe = RECIPE_BY_ID[id];
   if (!recipe) return 0;
-  return recipe.seconds * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
+  return recipe.seconds * TOOL_TIME_FACTOR ** buildingSteps(state, recipe.skill) * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
+}
+
+function buildingSteps(state: Save, skill: string): number {
+  let steps = 0;
+  for (const [id, skills] of Object.entries(BUILDING_STEPS)) {
+    if (state.buildings[id] && skills.includes(skill as SkillId)) steps += 1;
+  }
+  return steps;
 }
 
 export function actionXp(id: string): number {
@@ -404,7 +417,8 @@ export function activityLabel(state: Save): string {
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPE_BY_ID[activity.recipeId];
-    return `${recipe.skill} · ${itemName(recipe.outputs[0].id)}`;
+    const made = recipe.outputs[0];
+    return `${recipe.skill} · ${made ? itemName(made.id) : recipe.id}`;
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
   return `Combat · ${enemy.name}`;
@@ -430,7 +444,14 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!recipe) return false;
   if (!state.owned.includes(recipe.skill)) return false;
   if (skillLevel(state, recipe.skill) < recipe.level) return false;
+  if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
   if (!hasInputs(state, recipeId)) return false;
+  if (recipe.oneTime && state.buildings[recipe.id]) {
+    const fee = recipe.rebuildFee ?? 0;
+    if (state.coins < fee) return false;
+    state.coins = roundXp(state.coins - fee);
+    noteSpent(state, fee);
+  }
   const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
   if (same) return true;
   beginActivity(state);
@@ -445,6 +466,7 @@ export function startCombat(state: Save, enemyId: string, style: CombatStyle): b
   if (!state.owned.includes(style) || !isCombatStyle(style)) return false;
   const weapon = state.equipped.weapon;
   if (!weapon || equipSlotFor(weapon) !== 'weapon' || (state.bank[weapon] ?? 0) <= 0) return false;
+  if (!weaponFitsStyle(weapon, style)) return false;
   const same =
     state.activity?.kind === 'combat' &&
     state.activity.enemyId === enemyId &&
@@ -587,6 +609,7 @@ export function equip(state: Save, itemId: string): boolean {
   const slot = equipSlotFor(itemId);
   if (!slot || (state.bank[itemId] ?? 0) <= 0) return false;
   state.equipped[slot] = itemId;
+  if (slot === 'weapon' && itemId.includes('bow')) state.equipped.shield = null;
   return true;
 }
 
@@ -757,7 +780,11 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     }
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
     for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
-    const gained = addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+    const rebuilding = recipe.oneTime && state.buildings[recipe.id];
+    if (recipe.oneTime && !rebuilding) state.buildings[recipe.id] = true;
+    const gained = rebuilding
+      ? 0
+      : addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
     grantActionMastery(state, recipe.id, recipe.skill, recipe.seconds, opts);
     const made = recipe.outputs[0];
     if (made) {
@@ -965,6 +992,50 @@ function levelsOf(state: Save): Partial<Record<SkillId, number>> {
  * A backwards clock credits 0 and moves the last-credited time to `now`,
  * so the next positive gap runs immediately instead of waiting for the clock to catch up.
  */
+export function plantCrop(state: Save, recipeId: string): boolean {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe || recipe.skill !== 'Farming') return false;
+  if (state.plot) return false;
+  if (!state.owned.includes('Farming')) return false;
+  if (skillLevel(state, 'Farming') < recipe.level) return false;
+  if (!hasInputs(state, recipeId)) return false;
+  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
+  state.plot = { recipeId, remainingMs: actionDurationMs(state, recipeId), ready: false };
+  return true;
+}
+
+export function cancelPlot(state: Save): void {
+  state.plot = null;
+}
+
+function harvestPlot(state: Save, sink?: Sink): void {
+  const plot = state.plot;
+  if (!plot) return;
+  const recipe = RECIPE_BY_ID[plot.recipeId];
+  if (!recipe) {
+    state.plot = null;
+    return;
+  }
+  if (!bankHasSpace(state)) {
+    plot.ready = true;
+    plot.remainingMs = 0;
+    return;
+  }
+  for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
+  addXp(state, 'Farming', recipe.xp * actionXpMultiplier(state.mastery, recipe.id, 'Farming'));
+  grantActionMastery(state, recipe.id, 'Farming', recipe.seconds, {});
+  state.stats.actions += 1;
+  if (sink) sink.actions += 1;
+  state.plot = null;
+}
+
+function growPlot(state: Save, ms: number, sink?: Sink): void {
+  const plot = state.plot;
+  if (!plot || ms <= 0) return;
+  if (!plot.ready) plot.remainingMs = Math.max(0, plot.remainingMs - ms);
+  if (plot.remainingMs <= 0) harvestPlot(state, sink);
+}
+
 export function advanceOpenTab(
   state: Save,
   now: number,
@@ -975,6 +1046,7 @@ export function advanceOpenTab(
   if (gap < 0 || gap >= silentGapMs) return creditOffline(state, now);
   if (gap > 0) {
     simulate(state, gap, undefined, notes ? { notes } : undefined);
+    growPlot(state, gap);
     noteTime(state, gap);
     state.lastCredited = now;
   }
@@ -1027,6 +1099,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     stopped: null,
   };
   simulate(state, credited, sink);
+  growPlot(state, credited, sink);
   noteTime(state, credited);
   report.actions = sink.actions;
   report.kills = sink.kills;
@@ -1202,13 +1275,21 @@ export function deserialize(raw: string): Save | null {
     enemyMastery,
     enemyKills: {},
     buildings: {},
+    plot: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings)) return null;
+  loaded.plot = readPlot(parsed.plot);
   return loaded;
+}
+
+function readPlot(value: unknown): Save['plot'] {
+  if (!isRecord(value)) return null;
+  if (typeof value.recipeId !== 'string' || typeof value.remainingMs !== 'number' || typeof value.ready !== 'boolean') return null;
+  return { recipeId: value.recipeId, remainingMs: value.remainingMs, ready: value.ready };
 }
 
 /** Formats 1 and 2 derive kills from mastery. Formats 3 and 4 keep the stored counts. */

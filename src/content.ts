@@ -1,3 +1,5 @@
+import { SLICE_ITEMS, SLICE_RECIPES } from './slice';
+
 /**
  * Paid node cost. Lv-1 nodes are free. The level gate is unchanged:
  * a node can be bought only once its level is reached.
@@ -56,7 +58,7 @@ export const SKILL_IDS = [
 ] as const;
 export type SkillId = (typeof SKILL_IDS)[number];
 
-export const COMBAT_STYLES = ['Attack', 'Strength', 'Defence'] as const;
+export const COMBAT_STYLES = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic'] as const;
 export type CombatStyle = (typeof COMBAT_STYLES)[number];
 
 /**
@@ -77,7 +79,14 @@ export const SKILL_GROUPS = [
 ] as const;
 
 export function isCombatStyle(skill: SkillId): skill is CombatStyle {
-  return skill === 'Attack' || skill === 'Strength' || skill === 'Defence';
+  return (COMBAT_STYLES as readonly string[]).includes(skill);
+}
+
+/** Thrown weapons and bows occupy the weapon slot. A focus does too: it is one-handed, not the shield. */
+export function weaponFitsStyle(itemId: string, style: CombatStyle): boolean {
+  if (style === 'Ranged') return itemId.startsWith('gear.ranged.') || itemId.startsWith('ammo.thrown.');
+  if (style === 'Magic') return itemId.startsWith('gear.magic.');
+  return itemId.startsWith('gear.melee.');
 }
 
 /** Buying any fight style grants Hitpoints. Ranged and Magic are fight styles even before their weapons are in. */
@@ -150,14 +159,18 @@ export interface NodeDef {
 
 export interface RecipeDef {
   id: string;
-  skill: 'Cooking' | 'Smithing';
+  skill: 'Cooking' | 'Smithing' | 'Crafting' | 'Alchemy' | 'Construction' | 'Enchanting' | 'Farming' | 'Exploration';
   level: number;
   seconds: number;
   xp: number;
   inputs: Stack[];
   outputs: Stack[];
   /** Tool recipes are reusable. The output is not consumed by gathering. */
-  tool?: { skill: 'Woodcutting' | 'Mining'; tier: number };
+  tool?: { skill: 'Woodcutting' | 'Mining' | 'Fishing' | 'Foraging'; tier: number };
+  /** One-time Construction build. A later completion is a rebuild. */
+  oneTime?: boolean;
+  /** Coins charged to rebuild a one-time structure. No XP on a rebuild. */
+  rebuildFee?: number;
 }
 
 export interface DropDef {
@@ -285,6 +298,17 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.tool.mining.iron_pickaxe', 'Smithing', 22, 5.0, 58, [{ id: 'mat.bar.iron', qty: 2 }, { id: 'mat.wood.oak', qty: 1 }], [{ id: 'tool.mining.iron_pickaxe', qty: 1 }], { skill: 'Mining', tier: 2 }),
   recipe('recipe.mat.head.iron_bolt', 'Smithing', 23, 4.5, 52, [{ id: 'mat.bar.iron', qty: 1 }], [{ id: 'mat.head.iron_bolt', qty: 10 }]),
   recipe('recipe.ammo.thrown.iron_javelin', 'Smithing', 24, 4.8, 56, [{ id: 'mat.bar.iron', qty: 1 }, { id: 'mat.wood.oak', qty: 1 }], [{ id: 'ammo.thrown.iron_javelin', qty: 5 }]),
+  ...SLICE_RECIPES.map((row): RecipeDef => ({
+    id: row.id,
+    skill: row.skill as RecipeDef['skill'],
+    level: row.level,
+    seconds: row.seconds,
+    xp: row.xp,
+    inputs: row.inputs,
+    outputs: row.outputs,
+    oneTime: row.oneTime,
+    rebuildFee: row.rebuildFee,
+  })),
 ];
 
 export const RECIPE_BY_ID: Record<string, RecipeDef> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
@@ -298,6 +322,14 @@ export const TOOL_TIER: Record<string, { skill: 'Woodcutting' | 'Mining' | 'Fish
   'tool.fishing.iron_rod': { skill: 'Fishing', tier: 2 },
   'tool.foraging.bronze_sickle': { skill: 'Foraging', tier: 1 },
   'tool.foraging.iron_sickle': { skill: 'Foraging', tier: 2 },
+};
+
+/** One ×0.937 step per completed building, on the skill the spec names. */
+export const BUILDING_STEPS: Record<string, SkillId[]> = {
+  'activity.construction.pine_work_area': ['Crafting'],
+  'activity.construction.stone_foundation': ['Cooking'],
+  'activity.construction.oak_workshop': ['Crafting'],
+  'activity.construction.supply_racks': ['Alchemy'],
 };
 
 /** Catalogue tool factor, approved at t252. Each tier multiplies action time. */
@@ -678,6 +710,10 @@ function addItems(): void {
     { id: 'ammo.thrown.iron_javelin', name: 'Iron javelins', sell: 8 },
   ];
   for (const row of ammo) item({ ...row, kind: 'ammo', icon: 'ammo' });
+  for (const row of SLICE_ITEMS) {
+    if (ITEMS[row.id]) continue;
+    item({ id: row.id, name: row.name, sell: row.sell, icon: row.icon as IconName, kind: row.kind as ItemKind });
+  }
 }
 
 addItems();
@@ -713,6 +749,9 @@ export const EQUIP_SLOTS: { id: EquipSlot; label: string }[] = [
 /** Weapons, body armour, and shields are the only equippable demo items. Tools are never equipped. */
 export function equipSlotFor(itemId: string): EquipSlot | null {
   if (itemId.startsWith('gear.melee.')) return 'weapon';
+  if (itemId.startsWith('gear.ranged.')) return 'weapon';
+  if (itemId.startsWith('gear.magic.')) return 'weapon';
+  if (itemId.startsWith('ammo.thrown.')) return 'weapon';
   if (itemId.startsWith('gear.shield.')) return 'shield';
   if (itemId.startsWith('gear.armour.')) return 'body';
   return null;
