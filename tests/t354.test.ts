@@ -3,7 +3,7 @@ import { ITEMS, RECIPES, XP_TABLE, actionTitle } from '../src/content';
 import { activityLabel, creditOffline, equip, newGame, resumeCombat, startCombat, startProduce, stepCompletion } from '../src/engine';
 import { activityHtml, activityIcon } from '../src/ui';
 import { globalXpBonus, masteryLevel, masteryThreshold } from '../src/mastery';
-import { PENDING_SELLS, T310_SELLS } from '../src/sells';
+import { T310_SELLS } from '../src/sells';
 import { mainHtml, type View } from '../src/ui';
 
 describe('t354 thrown weapons, mastery 40, and sells', () => {
@@ -102,20 +102,20 @@ describe('t354 thrown weapons, mastery 40, and sells', () => {
     expect(doubles).toBeGreaterThan(0);
   });
 
-  it('applies the section 2.10 sell table, with the four pending values marked', () => {
+  it('applies the section 2.10 sell table, including the confirmed flax and sickle sells', () => {
     expect(Object.keys(T310_SELLS)).toHaveLength(186);
-    expect(PENDING_SELLS).toEqual({
-      'mat.fibre.flax': 1,
-      'mat.binding.flax': 1,
-      'tool.foraging.bronze_sickle': 9,
-      'tool.foraging.iron_sickle': 32,
-    });
+    expect(T310_SELLS['mat.fibre.flax']).toBe(1);
+    expect(T310_SELLS['mat.binding.flax']).toBe(1);
+    expect(T310_SELLS['tool.foraging.bronze_sickle']).toBe(9);
+    expect(T310_SELLS['tool.foraging.iron_sickle']).toBe(32);
     expect(ITEMS['gear.magic.pine_focus'].sell).toBe(3);
     expect(ITEMS['tool.fishing.bronze_rod'].sell).toBe(11);
     expect(ITEMS['tool.fishing.iron_rod'].sell).toBe(41);
     expect(ITEMS['tool.fishing.reed_eel_trap'].sell).toBe(44);
     expect(ITEMS['ammo.arrow.steel'].sell).toBe(12);
     expect(ITEMS['mat.fibre.flax'].sell).toBe(1);
+    expect(ITEMS['mat.binding.flax'].sell).toBe(1);
+    expect(ITEMS['tool.foraging.bronze_sickle'].sell).toBe(9);
     expect(ITEMS['tool.foraging.iron_sickle'].sell).toBe(32);
   });
 

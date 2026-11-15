@@ -1,16 +1,4 @@
-/** t310 sells from r2 §2.10 (sha 206d9081), 186 rows. */
-/**
- * Pending confirmation. The t354 card said 2 / 2 / 11 / 33.
- * The catalogue yield is 1 seed → 4 fibre → 2 string, so the formula is 1 / 1 / 9 / 32.
- * Change only this object if those four are revised.
- */
-export const PENDING_SELLS: Record<string, number> = {
-  'mat.binding.flax': 1,
-  'mat.fibre.flax': 1,
-  'tool.foraging.bronze_sickle': 9,
-  'tool.foraging.iron_sickle': 32,
-};
-
+/** t310 sells from r2 §2.10, 186 rows. Flax fibre 1, flax string 1, bronze sickle 9, and iron sickle 32 are the confirmed +50% margin. */
 export const T310_SELLS: Record<string, number> = {
   'reagent.spell.spark': 1,
   'supply.tonic.herbal': 3,
@@ -194,5 +182,8 @@ export const T310_SELLS: Record<string, number> = {
   'mat.fitting.steel': 17,
   'mat.head.steel_arrow': 7,
   'mat.shaft.ash_spear': 11,
-  ...PENDING_SELLS,
+  'mat.fibre.flax': 1,
+  'mat.binding.flax': 1,
+  'tool.foraging.bronze_sickle': 9,
+  'tool.foraging.iron_sickle': 32,
 };
