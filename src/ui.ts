@@ -1,5 +1,8 @@
 import {
   actionTitle,
+  arrowToUse,
+  gearLocked,
+  isBow,
   AREAS,
   TEASER_AREA,
   TEASER_COPY,
@@ -504,7 +507,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
   const standing = !!recipe.oneTime && !!state.buildings[recipe.id];
-  const known = standing || (!!recipe.oneTime && !!state.everBuilt?.[recipe.id]);
+  const known = standing || (!!recipe.oneTime && !!state.buildingsEver?.[recipe.id]);
   const fee = recipe.rebuildFee ?? 0;
   const canPay = state.coins + 1e-9 >= fee;
   const later = !!recipe.comingLater;
@@ -604,6 +607,7 @@ function combatHtml(state: Save, view: View): string {
           <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
         </div>
         ${fightControl(state, selected.id, style)}
+        ${arrowLine(state)}
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}</div>
     </div>
@@ -611,6 +615,14 @@ function combatHtml(state: Save, view: View): string {
       <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
       <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>
     </div>`;
+}
+
+function arrowLine(state: Save): string {
+  const weapon = state.equipped.weapon;
+  if (!weapon || !isBow(weapon)) return '';
+  const arrow = arrowToUse(state.bank);
+  const text = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
+  return `<p class="note" data-arrows>${esc(text)}</p>`;
 }
 
 function inventoryHtml(state: Save, view: View, now: number): string {
@@ -701,6 +713,9 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
     .map((id) => {
       const on = state.equipped[slot] === id;
       const stack = id.startsWith('ammo.thrown.') ? ` ×${state.bank[id] ?? 0}` : '';
+      if (gearLocked(id)) {
+        return `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · Locked</small></div></div>`;
+      }
       return `<button type="button" class="gearpick${on ? ' on' : ''}" data-equip="${id}">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · ${on ? 'Equipped' : 'Tap to equip'}</small></div></button>`;
     })
     .join('');

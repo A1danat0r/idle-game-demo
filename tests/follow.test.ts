@@ -298,7 +298,7 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(state.bank['mat.wood.pine']).toBe(5);
     expect(dismantleBuilding(state, 'activity.construction.pine_work_area')).toBe(true);
     expect(state.buildings['activity.construction.pine_work_area']).toBeUndefined();
-    expect(state.everBuilt['activity.construction.pine_work_area']).toBe(true);
+    expect(state.buildingsEver['activity.construction.pine_work_area']).toBe(true);
     expect(state.xp.Construction).toBe(7212);
     expect(state.bank['mat.wood.pine']).toBe(5);
 
@@ -321,14 +321,14 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
 
     const old = JSON.parse(serialize(newGame(0)));
     old.saveFormat = 4;
-    delete old.everBuilt;
+    delete old.buildingsEver;
     old.buildings = { 'activity.construction.oak_workshop': true };
     const loaded = deserialize(JSON.stringify(old));
-    expect(loaded?.saveFormat).toBe(5);
+    expect(loaded?.saveFormat).toBe(4);
     expect(loaded?.buildings['activity.construction.oak_workshop']).toBe(true);
-    expect(loaded?.everBuilt['activity.construction.oak_workshop']).toBe(true);
+    expect(loaded?.buildingsEver['activity.construction.oak_workshop']).toBe(true);
     const kept = deserialize(serialize(state));
     expect(kept?.buildings['activity.construction.pine_work_area']).toBeUndefined();
-    expect(kept?.everBuilt['activity.construction.pine_work_area']).toBe(true);
+    expect(kept?.buildingsEver['activity.construction.pine_work_area']).toBe(true);
   });
 });

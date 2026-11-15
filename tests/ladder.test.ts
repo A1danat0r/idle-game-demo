@@ -189,14 +189,14 @@ describe('check 27 woodland ladder', () => {
 describe('check 28 save migration', () => {
   it('stores kill counts on format 4 and derives them from older saves', () => {
     const fresh = newGame(0);
-    expect(fresh.saveFormat).toBe(5);
+    expect(fresh.saveFormat).toBe(4);
     expect(fresh.buildings).toEqual({});
     expect(fresh.enemyKills).toEqual({});
     expect(enemyUnlocked(fresh.enemyKills, 'meadow.hare')).toBe(true);
     expect(enemyUnlocked(fresh.enemyKills, 'meadow.rat')).toBe(false);
 
     const format2 = deserialize(JSON.stringify(baseSave(2, { 'meadow.beetle': 619 * ENEMY_MASTERY_XP })));
-    expect(format2?.saveFormat).toBe(5);
+    expect(format2?.saveFormat).toBe(4);
     expect(format2?.buildings).toEqual({});
     expect(format2?.enemyKills['meadow.beetle']).toBe(619);
     expect(enemyUnlocked(format2!.enemyKills, 'wood.fox')).toBe(true);
@@ -224,7 +224,7 @@ describe('check 28 save migration', () => {
     expect(enemyUnlocked(hareGate!.enemyKills, 'wood.fox')).toBe(false);
 
     const beetleOnly = deserialize(JSON.stringify({ ...baseSave(3, {}), enemyKills: { 'meadow.beetle': 1 } }));
-    expect(beetleOnly?.saveFormat).toBe(5);
+    expect(beetleOnly?.saveFormat).toBe(4);
     expect(beetleOnly?.buildings).toEqual({});
     expect(enemyUnlocked(beetleOnly!.enemyKills, 'wood.fox')).toBe(true);
     expect(enemyUnlocked(beetleOnly!.enemyKills, 'wood.jay')).toBe(false);

@@ -94,6 +94,26 @@ export function weaponFitsStyle(itemId: string, style: CombatStyle): boolean {
   return itemId.startsWith('gear.melee.');
 }
 
+/** Demo arrows a bow may draw, highest tier first. Bolts and other arrow items are not in this list. */
+export const DEMO_ARROW_TIERS = ['ammo.arrow.steel', 'ammo.arrow.iron', 'ammo.arrow.bronze'] as const;
+
+export function isBow(itemId: string): boolean {
+  return itemId.includes('bow');
+}
+
+/** Bows and the steel spear. Equipping one clears the shield, and a shield clears them. */
+export function isTwoHanded(itemId: string): boolean {
+  return isBow(itemId) || itemId === 'gear.melee.steel_spear';
+}
+
+/** The arrow a bow will use next, or null when none of the demo tiers are banked. */
+export function arrowToUse(bank: Record<string, number>): string | null {
+  for (const id of DEMO_ARROW_TIERS) {
+    if ((bank[id] ?? 0) > 0) return id;
+  }
+  return null;
+}
+
 /** Buying any fight style grants Hitpoints. Ranged and Magic are fight styles even before their weapons are in. */
 export function grantsHitpoints(skill: SkillId): boolean {
   return skill === 'Attack' || skill === 'Strength' || skill === 'Defence' || skill === 'Ranged' || skill === 'Magic';
@@ -796,6 +816,23 @@ function addItems(): void {
   for (const [id, heal] of Object.entries(foodHeals)) {
     if (ITEMS[id]) ITEMS[id].heal = heal;
   }
+  const gearStats: Record<string, { acc: number; pow: number; grd: number }> = {
+    'gear.melee.steel_sword': { acc: 10, pow: 10, grd: 0 },
+    'gear.melee.steel_spear': { acc: 11, pow: 11, grd: 0 },
+    'gear.armour.steel_body': { acc: 0, pow: 0, grd: 9 },
+    'gear.shield.willow_buckler': { acc: 0, pow: 0, grd: 3 },
+    'gear.armour.carapace_cuirass': { acc: 0, pow: 0, grd: 7 },
+    'gear.armour.boarhide_brigandine': { acc: 0, pow: 0, grd: 6 },
+    'gear.armour.hemp_robes': { acc: 0, pow: 0, grd: 2 },
+    'gear.magic.ash_focus': { acc: 8, pow: 8, grd: 0 },
+    'gear.ranged.ash_bow': { acc: 8, pow: 8, grd: 0 },
+    'gear.shield.serpent_targe': { acc: 0, pow: 0, grd: 5 },
+    'gear.armour.serpent_jerkin': { acc: 0, pow: 0, grd: 6 },
+    'gear.melee.horn_hafted_mace': { acc: 0, pow: 10, grd: 0 },
+  };
+  for (const [id, stats] of Object.entries(gearStats)) {
+    if (ITEMS[id]) Object.assign(ITEMS[id], stats);
+  }
 }
 
 addItems();
@@ -864,6 +901,12 @@ export const EQUIP_SLOTS: { id: EquipSlot; label: string }[] = [
 ];
 
 /** Weapons, body armour, and shields are the only equippable demo items. Tools are never equipped. */
+/** True when every recipe that makes this item is locked, so it cannot be worn yet. */
+export function gearLocked(itemId: string): boolean {
+  const makers = RECIPES.filter((recipe) => recipe.outputs.some((output) => output.id === itemId));
+  return makers.length > 0 && makers.every((recipe) => !!recipe.locked);
+}
+
 export function equipSlotFor(itemId: string): EquipSlot | null {
   if (itemId.startsWith('gear.melee.')) return 'weapon';
   if (itemId.startsWith('gear.ranged.')) return 'weapon';

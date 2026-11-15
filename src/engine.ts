@@ -49,6 +49,10 @@ import {
   BUILDING_STEPS,
   grantsHitpoints,
   skillPrice,
+  arrowToUse,
+  gearLocked,
+  isBow,
+  isTwoHanded,
   weaponFitsStyle,
   type CombatStyle,
   type SkillId,
@@ -68,12 +72,11 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 
-export const SAVE_FORMAT = 5;
-/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. Format 4 stores standing buildings only. */
+export const SAVE_FORMAT = 4;
+/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
 const SAVE_FORMAT_V1 = 1;
 const SAVE_FORMAT_V2 = 2;
 const SAVE_FORMAT_V3 = 3;
-const SAVE_FORMAT_V4 = 4;
 export const SAVE_KEY = 'idle-game-demo-save';
 export const UNREADABLE_SAVE_KEY = 'idle-game-demo-save-unreadable';
 
@@ -143,7 +146,7 @@ export interface Save {
   hp: number;
   paused: boolean;
   /** Why combat is paused. Absent on saves from before thrown weapons were consumed. */
-  pauseCause?: 'hp' | 'knives' | 'javelins' | null;
+  pauseCause?: 'hp' | 'knives' | 'javelins' | 'arrows' | null;
   combat: CombatProgress | null;
   foodSlot: string | null;
   shop: Record<string, ShopCounter>;
@@ -161,8 +164,8 @@ export interface Save {
   enemyKills: Record<string, number>;
   /** Standing Construction structures. The ×0.937 step uses this map only. */
   buildings: Record<string, boolean>;
-  /** One-time structures that have been completed at least once. A dismantle clears the standing flag and leaves this set, so the next build is a rebuild. */
-  everBuilt: Record<string, boolean>;
+  /** One-time structures completed at least once. Dismantle clears `buildings` and leaves this set. Format 4. */
+  buildingsEver: Record<string, boolean>;
   /** The one Farming plot. Null when nothing is planted. */
   plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
@@ -268,7 +271,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     enemyMastery: {},
     enemyKills: {},
     buildings: {},
-    everBuilt: {},
+    buildingsEver: {},
     plot: null,
   };
   return state;
@@ -428,6 +431,7 @@ export function activityLabel(state: Save): string {
   if (state.paused && activity.kind === 'combat') {
     if (state.pauseCause === 'knives') return 'Combat paused – out of throwing knives';
     if (state.pauseCause === 'javelins') return 'Combat paused – out of javelins';
+    if (state.pauseCause === 'arrows') return 'Combat paused – out of arrows';
     return 'Combat paused – out of HP';
   }
   if (activity.kind === 'gather') {
@@ -502,14 +506,14 @@ export function dismantleBuilding(state: Save, recipeId: string): boolean {
   if (!recipe?.oneTime || !state.buildings[recipe.id]) return false;
   if (state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id) return false;
   for (const refund of dismantleRefund(recipe.id)) giveItem(state, refund.id, refund.qty);
-  state.everBuilt[recipe.id] = true;
+  state.buildingsEver[recipe.id] = true;
   delete state.buildings[recipe.id];
   return true;
 }
 
 /** True once a one-time structure has been completed, including after it is dismantled. */
 function structureKnown(state: Save, recipeId: string): boolean {
-  return !!state.everBuilt[recipeId] || !!state.buildings[recipeId];
+  return !!state.buildingsEver[recipeId] || !!state.buildings[recipeId];
 }
 
 export function startCombat(state: Save, enemyId: string, style: CombatStyle): boolean {
@@ -562,6 +566,7 @@ export function resumeCombat(state: Save): boolean {
   if (!state.paused || state.activity?.kind !== 'combat') return false;
   const weapon = state.equipped.weapon;
   if (!weapon || (state.bank[weapon] ?? 0) <= 0) return false;
+  if (isBow(weapon) && !arrowToUse(state.bank)) return false;
   state.paused = false;
   state.pauseCause = null;
   spawnEnemy(state);
@@ -663,10 +668,10 @@ export function buyShop(state: Save, itemId: string, now: number): boolean {
 
 export function equip(state: Save, itemId: string): boolean {
   const slot = equipSlotFor(itemId);
-  if (!slot || (state.bank[itemId] ?? 0) <= 0) return false;
+  if (!slot || (state.bank[itemId] ?? 0) <= 0 || gearLocked(itemId)) return false;
   state.equipped[slot] = itemId;
-  if (slot === 'weapon' && itemId.includes('bow')) state.equipped.shield = null;
-  if (slot === 'shield' && (state.equipped.weapon ?? '').includes('bow')) state.equipped.weapon = null;
+  if (slot === 'weapon' && isTwoHanded(itemId)) state.equipped.shield = null;
+  if (slot === 'shield' && isTwoHanded(state.equipped.weapon ?? '')) state.equipped.weapon = null;
   return true;
 }
 
@@ -788,7 +793,7 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
   if (state.hp <= 0) markPaused(state, sink);
 }
 
-function pauseForThrown(state: Save, kind: 'knives' | 'javelins', sink?: Sink): void {
+function pauseForAmmo(state: Save, kind: 'knives' | 'javelins' | 'arrows', sink?: Sink): void {
   state.paused = true;
   state.pauseCause = kind;
   state.stats.pauses += 1;
@@ -803,11 +808,30 @@ function consumeThrow(state: Save, sink?: Sink): boolean {
   const kind = thrownKind(weapon);
   if (!kind) return true;
   if ((state.bank[weapon] ?? 0) <= 0) {
-    pauseForThrown(state, kind, sink);
+    pauseForAmmo(state, kind, sink);
     return false;
   }
   takeItem(state, weapon, 1, sink);
   return true;
+}
+
+/** One arrow per shot, including a miss, while a bow is equipped. An empty bank does not shoot. */
+function consumeArrow(state: Save, sink?: Sink): boolean {
+  const weapon = state.equipped.weapon;
+  if (!weapon || !isBow(weapon)) return true;
+  const arrow = arrowToUse(state.bank);
+  if (!arrow) {
+    pauseForAmmo(state, 'arrows', sink);
+    return false;
+  }
+  takeItem(state, arrow, 1, sink);
+  return true;
+}
+
+function arrowsSpent(state: Save, sink?: Sink): void {
+  if (state.equipped.weapon && isBow(state.equipped.weapon) && !arrowToUse(state.bank)) {
+    pauseForAmmo(state, 'arrows', sink);
+  }
 }
 
 function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): void {
@@ -816,6 +840,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   if (!activity || activity.kind !== 'combat' || !combat || combat.phase !== 'fight') return;
   const thrown = state.equipped.weapon ? thrownKind(state.equipped.weapon) : null;
   if (!consumeThrow(state, sink)) return;
+  if (!consumeArrow(state, sink)) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   const hits = combat.hitsPerKill;
   combat.swings += 1;
@@ -825,7 +850,8 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
     opts.notes?.push({ kind: 'miss', side: 'player' });
-    if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForThrown(state, thrown, sink);
+    if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForAmmo(state, thrown, sink);
+    arrowsSpent(state, sink);
     return;
   }
   state.stats.playerHits += 1;
@@ -844,7 +870,8 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
     combat.killAtMs = state.progressMs;
     grantKillRewards(state, enemy, sink, opts);
   }
-  if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForThrown(state, thrown, sink);
+  if (thrown && (state.bank[state.equipped.weapon ?? ''] ?? 0) <= 0) pauseForAmmo(state, thrown, sink);
+  arrowsSpent(state, sink);
 }
 
 function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void {
@@ -875,7 +902,7 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     for (const made of recipe.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
     const rebuilding = recipe.oneTime && structureKnown(state, recipe.id);
     if (recipe.oneTime) {
-      state.everBuilt[recipe.id] = true;
+      state.buildingsEver[recipe.id] = true;
       state.buildings[recipe.id] = true;
     }
     const gained = rebuilding
@@ -1235,8 +1262,7 @@ export function deserialize(raw: string): Save | null {
     parsed.saveFormat !== SAVE_FORMAT &&
     parsed.saveFormat !== SAVE_FORMAT_V1 &&
     parsed.saveFormat !== SAVE_FORMAT_V2 &&
-    parsed.saveFormat !== SAVE_FORMAT_V3 &&
-    parsed.saveFormat !== SAVE_FORMAT_V4
+    parsed.saveFormat !== SAVE_FORMAT_V3
   ) {
     return null;
   }
@@ -1363,7 +1389,7 @@ export function deserialize(raw: string): Save | null {
     hp: parsed.hp,
     paused: parsed.paused,
     pauseCause:
-      parsed.pauseCause === 'hp' || parsed.pauseCause === 'knives' || parsed.pauseCause === 'javelins'
+      parsed.pauseCause === 'hp' || parsed.pauseCause === 'knives' || parsed.pauseCause === 'javelins' || parsed.pauseCause === 'arrows'
         ? parsed.pauseCause
         : parsed.paused
           ? 'hp'
@@ -1379,14 +1405,14 @@ export function deserialize(raw: string): Save | null {
     enemyMastery,
     enemyKills: {},
     buildings: {},
-    everBuilt: {},
+    buildingsEver: {},
     plot: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
-  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.everBuilt)) return null;
+  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
   loaded.plot = readPlot(parsed.plot);
   return loaded;
 }
@@ -1397,9 +1423,9 @@ function readPlot(value: unknown): Save['plot'] {
   return { recipeId: value.recipeId, remainingMs: value.remainingMs, ready: value.ready };
 }
 
-/** Formats 1 and 2 derive kills from mastery. Formats 3 and later keep the stored counts. */
+/** Formats 1 and 2 derive kills from mastery. Formats 3 and 4 keep the stored counts. */
 function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
-  if (format === SAVE_FORMAT || format === SAVE_FORMAT_V3 || format === SAVE_FORMAT_V4) {
+  if (format === SAVE_FORMAT || format === SAVE_FORMAT_V3) {
     if (raw == null) {
       state.enemyKills = killsFromMastery(state.enemyMastery);
       return true;
@@ -1414,28 +1440,23 @@ function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
 }
 
 /**
- * Format 4 stores standing buildings. Each of those counts as ever built.
- * Format 5 also stores everBuilt, so a dismantled structure keeps its rebuild path.
+ * Format 4 stores standing buildings and `buildingsEver`.
+ * A format-4 save that lacks `buildingsEver` treats every standing id as ever-built.
  * Older saves load with both maps empty.
  */
 function migrateBuildings(state: Save, format: number, raw: unknown, everRaw: unknown): boolean {
-  if (format !== SAVE_FORMAT && format !== SAVE_FORMAT_V4) {
+  if (format !== SAVE_FORMAT) {
     state.buildings = {};
-    state.everBuilt = {};
+    state.buildingsEver = {};
     return true;
   }
-  if (raw == null) {
-    state.buildings = {};
-    state.everBuilt = {};
-    return true;
-  }
-  const buildings = readBuildings(raw);
+  const buildings = raw == null ? {} : readBuildings(raw);
   if (!buildings) return false;
-  const everBuilt = format === SAVE_FORMAT && everRaw != null ? readBuildings(everRaw) : { ...buildings };
-  if (!everBuilt) return false;
-  for (const id of Object.keys(buildings)) everBuilt[id] = true;
+  const buildingsEver = everRaw == null ? { ...buildings } : readBuildings(everRaw);
+  if (!buildingsEver) return false;
+  for (const id of Object.keys(buildings)) buildingsEver[id] = true;
   state.buildings = buildings;
-  state.everBuilt = everBuilt;
+  state.buildingsEver = buildingsEver;
   return true;
 }
 
