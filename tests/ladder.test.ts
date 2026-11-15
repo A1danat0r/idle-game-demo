@@ -120,7 +120,11 @@ describe('check 27 woodland ladder', () => {
     expect(wood).toContain('Kill 12 forest foxes to unlock (0/12)');
     expect(wood).toContain('data-fight="wood.fox"');
     expect(wood).not.toContain('data-fight="wood.jay"');
-    expect(wood).not.toContain(`data-area="${TEASER_AREA}"`);
+    expect(wood).toContain(`data-area="${TEASER_AREA}"`);
+    const early = mainHtml(state, combatView(TEASER_AREA, 'wood.fox'), 0);
+    expect(early).toContain(TEASER_COPY);
+    expect(early).not.toContain('data-fight');
+    expect(early).not.toContain('data-enemy');
     expect(startCombat(state, 'meadow.hare', 'Strength')).toBe(true);
   });
 
@@ -221,9 +225,12 @@ describe('check 28 save migration', () => {
     expect(enemyUnlocked(beetleOnly!.enemyKills, 'wood.jay')).toBe(false);
     expect(teaserOpen(beetleOnly!.enemyKills)).toBe(false);
 
-    const foxRung = deserialize(JSON.stringify({ ...baseSave(3, {}), enemyKills: { 'meadow.beetle': 1, 'wood.fox': 12 } }));
-    expect(enemyUnlocked(foxRung!.enemyKills, 'wood.jay')).toBe(true);
-    expect(enemyUnlocked(foxRung!.enemyKills, 'wood.tortoise')).toBe(false);
+    const foxRung = deserialize(JSON.stringify({ ...baseSave(3, {}), enemyKills: { 'meadow.beetle': 1, 'wood.fox': 8 } }));
+    expect(enemyUnlocked(foxRung!.enemyKills, 'wood.jay')).toBe(false);
+    expect(lockLine(foxRung!.enemyKills, 'wood.jay')).toBe('Kill 12 forest foxes to unlock (8/12)');
+    const foxOpen = deserialize(JSON.stringify({ ...baseSave(3, {}), enemyKills: { 'meadow.beetle': 1, 'wood.fox': 12 } }));
+    expect(enemyUnlocked(foxOpen!.enemyKills, 'wood.jay')).toBe(true);
+    expect(enemyUnlocked(foxOpen!.enemyKills, 'wood.tortoise')).toBe(false);
 
     const poacherKill = deserialize(JSON.stringify({ ...baseSave(3, {}), enemyKills: { 'wood.poacher': 1 } }));
     for (const id of ['wood.fox', 'wood.jay', 'wood.tortoise', 'wood.grub', 'wood.boar', 'wood.poacher', 'meadow.rat']) {
