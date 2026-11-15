@@ -107,6 +107,12 @@ export interface StatsLog {
   foodEaten: number;
   coinsFromKills: number;
   coinsFromSales: number;
+  /** Every coin added by kills, mastery bonuses, or sales. Dev edits are not included. */
+  coinsEarned: number;
+  /** Coins spent on skills, nodes, and the shop. Dev edits are not included. */
+  coinsSpent: number;
+  /** Milliseconds of online tick time and offline catch-up that were actually credited. */
+  timePlayed: number;
   lootValue: number;
   killsByEnemy: Record<string, number>;
   /** 1-based index of the kill that was in progress when combat paused. */
@@ -145,6 +151,8 @@ export interface Save {
   enemyMastery: Record<string, number>;
   /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
   enemyKills: Record<string, number>;
+  /** Wall-clock time of the last write. Missing on saves from before this field. */
+  savedAt?: number;
 }
 
 /** Visual notes for the open tab. Offline catch-up does not collect these. */
@@ -206,6 +214,9 @@ export function emptyStats(): StatsLog {
     foodEaten: 0,
     coinsFromKills: 0,
     coinsFromSales: 0,
+    coinsEarned: 0,
+    coinsSpent: 0,
+    timePlayed: 0,
     lootValue: 0,
     killsByEnemy: {},
     pauseAtKill: [],
@@ -473,12 +484,28 @@ export function setFood(state: Save, itemId: string | null): boolean {
   return true;
 }
 
+function noteEarned(state: Save, amount: number): void {
+  if (!(amount > 0)) return;
+  state.stats.coinsEarned = roundXp(state.stats.coinsEarned + amount);
+}
+
+function noteSpent(state: Save, amount: number): void {
+  if (!(amount > 0)) return;
+  state.stats.coinsSpent = roundXp(state.stats.coinsSpent + amount);
+}
+
+function noteTime(state: Save, ms: number): void {
+  if (!(ms > 0)) return;
+  state.stats.timePlayed += ms;
+}
+
 export function buySkill(state: Save, skill: SkillId): boolean {
   if (skill === 'Woodcutting' || skill === 'Hitpoints') return false;
   if (state.owned.includes(skill)) return false;
   const price = skillPrice(state.purchaseCount);
   if (price == null || state.coins < price) return false;
   state.coins = roundXp(state.coins - price);
+  noteSpent(state, price);
   state.purchaseCount += 1;
   state.owned.push(skill);
   state.xp[skill] = 0;
@@ -498,6 +525,7 @@ export function buyNode(state: Save, nodeId: string): boolean {
   if (skillLevel(state, node.skill) < node.level) return false;
   if (state.coins < node.cost) return false;
   state.coins = roundXp(state.coins - node.cost);
+  noteSpent(state, node.cost);
   state.nodes.push(nodeId);
   return true;
 }
@@ -510,6 +538,7 @@ export function sell(state: Save, itemId: string, qty: number): boolean {
   const price = def.sell * sellMultiplier(state.mastery, itemId) * qty;
   state.coins = roundXp(state.coins + price);
   state.stats.coinsFromSales = roundXp(state.stats.coinsFromSales + price);
+  noteEarned(state, price);
   return true;
 }
 
@@ -533,6 +562,7 @@ export function buyShop(state: Save, itemId: string, now: number): boolean {
   if (counter.windowStart == null) counter.windowStart = now;
   state.shop[itemId] = counter;
   state.coins = roundXp(state.coins - SHOP_PRICE);
+  noteSpent(state, SHOP_PRICE);
   giveItem(state, itemId, 1);
   return true;
 }
@@ -586,6 +616,7 @@ function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, 
     const loot = expectedDropValue(enemy.drops) * factor;
     state.coins = roundXp(state.coins + coins + loot);
     state.stats.coinsFromKills = roundXp(state.stats.coinsFromKills + coins);
+    noteEarned(state, coins + loot);
     state.stats.lootValue = roundXp(state.stats.lootValue + loot);
     if (sink) sink.coins = roundXp(sink.coins + coins + (loot - expectedDropValue(enemy.drops)));
   } else {
@@ -601,10 +632,12 @@ function grantKillRewards(state: Save, enemy: EnemyDef, sink: Sink | undefined, 
     if (rolled > 0) {
       state.coins = roundXp(state.coins + rolled);
       state.stats.coinsFromKills = roundXp(state.stats.coinsFromKills + rolled);
+      noteEarned(state, rolled);
       if (sink) sink.coins = roundXp(sink.coins + rolled);
     }
     if (extra > 0) {
       state.coins = roundXp(state.coins + extra);
+      noteEarned(state, extra);
       if (sink) sink.coins = roundXp(sink.coins + extra);
     }
     state.stats.lootValue = roundXp(state.stats.lootValue + itemValue * factor);
@@ -926,6 +959,7 @@ export function advanceOpenTab(
   if (gap < 0 || gap >= silentGapMs) return creditOffline(state, now);
   if (gap > 0) {
     simulate(state, gap, undefined, notes ? { notes } : undefined);
+    noteTime(state, gap);
     state.lastCredited = now;
   }
   return null;
@@ -977,6 +1011,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     stopped: null,
   };
   simulate(state, credited, sink);
+  noteTime(state, credited);
   report.actions = sink.actions;
   report.kills = sink.kills;
   report.foodEaten = sink.foodEaten;
@@ -1044,6 +1079,9 @@ export function deserialize(raw: string): Save | null {
   if (typeof statsIn.foodEaten === 'number') stats.foodEaten = statsIn.foodEaten;
   if (typeof statsIn.coinsFromKills === 'number') stats.coinsFromKills = statsIn.coinsFromKills;
   if (typeof statsIn.coinsFromSales === 'number') stats.coinsFromSales = statsIn.coinsFromSales;
+  if (typeof statsIn.coinsEarned === 'number') stats.coinsEarned = statsIn.coinsEarned;
+  if (typeof statsIn.coinsSpent === 'number') stats.coinsSpent = statsIn.coinsSpent;
+  if (typeof statsIn.timePlayed === 'number') stats.timePlayed = statsIn.timePlayed;
   if (typeof statsIn.lootValue === 'number') stats.lootValue = statsIn.lootValue;
   if (isRecord(statsIn.killsByEnemy)) {
     for (const [key, value] of Object.entries(statsIn.killsByEnemy)) {
@@ -1146,6 +1184,7 @@ export function deserialize(raw: string): Save | null {
     mastery,
     enemyMastery,
     enemyKills: {},
+    savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
@@ -1229,7 +1268,7 @@ export function loadAndCredit(storage: StorageLike, now: number): LoadResult {
   const raw = storage.getItem(SAVE_KEY);
   if (raw == null) {
     const state = newGame(now);
-    storage.setItem(SAVE_KEY, serialize(state));
+    writeSave(storage, state);
     return { state, status: 'new', report: null };
   }
   const loaded = deserialize(raw);
@@ -1238,11 +1277,12 @@ export function loadAndCredit(storage: StorageLike, now: number): LoadResult {
     return { state: newGame(now), status: 'corrupt', report: null };
   }
   const report = creditOffline(loaded, now);
-  storage.setItem(SAVE_KEY, serialize(loaded));
+  writeSave(storage, loaded);
   return { state: loaded, status: 'ok', report };
 }
 
 export function writeSave(storage: StorageLike, state: Save): void {
+  state.savedAt = Date.now();
   storage.setItem(SAVE_KEY, serialize(state));
 }
 

@@ -214,6 +214,9 @@ function tick(): void {
 }
 
 function render(): void {
+  if (view.tab !== 'combat') {
+    document.querySelectorAll('#floaters .floater.anchored, #floaters [data-float-combat] .floater').forEach((el) => el.remove());
+  }
   const key = renderKey(state, view, devOn ? 'dev' : '');
   if (key === drawnKey && app.querySelector('[data-activity]')) {
     patchLive();
