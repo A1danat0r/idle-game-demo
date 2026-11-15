@@ -56,13 +56,13 @@ describe('reference route', () => {
     expect(result.state.equipped.weapon).toBe('gear.melee.iron_spear');
     expect(result.state.equipped.body).toBeNull();
     expect(result.state.equipped.shield).toBeNull();
-    expect(result.levels.Woodcutting).toBe(30);
+    expect(result.levels.Woodcutting).toBe(40);
+    expect(result.levels.Mining).toBe(37);
     expect(result.levels.Fishing).toBe(30);
     expect(result.levels.Cooking).toBe(30);
     expect(result.levels.Attack).toBe(30);
     expect(result.levels.Strength).toBe(30);
     expect(result.levels.Defence).toBe(30);
-    expect(result.levels.Mining).toBe(30);
     expect(result.levels.Smithing).toBe(30);
     expect(result.elapsedHours).toBe(20.45);
     // Seed-1 play credits bone EV on the 36 climb kills (+9). Check 9 stays on the

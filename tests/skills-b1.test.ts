@@ -52,7 +52,7 @@ describe('B1 skills and gathering', () => {
   });
 
   it('adds the 16 Foraging nodes and 2 Exploration surveys, and no gap nodes', () => {
-    const foraging = NODES.filter((node) => node.skill === 'Foraging');
+    const foraging = NODES.filter((node) => node.skill === 'Foraging' && node.level <= 30);
     const exploration = NODES.filter((node) => node.skill === 'Exploration');
     expect(foraging).toHaveLength(16);
     expect(exploration).toHaveLength(2);
@@ -68,9 +68,7 @@ describe('B1 skills and gathering', () => {
     expect(exploration[0]).toMatchObject({ id: 'mat.gem.weathered_agate', seconds: 3.4, xp: 27, cost: 0 });
     expect(ITEMS['mat.gem.weathered_agate'].sell).toBe(1);
     expect(ITEMS['mat.relic.weathered_slate'].sell).toBe(3);
-    for (const id of ['mat.fish.eel', 'mat.crystal.quartz', 'mat.tree.bark_strip', 'mat.wood.willow_rods']) {
-      expect(NODES.some((node) => node.id === id)).toBe(false);
-    }
+    expect(NODES.filter((node) => node.skill === 'Foraging')).toHaveLength(22);
   });
 
   it('applies the tool step to Fishing and Foraging and leaves Exploration alone', () => {

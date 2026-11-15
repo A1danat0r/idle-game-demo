@@ -27,17 +27,14 @@ function farmer() {
 }
 
 describe('B2 production, farming, and combat styles', () => {
-  it('ships 149 actions and leaves the gap nodes out', () => {
-    const nodes = NODES.filter((node) => node.skill === 'Foraging' || node.skill === 'Exploration');
+  it('ships 149 actions through level 30 before the cap-40 rows', () => {
+    const nodes = NODES.filter((node) => (node.skill === 'Foraging' || node.skill === 'Exploration') && node.level <= 30);
     const recipes = RECIPES.filter((recipe) =>
-      ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill),
+      ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill) && recipe.level <= 30,
     );
     expect(nodes).toHaveLength(18);
     expect(recipes).toHaveLength(131);
     expect(nodes.length + recipes.length).toBe(149);
-    for (const id of ['mat.fish.eel', 'mat.crystal.quartz', 'mat.tree.bark_strip', 'mat.wood.willow_rods']) {
-      expect(NODES.some((node) => node.id === id)).toBe(false);
-    }
     expect(ENEMIES).toHaveLength(11);
   });
 

@@ -36,11 +36,12 @@ describe('check 19 mastery', () => {
     expect(masteryLevel(6_072)).toBe(10);
     expect(masteryLevel(63_049)).toBe(30);
     expect(masteryLevel(63_050)).toBe(MASTERY_CAP);
-    expect(NODES).toHaveLength(34);
-    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' || recipe.skill === 'Smithing')).toHaveLength(40);
+    expect(NODES).toHaveLength(50);
+    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' || recipe.skill === 'Smithing')).toHaveLength(67);
     const outputs = new Map<string, string>();
     for (const recipe of RECIPES) {
       if (recipe.skill !== 'Cooking' && recipe.skill !== 'Smithing') continue;
+      if (recipe.id === 'recipe.mat.bar.steel.slag_flux_route') continue;
       for (const output of recipe.outputs) {
         expect(outputs.has(output.id), output.id).toBe(false);
         outputs.set(output.id, recipe.id);

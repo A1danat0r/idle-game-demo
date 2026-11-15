@@ -444,6 +444,8 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!recipe) return false;
   if (!state.owned.includes(recipe.skill)) return false;
   if (skillLevel(state, recipe.skill) < recipe.level) return false;
+  if (recipe.locked) return false;
+  if (recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]) return false;
   if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
   if (!hasInputs(state, recipeId)) return false;
   if (recipe.oneTime && state.buildings[recipe.id]) {
@@ -610,6 +612,7 @@ export function equip(state: Save, itemId: string): boolean {
   if (!slot || (state.bank[itemId] ?? 0) <= 0) return false;
   state.equipped[slot] = itemId;
   if (slot === 'weapon' && itemId.includes('bow')) state.equipped.shield = null;
+  if (slot === 'shield' && (state.equipped.weapon ?? '').includes('bow')) state.equipped.weapon = null;
   return true;
 }
 

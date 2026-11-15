@@ -16,6 +16,7 @@ import {
   SKILL_PRICES,
   SHOP_ITEMS,
   SHOP_PRICE,
+  LEVEL_CAP,
   XP_TABLE,
   equippedGear,
   gearStatText,
@@ -108,7 +109,7 @@ function activityMastery(state: Save): { pct: number } | null {
 
 function xpView(xp: number): { level: number; pct: number; text: string } {
   const level = levelForXp(xp);
-  if (level >= 30) return { level, pct: 100, text: `${fmtXp(xp)} XP · cap` };
+  if (level >= LEVEL_CAP) return { level, pct: 100, text: `${fmtXp(xp)} XP · cap` };
   const prev = XP_TABLE[level];
   const next = XP_TABLE[level + 1];
   return { level, pct: ((xp - prev) / (next - prev)) * 100, text: `${fmtXp(xp)} / ${fmt(next)} XP` };
@@ -491,7 +492,10 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const inputs = recipe.inputs.map((input) => `${input.qty} ${itemName(input.id)}`).join(', ');
   const output = recipe.outputs[0];
   const missing = recipe.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
-  const need = missing ? needLine(missing.id) : null;
+  const foundation = recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]
+    ? 'Needs stone foundation (Construction)'
+    : null;
+  const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
   const right = !reached
     ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
@@ -766,7 +770,7 @@ export function devHtml(): string {
     <button type="button" class="tag btn" data-ff-apply>Advance</button>
     <label>Set coins <input data-set-coins type="number" min="0" step="1" value="0"></label>
     <button type="button" class="tag btn" data-apply-coins>Apply coins</button>
-    <label>Skill level <input data-set-skill value="Fishing"> <input data-set-level type="number" min="1" max="30" value="10"></label>
+    <label>Skill level <input data-set-skill value="Fishing"> <input data-set-level type="number" min="1" max="40" value="10"></label>
     <button type="button" class="tag btn" data-apply-level>Apply level</button>
     <label>Give item <input data-give-id value="food.roast_minnows"> <input data-give-qty type="number" min="1" value="20"></label>
     <button type="button" class="tag btn" data-apply-give>Give</button>

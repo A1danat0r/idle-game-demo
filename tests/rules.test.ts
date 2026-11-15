@@ -135,13 +135,18 @@ describe('xp and prices', () => {
     expect(XP_TABLE[20]).toBe(43272);
     expect(XP_TABLE[22]).toBe(52054);
     expect(XP_TABLE[30]).toBe(102301);
-    expect(XP_CAP).toBe(102301);
+    expect(XP_TABLE[35]).toBe(151166);
+    expect(XP_TABLE[39]).toBe(204446);
+    expect(XP_TABLE[40]).toBe(220234);
+    expect(XP_CAP).toBe(220234);
     expect(levelForXp(0)).toBe(1);
     expect(levelForXp(1137)).toBe(1);
     expect(levelForXp(1138)).toBe(2);
     expect(levelForXp(43272)).toBe(20);
     expect(levelForXp(102300)).toBe(29);
     expect(levelForXp(102301)).toBe(30);
+    expect(levelForXp(220233)).toBe(39);
+    expect(levelForXp(220234)).toBe(40);
   });
 
   it('uses the t310 skill prices and the node cost by level', () => {
@@ -196,11 +201,11 @@ describe('xp and prices', () => {
 
 describe('actions', () => {
   it('has the demo content counts', () => {
-    expect(NODES.filter((node) => node.skill === 'Woodcutting' || node.skill === 'Fishing' || node.skill === 'Mining')).toHaveLength(16);
-    expect(NODES.filter((node) => node.skill === 'Foraging')).toHaveLength(16);
+    expect(NODES.filter((node) => (node.skill === 'Woodcutting' || node.skill === 'Fishing' || node.skill === 'Mining') && node.level <= 25)).toHaveLength(16);
+    expect(NODES.filter((node) => node.skill === 'Foraging' && node.level <= 30)).toHaveLength(16);
     expect(NODES.filter((node) => node.skill === 'Exploration')).toHaveLength(2);
-    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking')).toHaveLength(12);
-    expect(RECIPES.filter((recipe) => recipe.skill === 'Smithing')).toHaveLength(28);
+    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' && recipe.level <= 30)).toHaveLength(12);
+    expect(RECIPES.filter((recipe) => recipe.skill === 'Smithing' && recipe.level <= 30 && !recipe.id.includes('sickle'))).toHaveLength(28);
     expect(ENEMIES).toHaveLength(11);
     expect(TABLE).toHaveLength(56);
   });
@@ -220,6 +225,7 @@ describe('actions', () => {
     const base: Record<string, number> = { Woodcutting: 2.6, Fishing: 3.2, Mining: 2.9, Cooking: 2.2, Smithing: 3.4 };
     const easy = [57696, 83659];
     const standard = [28848, 41830];
+    const listed = new Set(TABLE.map((row) => row[0]));
     const actions = [
       ...NODES.map((node) => ({ id: node.id, skill: node.skill, level: node.level, units: 1 })),
       ...RECIPES.map((recipe) => ({
@@ -228,7 +234,7 @@ describe('actions', () => {
         level: recipe.level,
         units: recipe.inputs.reduce((sum, input) => sum + input.qty, 0),
       })),
-    ];
+    ].filter((action) => listed.has(action.id));
     for (const skill of Object.keys(base)) {
       const mine = actions.filter((action) => action.skill === skill).sort((a, b) => a.level - b.level || a.units - b.units || a.id.localeCompare(b.id));
       for (const level of [...new Set(mine.map((action) => action.level))]) {

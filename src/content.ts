@@ -1,3 +1,4 @@
+import { CAP40_ITEMS, CAP40_NODES, CAP40_RECIPES } from './cap40';
 import { SLICE_ITEMS, SLICE_RECIPES } from './slice';
 
 /**
@@ -14,11 +15,13 @@ export function nodeCost(level: number): number {
 export const XP_TABLE: readonly number[] = [
   0, 0, 1138, 2358, 3665, 5065, 6567, 8175, 9899, 11747, 13726, 15848, 18122, 20559, 23170, 25968,
   28967, 32181, 35626, 39317, 43272, 47511, 52054, 56922, 62139, 67730, 73722, 80143, 87024, 94398,
-  102301,
+  102301, 110770, 119846, 129572, 139996, 151166, 163136, 175965, 189713, 204446,
+  220234,
 ];
 
-export const XP_CAP = XP_TABLE[30];
-export const LEVEL_CAP = 30;
+/** E1 cumulative XP for level 40. Past this, the action still produces items and coins. */
+export const XP_CAP = XP_TABLE[40];
+export const LEVEL_CAP = 40;
 
 /**
  * Skill purchase k (1-based) is index k-1.
@@ -159,7 +162,7 @@ export interface NodeDef {
 
 export interface RecipeDef {
   id: string;
-  skill: 'Cooking' | 'Smithing' | 'Crafting' | 'Alchemy' | 'Construction' | 'Enchanting' | 'Farming' | 'Exploration';
+  skill: 'Woodcutting' | 'Cooking' | 'Smithing' | 'Crafting' | 'Alchemy' | 'Construction' | 'Enchanting' | 'Farming' | 'Exploration';
   level: number;
   seconds: number;
   xp: number;
@@ -171,6 +174,10 @@ export interface RecipeDef {
   oneTime?: boolean;
   /** Coins charged to rebuild a one-time structure. No XP on a rebuild. */
   rebuildFee?: number;
+  /** Visible row whose action stays disabled. The copy names the missing area or input. */
+  locked?: string;
+  /** One-time building that must already be complete. */
+  requiresBuilding?: string;
 }
 
 export interface DropDef {
@@ -240,6 +247,14 @@ export const NODES: NodeDef[] = [
   node('mat.seed.wheat', 'Foraging', 30, 4.1, 95),
   node('mat.gem.weathered_agate', 'Exploration', 1, 3.4, 27),
   node('mat.relic.weathered_slate', 'Exploration', 10, 3.8, 30),
+  ...CAP40_NODES.map((row): NodeDef => ({
+    id: row.id,
+    skill: row.skill as NodeDef['skill'],
+    level: row.level,
+    seconds: row.seconds,
+    xp: row.xp,
+    cost: row.cost,
+  })),
 ];
 
 export const NODE_BY_ID: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.id, n]));
@@ -309,6 +324,19 @@ export const RECIPES: RecipeDef[] = [
     oneTime: row.oneTime,
     rebuildFee: row.rebuildFee,
   })),
+  ...CAP40_RECIPES.map((row): RecipeDef => ({
+    id: row.id,
+    skill: row.skill as RecipeDef['skill'],
+    level: row.level,
+    seconds: row.seconds,
+    xp: row.xp,
+    inputs: row.inputs,
+    outputs: row.outputs,
+    oneTime: row.oneTime,
+    rebuildFee: row.rebuildFee,
+    locked: row.locked,
+    requiresBuilding: row.requiresBuilding,
+  })),
 ];
 
 export const RECIPE_BY_ID: Record<string, RecipeDef> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
@@ -330,6 +358,7 @@ export const BUILDING_STEPS: Record<string, SkillId[]> = {
   'activity.construction.stone_foundation': ['Cooking'],
   'activity.construction.oak_workshop': ['Crafting'],
   'activity.construction.supply_racks': ['Alchemy'],
+  'activity.construction.forge_extension': ['Smithing'],
 };
 
 /** Catalogue tool factor, approved at t252. Each tier multiplies action time. */
@@ -710,9 +739,13 @@ function addItems(): void {
     { id: 'ammo.thrown.iron_javelin', name: 'Iron javelins', sell: 8 },
   ];
   for (const row of ammo) item({ ...row, kind: 'ammo', icon: 'ammo' });
-  for (const row of SLICE_ITEMS) {
+  for (const row of [...SLICE_ITEMS, ...CAP40_ITEMS]) {
     if (ITEMS[row.id]) continue;
     item({ id: row.id, name: row.name, sell: row.sell, icon: row.icon as IconName, kind: row.kind as ItemKind });
+  }
+  for (const node of CAP40_NODES) {
+    const listed = CAP40_ITEMS.find((row) => row.id === node.id);
+    if (listed && ITEMS[node.id]) ITEMS[node.id].sell = listed.sell;
   }
 }
 
