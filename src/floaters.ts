@@ -49,6 +49,11 @@ export function formatActionNotes(notes: Extract<FloatNote, { kind: 'action' }>[
   return lines.join('\n');
 }
 
+/** An open sheet covers the screen, so gain and combat pop-ups are not drawn. */
+export function notesWhileSheetOpen(notes: FloatNote[], sheetOpen: boolean): FloatNote[] {
+  return sheetOpen ? [] : notes;
+}
+
 /** Merge a burst of notes into at most FLOAT_CAP texts. Extra hits keep the latest ones. */
 export function presentNotes(notes: FloatNote[]): FloaterView[] {
   const actions = notes.filter((note): note is Extract<FloatNote, { kind: 'action' }> => note.kind === 'action');

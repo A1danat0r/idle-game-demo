@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { chromium } from 'playwright';
 import { describe, expect, it } from 'vitest';
-import { XP_TABLE } from '../src/content';
+import { ITEMS, XP_TABLE } from '../src/content';
 import { advanceOpenTab, newGame, setFood, startCombat, startGather, type FloatNote } from '../src/engine';
-import { FLOAT_CAP, combatAnchor, formatActionNotes, formatCombatAmount, presentNotes } from '../src/floaters';
+import { FLOAT_CAP, combatAnchor, formatActionNotes, formatCombatAmount, notesWhileSheetOpen, presentNotes } from '../src/floaters';
 
 describe('action and combat floaters', () => {
   it('records the real XP and item for a completed gather', () => {
@@ -109,5 +111,34 @@ describe('action and combat floaters', () => {
     const report = advanceOpenTab(state, 60_000, 5000, notes);
     expect(report?.actions).toBeGreaterThan(1);
     expect(notes).toEqual([]);
+  });
+
+  it('suppresses pop-ups while a sheet is open', async () => {
+    const notes: FloatNote[] = [{ kind: 'action', skill: 'Woodcutting', xp: 42, itemId: 'mat.wood.pine', qty: 1 }];
+    expect(notesWhileSheetOpen(notes, true)).toEqual([]);
+    expect(notesWhileSheetOpen(notes, false)).toEqual(notes);
+    const css = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8');
+    const browser = await chromium.launch({ headless: true });
+    const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await page.setContent(`<!doctype html><html><head><style>${css}</style></head><body>
+      <div class="sheet" data-milestone-sheet></div>
+      <div id="floaters"><div class="floater">+42 XP</div></div>
+    </body></html>`);
+    expect(await page.locator('#floaters').evaluate((el) => getComputedStyle(el).display)).toBe('none');
+    await page.evaluate(() => document.querySelector('.sheet')?.remove());
+    expect(await page.locator('#floaters').evaluate((el) => getComputedStyle(el).display)).toBe('flex');
+    await browser.close();
+  });
+
+  it('reserves the sword icon for swords', () => {
+    expect(ITEMS['enc.gear.neck.quarry_undercroft_amulet']?.icon).toBe('pendant');
+    expect(ITEMS['gear.neck.shellback_scute_amulet']?.icon).toBe('pendant');
+    for (const id of ['gear.melee.bronze_sword', 'gear.melee.iron_sword', 'gear.melee.steel_sword']) {
+      expect(ITEMS[id]?.icon).toBe('sword');
+    }
+    const stillSword = Object.values(ITEMS)
+      .filter((item) => item.icon === 'sword' && item.kind === 'gear' && !item.id.includes('.melee.'))
+      .map((item) => item.name);
+    expect(stillSword).toEqual([]);
   });
 });
