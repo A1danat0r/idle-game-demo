@@ -143,7 +143,7 @@ describe('account reset', () => {
     expect(loaded.state.stats.timePlayed).toBe(0);
     expect(loaded.state.stats.coinsEarned).toBe(0);
     expect(loaded.state.stats.coinsSpent).toBe(0);
-    expect(loaded.state.saveFormat).toBe(4);
+    expect(loaded.state.saveFormat).toBe(5);
     expect(loaded.state.buildings).toEqual({});
   });
 
@@ -164,7 +164,7 @@ describe('account reset', () => {
     expect(loaded.state.stats.timePlayed).toBe(0);
     expect(loaded.state.stats.coinsEarned).toBe(0);
     expect(loaded.state.stats.coinsSpent).toBe(0);
-    expect(loaded.state.saveFormat).toBe(4);
+    expect(loaded.state.saveFormat).toBe(5);
     expect(loaded.state.buildings).toEqual({});
     expect(loaded.state.lastCredited).toBe(5_000 + 3_600_000);
   });

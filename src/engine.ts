@@ -68,11 +68,12 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 
-export const SAVE_FORMAT = 4;
-/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
+export const SAVE_FORMAT = 5;
+/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. Format 4 stores standing buildings only. */
 const SAVE_FORMAT_V1 = 1;
 const SAVE_FORMAT_V2 = 2;
 const SAVE_FORMAT_V3 = 3;
+const SAVE_FORMAT_V4 = 4;
 export const SAVE_KEY = 'idle-game-demo-save';
 export const UNREADABLE_SAVE_KEY = 'idle-game-demo-save-unreadable';
 
@@ -158,8 +159,10 @@ export interface Save {
   enemyMastery: Record<string, number>;
   /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
   enemyKills: Record<string, number>;
-  /** Construction completions, keyed by activity id. Empty until that skill exists. */
+  /** Standing Construction structures. The ×0.937 step uses this map only. */
   buildings: Record<string, boolean>;
+  /** One-time structures that have been completed at least once. A dismantle clears the standing flag and leaves this set, so the next build is a rebuild. */
+  everBuilt: Record<string, boolean>;
   /** The one Farming plot. Null when nothing is planted. */
   plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
@@ -265,6 +268,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     enemyMastery: {},
     enemyKills: {},
     buildings: {},
+    everBuilt: {},
     plot: null,
   };
   return state;
@@ -464,7 +468,7 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!hasInputs(state, recipeId)) return false;
   const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
   if (same) return true;
-  if (recipe.oneTime && state.buildings[recipe.id]) {
+  if (recipe.oneTime && structureKnown(state, recipe.id)) {
     const fee = recipe.rebuildFee ?? 0;
     if (state.coins < fee) return false;
     state.coins = roundXp(state.coins - fee);
@@ -498,8 +502,14 @@ export function dismantleBuilding(state: Save, recipeId: string): boolean {
   if (!recipe?.oneTime || !state.buildings[recipe.id]) return false;
   if (state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id) return false;
   for (const refund of dismantleRefund(recipe.id)) giveItem(state, refund.id, refund.qty);
+  state.everBuilt[recipe.id] = true;
   delete state.buildings[recipe.id];
   return true;
+}
+
+/** True once a one-time structure has been completed, including after it is dismantled. */
+function structureKnown(state: Save, recipeId: string): boolean {
+  return !!state.everBuilt[recipeId] || !!state.buildings[recipeId];
 }
 
 export function startCombat(state: Save, enemyId: string, style: CombatStyle): boolean {
@@ -863,8 +873,11 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
     const doubled = doubledOutput(state, recipe.id);
     for (const made of recipe.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
-    const rebuilding = recipe.oneTime && state.buildings[recipe.id];
-    if (recipe.oneTime && !rebuilding) state.buildings[recipe.id] = true;
+    const rebuilding = recipe.oneTime && structureKnown(state, recipe.id);
+    if (recipe.oneTime) {
+      state.everBuilt[recipe.id] = true;
+      state.buildings[recipe.id] = true;
+    }
     const gained = rebuilding
       ? 0
       : addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
@@ -1222,7 +1235,8 @@ export function deserialize(raw: string): Save | null {
     parsed.saveFormat !== SAVE_FORMAT &&
     parsed.saveFormat !== SAVE_FORMAT_V1 &&
     parsed.saveFormat !== SAVE_FORMAT_V2 &&
-    parsed.saveFormat !== SAVE_FORMAT_V3
+    parsed.saveFormat !== SAVE_FORMAT_V3 &&
+    parsed.saveFormat !== SAVE_FORMAT_V4
   ) {
     return null;
   }
@@ -1365,13 +1379,14 @@ export function deserialize(raw: string): Save | null {
     enemyMastery,
     enemyKills: {},
     buildings: {},
+    everBuilt: {},
     plot: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
-  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings)) return null;
+  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.everBuilt)) return null;
   loaded.plot = readPlot(parsed.plot);
   return loaded;
 }
@@ -1382,9 +1397,9 @@ function readPlot(value: unknown): Save['plot'] {
   return { recipeId: value.recipeId, remainingMs: value.remainingMs, ready: value.ready };
 }
 
-/** Formats 1 and 2 derive kills from mastery. Formats 3 and 4 keep the stored counts. */
+/** Formats 1 and 2 derive kills from mastery. Formats 3 and later keep the stored counts. */
 function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
-  if (format === SAVE_FORMAT || format === SAVE_FORMAT_V3) {
+  if (format === SAVE_FORMAT || format === SAVE_FORMAT_V3 || format === SAVE_FORMAT_V4) {
     if (raw == null) {
       state.enemyKills = killsFromMastery(state.enemyMastery);
       return true;
@@ -1398,19 +1413,29 @@ function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
   return true;
 }
 
-/** Format 4 stores buildings. Older saves load with an empty map. */
-function migrateBuildings(state: Save, format: number, raw: unknown): boolean {
-  if (format !== SAVE_FORMAT) {
+/**
+ * Format 4 stores standing buildings. Each of those counts as ever built.
+ * Format 5 also stores everBuilt, so a dismantled structure keeps its rebuild path.
+ * Older saves load with both maps empty.
+ */
+function migrateBuildings(state: Save, format: number, raw: unknown, everRaw: unknown): boolean {
+  if (format !== SAVE_FORMAT && format !== SAVE_FORMAT_V4) {
     state.buildings = {};
+    state.everBuilt = {};
     return true;
   }
   if (raw == null) {
     state.buildings = {};
+    state.everBuilt = {};
     return true;
   }
   const buildings = readBuildings(raw);
   if (!buildings) return false;
+  const everBuilt = format === SAVE_FORMAT && everRaw != null ? readBuildings(everRaw) : { ...buildings };
+  if (!everBuilt) return false;
+  for (const id of Object.keys(buildings)) everBuilt[id] = true;
   state.buildings = buildings;
+  state.everBuilt = everBuilt;
   return true;
 }
 

@@ -162,7 +162,7 @@ describe('old-save HP migration', () => {
     });
     const loaded = deserialize(raw);
     expect(loaded).not.toBeNull();
-    expect(loaded!.saveFormat).toBe(4);
+    expect(loaded!.saveFormat).toBe(5);
     expect(loaded!.combatScale).toBe(10);
     expect(loaded!.hp).toBe(90);
     expect(loaded!.combat?.enemyHp).toBe(350);

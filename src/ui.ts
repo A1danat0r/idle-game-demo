@@ -503,7 +503,8 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
     : null;
   const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
-  const built = !!recipe.oneTime && !!state.buildings[recipe.id];
+  const standing = !!recipe.oneTime && !!state.buildings[recipe.id];
+  const known = standing || (!!recipe.oneTime && !!state.everBuilt?.[recipe.id]);
   const fee = recipe.rebuildFee ?? 0;
   const canPay = state.coins + 1e-9 >= fee;
   const later = !!recipe.comingLater;
@@ -513,18 +514,18 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
       ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
       : active
         ? `<span class="tag on">Active</span>`
-        : built
-          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button><button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button></div>`
+        : known
+          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button>${standing ? `<button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button>` : ''}</div>`
           : need
             ? `<button type="button" class="tag btn" disabled>Start</button>`
             : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
-  const xp = fmtAmount(built ? 0 : recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
+  const xp = fmtAmount(known ? 0 : recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
   const sell = output ? fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id)) : '0';
   const heal = output ? ITEMS[output.id]?.heal : undefined;
   const title = actionTitle(recipe);
   const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
-  const refund = built ? dismantleRefund(recipe.id) : [];
-  const refundText = !built
+  const refund = standing ? dismantleRefund(recipe.id) : [];
+  const refundText = !standing
     ? ''
     : refund.length
       ? ` · returns ${refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ')}`
@@ -532,7 +533,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
     : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${refundText}${need ? ` · ${esc(need)}` : ''}`;
-  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? (built ? ' · built' : ' · build') : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
+  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${standing ? ' · built' : recipe.oneTime && !known ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 
 function needLine(itemId: string): string {

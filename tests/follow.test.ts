@@ -15,9 +15,11 @@ import {
   actionSeconds,
   advanceOpenTab,
   cancelPlot,
+  deserialize,
   dismantleBuilding,
   dismantleRefund,
   newGame,
+  serialize,
   simulate,
   startProduce,
   stepCompletion,
@@ -281,5 +283,52 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(row).toContain('Dismantle');
     expect(row).toContain('returns 1 Oak bench kit');
     expect(row).toContain('Rebuild');
+  });
+
+  it('charges the rebuild fee and no XP after a dismantle', () => {
+    const state = newGame(0);
+    state.owned.push('Construction');
+    state.xp.Construction = 0;
+    state.coins = 451;
+    state.bank['mat.wood.pine'] = 10;
+    expect(startProduce(state, 'activity.construction.pine_work_area')).toBe(true);
+    stepCompletion(state);
+    expect(state.xp.Construction).toBe(7212);
+    expect(state.coins).toBe(451);
+    expect(state.bank['mat.wood.pine']).toBe(5);
+    expect(dismantleBuilding(state, 'activity.construction.pine_work_area')).toBe(true);
+    expect(state.buildings['activity.construction.pine_work_area']).toBeUndefined();
+    expect(state.everBuilt['activity.construction.pine_work_area']).toBe(true);
+    expect(state.xp.Construction).toBe(7212);
+    expect(state.bank['mat.wood.pine']).toBe(5);
+
+    expect(startProduce(state, 'activity.construction.pine_work_area')).toBe(true);
+    expect(state.coins).toBe(0);
+    stepCompletion(state);
+    expect(state.bank['mat.wood.pine'] ?? 0).toBe(0);
+    expect(state.xp.Construction).toBe(7212);
+    expect(state.buildings['activity.construction.pine_work_area']).toBe(true);
+
+    const html = mainHtml(state, view('Construction'), 0);
+    dismantleBuilding(state, 'activity.construction.pine_work_area');
+    const after = mainHtml(state, view('Construction'), 0);
+    const row = rowHtml(after, 'Build pine work area');
+    expect(row).toContain('Rebuild');
+    expect(row).toContain('451');
+    expect(row).not.toContain('Dismantle');
+    expect(row).not.toContain('7212');
+    expect(html).toContain('built');
+
+    const old = JSON.parse(serialize(newGame(0)));
+    old.saveFormat = 4;
+    delete old.everBuilt;
+    old.buildings = { 'activity.construction.oak_workshop': true };
+    const loaded = deserialize(JSON.stringify(old));
+    expect(loaded?.saveFormat).toBe(5);
+    expect(loaded?.buildings['activity.construction.oak_workshop']).toBe(true);
+    expect(loaded?.everBuilt['activity.construction.oak_workshop']).toBe(true);
+    const kept = deserialize(serialize(state));
+    expect(kept?.buildings['activity.construction.pine_work_area']).toBeUndefined();
+    expect(kept?.everBuilt['activity.construction.pine_work_area']).toBe(true);
   });
 });

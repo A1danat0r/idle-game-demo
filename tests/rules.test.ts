@@ -613,7 +613,7 @@ describe('save, offline, shop', () => {
     expect(loaded).not.toBeNull();
     expect(loaded!.nodes).toEqual(['mat.stone.limestone', 'mat.wood.maple']);
     expect(loaded!.owned).toContain('Mining');
-    expect(loaded!.saveFormat).toBe(4);
+    expect(loaded!.saveFormat).toBe(5);
     expect(loaded!.mastery).toEqual({});
     expect(loaded!.enemyMastery).toEqual({});
     expect(loaded!.coins).toBe(40);
