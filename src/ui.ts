@@ -52,6 +52,17 @@ import {
   type Save,
 } from './engine';
 import { icon } from './icons';
+import {
+  activityNextLine,
+  activityTrack,
+  combatNextLine,
+  combatSheetLines,
+  masterySheetLines,
+  trackChoices,
+  trackSeconds,
+  unlockGroups,
+  usedBy,
+} from './milestones';
 import { enemyFigure, playerFigure } from './sprites';
 import { deriveProfileStats, formatPlayed, formatSavedAt } from './profile';
 import {
@@ -77,6 +88,10 @@ export interface View {
   message: string;
   /** Second tap of Reset account. Not saved. */
   resetConfirm?: boolean;
+  /** Milestone sheet. Not saved. */
+  milestoneOpen?: boolean;
+  /** Track shown in the sheet. Null follows the running action or selected enemy. */
+  milestoneTrack?: string | null;
 }
 
 const esc = (value: string) =>
@@ -334,8 +349,8 @@ export function tabsHtml(view: View): string {
 
 export function mainHtml(state: Save, view: View, now: number, devOn = false): string {
   if (view.tab === 'skills') return skillsHtml(state);
-  if (view.tab === 'skill') return skillHtml(state, view.skill);
-  if (view.tab === 'combat') return combatHtml(state, view);
+  if (view.tab === 'skill') return skillHtml(state, view.skill) + milestoneSheetHtml(state, view);
+  if (view.tab === 'combat') return combatHtml(state, view) + milestoneSheetHtml(state, view);
   if (view.tab === 'inventory') return inventoryHtml(state, view, now);
   if (view.tab === 'profile') return profileHtml(state, devOn, view.resetConfirm === true);
   return equipmentHtml(state);
@@ -451,6 +466,7 @@ function skillHtml(state: Save, skill: SkillId | null): string {
     ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
     : '';
   return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
+    ${nextRow(activityNextLine(state))}
     ${scene}
     ${plot}
     <div class="list">${rows}</div>`;
@@ -598,7 +614,9 @@ function combatHtml(state: Save, view: View): string {
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
     .join(' ');
   const chance = Math.round(shownHitChance(state, selected.level) * 100);
+  const enemyLine = ownsCombatSkill(state) ? combatNextLine(state, selected.id) : null;
   return `${areaHead(view.area, styles, view)}
+    ${nextRow(enemyLine)}
     <div class="fight">
       <div class="stage">
         <div class="scene">
@@ -623,6 +641,46 @@ function arrowLine(state: Save): string {
   const arrow = arrowToUse(state.bank);
   const text = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
   return `<p class="note" data-arrows>${esc(text)}</p>`;
+}
+
+function nextRow(line: string | null): string {
+  if (!line) return '';
+  return `<button type="button" class="nextrow" data-milestone-open>${esc(line)}</button>`;
+}
+
+export function milestoneSheetHtml(state: Save, view: View): string {
+  if (!view.milestoneOpen) return '';
+  if (view.tab === 'combat') {
+    const inArea = ENEMIES.filter((enemy) => enemy.area === view.area);
+    const enemyId =
+      view.selected && ENEMY_BY_ID[view.selected] ? view.selected : inArea[0]?.id ?? '';
+    if (!enemyId || !ENEMY_BY_ID[enemyId]) return '';
+    const rows = combatSheetLines(state, enemyId)
+      .map((row) => `<div class="row"><div class="grow"><b>${esc(row.label)}</b><small>${esc(row.detail)}</small></div></div>`)
+      .join('');
+    return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(ENEMY_BY_ID[enemyId].name)}</h2><div class="list">${rows}</div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
+  }
+  const track = activityTrack(state);
+  if (!track) return '';
+  const picked = view.milestoneTrack && trackSeconds(view.milestoneTrack) > 0 ? view.milestoneTrack : track.id;
+  const groups = unlockGroups(state, track.skill)
+    .map((group) => {
+      const items = group.items
+        .map((item) => `<div class="row ${item.reached ? '' : 'dim'}"><div class="grow"><b>${esc(item.title)}</b><small>Level ${group.level} · ${esc(item.note)}</small></div></div>`)
+        .join('');
+      return `<h3>Level ${group.level}</h3>${items}`;
+    })
+    .join('');
+  const tools = usedBy(track.skill)
+    .map((row) => `<div class="row"><div class="grow"><b>${esc(row.title)}</b><small>${esc(row.skill)} ${row.level}</small></div></div>`)
+    .join('');
+  const perks = masterySheetLines(state, picked)
+    .map((row) => `<div class="row"><div class="grow"><b>${esc(row.label)}</b><small>${esc(row.detail)}</small></div></div>`)
+    .join('');
+  const picker = trackChoices(track.skill)
+    .map((choice) => `<button type="button" class="tag ${choice.id === picked ? 'on' : ''}" data-milestone-track="${choice.id}">${esc(choice.title)}</button>`)
+    .join('');
+  return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(track.skill)}</h2><div class="list">${groups}<h3>Used by</h3>${tools}${perks}<div class="chips">${picker}</div></div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
 }
 
 function inventoryHtml(state: Save, view: View, now: number): string {

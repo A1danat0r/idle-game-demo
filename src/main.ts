@@ -281,7 +281,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab) {
@@ -338,6 +338,9 @@ app.addEventListener('click', (event) => {
   if (target.dataset.unequip) unequip(state, target.dataset.unequip as EquipSlot);
   if (target.hasAttribute('data-resume')) resumeCombat(state);
   if (target.hasAttribute('data-about')) view.message = `${__BUILD_LABEL__} · ${__COMMIT_SHA__}`;
+  if (target.hasAttribute('data-milestone-open')) view.milestoneOpen = true;
+  if (target.hasAttribute('data-milestone-close')) view.milestoneOpen = false;
+  if (target.dataset.milestoneTrack) view.milestoneTrack = target.dataset.milestoneTrack;
   if (target.hasAttribute('data-dev-open')) openDev();
   if (target.hasAttribute('data-reset-ask')) view.resetConfirm = true;
   if (target.hasAttribute('data-reset-cancel')) {
