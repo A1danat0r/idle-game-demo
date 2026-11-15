@@ -6,6 +6,7 @@ import {
   SKILL_GROUPS,
   TOOL_TIME_FACTOR,
   nodeCost,
+  skillPrice,
 } from '../src/content';
 import { actionSeconds, bankHasSpace, buySkill, newGame } from '../src/engine';
 import { mainHtml, type View } from '../src/ui';
@@ -41,12 +42,13 @@ describe('B1 skills and gathering', () => {
     expect(magic.coins).toBe(0);
 
     const priced = newGame(0);
-    priced.owned.push('Cooking', 'Mining', 'Smithing');
-    priced.purchaseCount = 3;
-    priced.coins = 2653;
+    priced.owned.push('Cooking', 'Mining', 'Smithing', 'Strength', 'Defence', 'Attack', 'Fishing', 'Hitpoints');
+    priced.purchaseCount = 7;
+    priced.coins = 17389;
     expect(buySkill(priced, 'Foraging')).toBe(true);
     expect(priced.coins).toBe(0);
-    expect(priced.purchaseCount).toBe(4);
+    expect(priced.purchaseCount).toBe(8);
+    expect(skillPrice(15)).toBe(746839);
   });
 
   it('adds the 16 Foraging nodes and 2 Exploration surveys, and no gap nodes', () => {

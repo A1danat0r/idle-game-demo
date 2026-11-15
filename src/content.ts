@@ -396,12 +396,21 @@ const EXPECTED_LANDED: Record<string, number> = {
   '8:5': 5.4703,
   '8:4': 4.4734,
   '8:3': 3.4329,
+  '9:5': 5.4727,
+  '9:4': 4.3815,
+  '9:3': 3.5205,
   '10:5': 5.4752,
   '10:4': 4.4777,
   '10:3': 3.4813,
+  '11:5': 5.4769,
+  '11:4': 4.3991,
+  '11:3': 3.4483,
   '12:5': 5.4787,
   '12:4': 4.481,
   '12:3': 3.5161,
+  '14:5': 5.4813,
+  '14:4': 4.4834,
+  '14:3': 3.4579,
 };
 export function expectedLandedHits(enemyLevel: number, baseHits: number): number {
   return EXPECTED_LANDED[`${enemyLevel}:${baseHits}`] ?? baseHits;
