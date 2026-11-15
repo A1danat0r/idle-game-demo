@@ -13,7 +13,6 @@ import {
   lockLine,
   playerHitChance,
   playerMaxHp,
-  skillCost,
   skillPrice,
   teaserOpen,
 } from '../src/content';
