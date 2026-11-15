@@ -27,6 +27,7 @@ import {
   levelForXp,
   playerHitChance,
   skillPrice,
+  weaponFitsStyle,
   equipSlotFor,
   type CombatStyle,
   type SkillId,
@@ -432,12 +433,16 @@ function skillHtml(state: Save, skill: SkillId | null): string {
   const bonus = globalXpBonus(state.mastery, skill);
   const bonusLine =
     maxed > 0 ? `<small class="ok">+${Math.round(bonus * 100)}% XP, ${Math.min(maxed, 5)} of 5 mastered</small>` : '';
-  const rows =
-    skill === 'Cooking' || skill === 'Smithing'
-      ? RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)).join('')
-      : NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)).join('');
+  const rows = [
+    ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
+    ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
+  ].join('');
+  const plot = skill === 'Farming' && state.plot
+    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))}</p>`
+    : '';
   return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
     ${scene}
+    ${plot}
     <div class="list">${rows}</div>`;
 }
 
@@ -485,16 +490,29 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const active = state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id;
   const inputs = recipe.inputs.map((input) => `${input.qty} ${itemName(input.id)}`).join(', ');
   const output = recipe.outputs[0];
-  const have = recipe.inputs.every((input) => (state.bank[input.id] ?? 0) >= input.qty);
-  const stats = gearStatText(output.id);
+  const missing = recipe.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
+  const need = missing ? needLine(missing.id) : null;
+  const stats = output ? gearStatText(output.id) : '';
   const right = !reached
     ? `<span class="tag">${lock} Lv ${recipe.level}</span>`
     : active
       ? `<span class="tag on">Active</span>`
-      : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
+      : need
+        ? `<button type="button" class="tag btn" disabled>Start</button>`
+        : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
   const xp = fmtAmount(recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
-  const sell = fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id));
-  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
+  const sell = output ? fmtAmount((ITEMS[output.id]?.sell ?? 0) * sellMultiplier(state.mastery, output.id)) : '0';
+  const title = output ? itemName(output.id) : recipe.id.replace(/^activity\./, '').replaceAll('_', ' ');
+  const iconName = output ? ITEMS[output.id]?.icon ?? 'part' : 'stone';
+  return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${recipe.oneTime ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${need ? ` · ${esc(need)}` : ''}</small></div>${right}</div>`;
+}
+
+function needLine(itemId: string): string {
+  const name = itemName(itemId).toLowerCase();
+  const node = NODE_BY_ID[itemId];
+  if (node) return `Needs ${name} (${node.skill})`;
+  const made = RECIPES.find((recipe) => recipe.outputs.some((output) => output.id === itemId));
+  return made ? `Needs ${name} (${made.skill})` : `Needs ${name}`;
 }
 
 function areaButtons(view: View): string {
@@ -556,7 +574,7 @@ function combatHtml(state: Save, view: View): string {
           <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
           <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
         </div>
-        ${fightControl(state, selected.id)}
+        ${fightControl(state, selected.id, style)}
       </div>
       <div class="panel enemies"><h3>Enemies</h3>${list}</div>
     </div>
@@ -611,11 +629,20 @@ function fightButton(enemyId: string | null, enabled: boolean): string {
   return `<button type="button" class="tag btn"${target}${disabled}>Fight</button>`;
 }
 
-function fightControl(state: Save, enemyId: string): string {
+function fightControl(state: Save, enemyId: string, style: CombatStyle | null): string {
   if (!weaponReady(state)) return '<p class="note">Equip a weapon first.</p>';
   const gate = lockLine(state.enemyKills, enemyId);
-  const button = fightButton(enemyId, !gate);
-  return gate ? `<p class="note">${esc(gate)}</p>${button}` : button;
+  const worn = state.equipped.weapon ?? '';
+  const styleGate = style && !weaponFitsStyle(worn, style) ? styleNeed(style) : null;
+  const button = fightButton(enemyId, !gate && !styleGate);
+  const note = gate ?? styleGate;
+  return note ? `<p class="note">${esc(note)}</p>${button}` : button;
+}
+
+function styleNeed(style: CombatStyle): string {
+  if (style === 'Magic') return 'Equip a Magic focus (crafted with Crafting) to train Magic.';
+  if (style === 'Ranged') return 'Needs bronze throwing knives (Smithing)';
+  return 'Equip a melee weapon first.';
 }
 
 function weaponReady(state: Save): boolean {
