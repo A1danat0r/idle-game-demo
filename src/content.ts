@@ -160,6 +160,8 @@ export type IconName =
   | 'ammo'
   | 'part'
   | 'moss'
+  | 'pendant'
+  | 'cowl'
   | 'idle';
 
 export const ITEMS: Record<string, ItemDef> = {};
@@ -843,6 +845,13 @@ export function isFood(id: string): boolean {
 
 export function itemName(id: string): string {
   return ITEMS[id]?.name ?? id;
+}
+
+/** Quantity plus the item name. A kit count other than 1 uses the plural. */
+export function countedName(qty: number, id: string): string {
+  const name = itemName(id);
+  const label = qty === 1 || !name.endsWith(' kit') ? name : `${name}s`;
+  return `${qty} ${label}`;
 }
 
 /**

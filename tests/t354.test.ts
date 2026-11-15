@@ -54,6 +54,37 @@ describe('t354 thrown weapons, mastery 40, and sells', () => {
     armed.bank['ammo.thrown.bronze_knife'] = 8;
     expect(equip(armed, 'ammo.thrown.bronze_knife')).toBe(true);
     expect(mainHtml(armed, view, 0)).toContain('Bronze throwing knives ×8');
+
+    const combat: View = {
+      tab: 'combat',
+      skill: 'Woodcutting',
+      filter: 'all',
+      selected: 'meadow.hare',
+      area: 'Meadow verge',
+      style: 'Ranged',
+      message: '',
+    };
+    const bare = newGame(0);
+    bare.owned.push('Ranged', 'Hitpoints');
+    bare.equipped.weapon = null;
+    delete bare.bank['gear.melee.bronze_sword'];
+    expect(mainHtml(bare, combat, 0)).toContain('Equip a weapon first.');
+    const emptyKnives = newGame(0);
+    emptyKnives.owned.push('Ranged', 'Hitpoints');
+    emptyKnives.bank['ammo.thrown.bronze_knife'] = 1;
+    expect(equip(emptyKnives, 'ammo.thrown.bronze_knife')).toBe(true);
+    delete emptyKnives.bank['ammo.thrown.bronze_knife'];
+    const knifeHtml = mainHtml(emptyKnives, combat, 0);
+    expect(knifeHtml).toContain('Out of throwing knives.');
+    expect(knifeHtml).not.toContain('Equip a weapon first.');
+    const emptyJavelins = newGame(0);
+    emptyJavelins.owned.push('Ranged', 'Hitpoints');
+    emptyJavelins.bank['ammo.thrown.bronze_javelin'] = 1;
+    expect(equip(emptyJavelins, 'ammo.thrown.bronze_javelin')).toBe(true);
+    delete emptyJavelins.bank['ammo.thrown.bronze_javelin'];
+    const javelinHtml = mainHtml(emptyJavelins, combat, 0);
+    expect(javelinHtml).toContain('Out of javelins.');
+    expect(javelinHtml).not.toContain('Equip a weapon first.');
   });
 
   it('consumes thrown weapons during offline catch-up and then stays paused', () => {

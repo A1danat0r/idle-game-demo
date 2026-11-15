@@ -24,6 +24,8 @@ const shapes: Record<IconName, string> = {
   pick: `<path d="M20 16 L22 16 L22 34 L20 34 Z" fill="#7a5230"/><path d="M6 14 L34 10 L32 16 L8 18 Z" fill="#9aa3b5"/>`,
   ammo: `<path d="M12 28 L16 8 H20 L18 28 Z" fill="#c9ced6"/><path d="M24 28 L28 12 H31 L27 28 Z" fill="#b87333"/>`,
   part: `<path d="M10 24 Q20 8 30 24 L24 30 H16 Z" fill="#6d4c2f"/>`,
+  pendant: `<path d="M10 8 Q20 16 30 8" fill="none" stroke="${G}" stroke-width="2"/><path d="M20 15 V19" stroke="${G}" stroke-width="2"/><path d="M20 19 L27 26 L20 35 L13 26 Z" fill="#3dba8a" stroke="${G}" stroke-width="1.5"/>`,
+  cowl: `<path d="M8 16 Q8 5 20 5 Q32 5 32 16 L31 30 Q20 37 9 30 Z" fill="#6a4a32"/><path d="M13 18 Q20 28 27 18 Q20 22 13 18 Z" fill="${D}"/><path d="M11 15 Q20 11 29 15" fill="none" stroke="${G}" stroke-width="1.5"/>`,
   moss: `<circle cx="14" cy="22" r="6" fill="#3d7a45"/><circle cx="24" cy="18" r="7" fill="#4c8a3c"/><circle cx="26" cy="26" r="5" fill="#2f5a3a"/>`,
   idle: `<circle cx="20" cy="20" r="11" fill="none" stroke="#9aa0b0" stroke-width="2"/><rect x="15" y="13" width="3.5" height="14" rx="1" fill="#9aa0b0"/><rect x="21.5" y="13" width="3.5" height="14" rx="1" fill="#9aa0b0"/>`,
 };

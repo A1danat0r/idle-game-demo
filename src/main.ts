@@ -1,6 +1,6 @@
 import './style.css';
 import { hitRateReport, killCycleReport, meadowHour, samplePoacher, survivabilityReport } from './checks';
-import { ITEMS, itemName, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
+import { ITEMS, countedName, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
 import {
   advanceOpenTab,
   buyNode,
@@ -307,7 +307,7 @@ app.addEventListener('click', (event) => {
   if (target.dataset.dismantle) {
     const id = target.dataset.dismantle;
     const refund = dismantleRefund(id);
-    const returned = refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ');
+    const returned = refund.map((part) => countedName(part.qty, part.id)).join(', ');
     view.message = dismantleBuilding(state, id)
       ? returned ? `Returned ${returned}.` : 'Returned no kits.'
       : 'That structure is not standing.';

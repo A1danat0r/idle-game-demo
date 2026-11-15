@@ -26,6 +26,7 @@ import {
   gearStatText,
   isCombatStyle,
   isFood,
+  countedName,
   itemName,
   lockLine,
   type IconName,
@@ -281,6 +282,7 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     enemyMastery: state.enemyMastery,
     shop: state.shop,
     purchaseCount: state.purchaseCount,
+    plot: state.plot ? `${state.plot.recipeId}:${state.plot.ready ? 1 : 0}` : '',
   });
 }
 
@@ -547,7 +549,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const refundText = !standing
     ? ''
     : refund.length
-      ? ` · returns ${refund.map((part) => `${part.qty} ${itemName(part.id)}`).join(', ')}`
+      ? ` · returns ${refund.map((part) => countedName(part.qty, part.id)).join(', ')}`
       : ' · returns no kits';
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
@@ -728,8 +730,18 @@ function fightButton(enemyId: string | null, enabled: boolean): string {
   return `<button type="button" class="tag btn"${target}${disabled}>Fight</button>`;
 }
 
+function emptyThrownNote(itemId: string): string | null {
+  if (itemId.includes('javelin')) return 'Out of javelins.';
+  if (itemId.includes('knife')) return 'Out of throwing knives.';
+  return null;
+}
+
 function fightControl(state: Save, enemyId: string, style: CombatStyle | null): string {
-  if (!weaponReady(state)) return '<p class="note">Equip a weapon first.</p>';
+  if (!weaponReady(state)) {
+    const worn = state.equipped.weapon;
+    const note = worn ? emptyThrownNote(worn) : null;
+    return `<p class="note">${esc(note ?? 'Equip a weapon first.')}</p>`;
+  }
   const gate = lockLine(state.enemyKills, enemyId);
   const worn = state.equipped.weapon ?? '';
   const styleGate = style && !weaponFitsStyle(worn, style) ? styleNeed(style) : null;
