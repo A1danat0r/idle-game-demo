@@ -293,7 +293,8 @@ describe('bones, prices, and the woodland climb', () => {
     expect(skillCost(1)).toBe(750);
     expect(skillCost(4)).toBe(2653);
     expect(skillPrice(3)).toBe(2653);
-    expect(skillPrice(7)).toBeNull();
+    expect(skillPrice(7)).toBe(17389);
+    expect(skillPrice(16)).toBeNull();
     const state = newGame(0);
     state.owned.push('Cooking', 'Mining', 'Smithing');
     state.xp.Cooking = 0;

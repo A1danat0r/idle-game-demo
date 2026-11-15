@@ -36,7 +36,7 @@ describe('check 19 mastery', () => {
     expect(masteryLevel(6_072)).toBe(10);
     expect(masteryLevel(63_049)).toBe(30);
     expect(masteryLevel(63_050)).toBe(MASTERY_CAP);
-    expect(NODES).toHaveLength(16);
+    expect(NODES).toHaveLength(34);
     expect(RECIPES).toHaveLength(40);
     const outputs = new Map<string, string>();
     for (const recipe of RECIPES) {

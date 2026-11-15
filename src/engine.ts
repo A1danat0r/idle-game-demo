@@ -45,6 +45,7 @@ import {
   itemName,
   levelForXp,
   playerMaxHp,
+  grantsHitpoints,
   skillPrice,
   type CombatStyle,
   type SkillId,
@@ -278,11 +279,19 @@ export function maxHp(state: Save): number {
   return playerMaxHp(formulaLevel(state, 'Hitpoints'));
 }
 
+/**
+ * The demo has no bank cap, so a finished crop can always be placed.
+ * One function, so a later cap can replace this check alone.
+ */
+export function bankHasSpace(_state: Save): boolean {
+  return true;
+}
+
 export function ownsCombatSkill(state: Save): boolean {
   return COMBAT_STYLES.some((skill) => state.owned.includes(skill));
 }
 
-export function toolTier(state: Save, skill: 'Woodcutting' | 'Mining'): number {
+export function toolTier(state: Save, skill: 'Woodcutting' | 'Mining' | 'Fishing' | 'Foraging'): number {
   let tier = 0;
   for (const [id, info] of Object.entries(TOOL_TIER)) {
     if (info.skill === skill && (state.bank[id] ?? 0) > 0) tier = Math.max(tier, info.tier);
@@ -293,7 +302,10 @@ export function toolTier(state: Save, skill: 'Woodcutting' | 'Mining'): number {
 export function actionSeconds(state: Save, id: string): number {
   const node = NODE_BY_ID[id];
   if (node) {
-    const tier = node.skill === 'Fishing' ? 0 : toolTier(state, node.skill);
+    const tier =
+      node.skill === 'Woodcutting' || node.skill === 'Mining' || node.skill === 'Fishing' || node.skill === 'Foraging'
+        ? toolTier(state, node.skill)
+        : 0;
     const factor = TOOL_TIME_FACTOR ** tier;
     return node.seconds * factor * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
   }
@@ -513,7 +525,7 @@ export function buySkill(state: Save, skill: SkillId): boolean {
   state.purchaseCount += 1;
   state.owned.push(skill);
   state.xp[skill] = 0;
-  if (isCombatStyle(skill) && !state.owned.includes('Hitpoints')) {
+  if (grantsHitpoints(skill) && !state.owned.includes('Hitpoints')) {
     state.owned.push('Hitpoints');
     state.xp.Hitpoints = 0;
     state.hp = maxHp(state);

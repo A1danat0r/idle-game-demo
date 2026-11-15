@@ -196,7 +196,9 @@ describe('xp and prices', () => {
 
 describe('actions', () => {
   it('has the demo content counts', () => {
-    expect(NODES).toHaveLength(16);
+    expect(NODES.filter((node) => node.skill === 'Woodcutting' || node.skill === 'Fishing' || node.skill === 'Mining')).toHaveLength(16);
+    expect(NODES.filter((node) => node.skill === 'Foraging')).toHaveLength(16);
+    expect(NODES.filter((node) => node.skill === 'Exploration')).toHaveLength(2);
     expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking')).toHaveLength(12);
     expect(RECIPES.filter((recipe) => recipe.skill === 'Smithing')).toHaveLength(28);
     expect(ENEMIES).toHaveLength(11);

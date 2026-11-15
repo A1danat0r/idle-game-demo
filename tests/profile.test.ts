@@ -20,9 +20,13 @@ const skillsView: View = {
 };
 
 describe('skills order and enemy placeholders', () => {
-  it('lists Attack, Strength, Defence and Hitpoints before the other skills', () => {
+  it('groups combat, then gathering, then production', () => {
     const fresh = mainHtml(newGame(0), skillsView, 0);
-    const locked = ['Attack', 'Strength', 'Defence', 'Woodcutting', 'Fishing', 'Cooking', 'Mining', 'Smithing'];
+    const locked = [
+      'Attack', 'Strength', 'Defence', 'Ranged', 'Magic',
+      'Woodcutting', 'Fishing', 'Mining', 'Foraging', 'Farming', 'Exploration',
+      'Cooking', 'Smithing', 'Crafting', 'Alchemy', 'Construction', 'Enchanting',
+    ];
     let at = -1;
     for (const name of locked) {
       const next = fresh.indexOf(`<b>${name}`);
@@ -34,7 +38,7 @@ describe('skills order and enemy placeholders', () => {
     const owned = newGame(0);
     owned.owned.push('Attack', 'Hitpoints');
     const html = mainHtml(owned, skillsView, 0);
-    const order = ['Attack', 'Strength', 'Defence', 'Hitpoints', 'Woodcutting'];
+    const order = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic', 'Hitpoints', 'Woodcutting'];
     at = -1;
     for (const name of order) {
       const next = html.indexOf(`<b>${name}`);
