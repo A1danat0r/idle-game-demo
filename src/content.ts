@@ -389,13 +389,16 @@ export const ENEMIES: EnemyDef[] = [
   enemy('meadow.hare', 'Burrowing hare', 'Meadow verge', 1, [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.meat.hare', num: 1, den: 2, qty: 1 },
+    { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
   enemy('meadow.rat', 'Field rat', 'Meadow verge', 2, [
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 3 },
+    { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
   enemy('meadow.ram', 'Meadow ram', 'Meadow verge', 3, [
     { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.meat.mutton', num: 1, den: 2, qty: 1 },
+    { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
   enemy('meadow.moss', 'Moss crawler', 'Meadow verge', 3, [
     { itemId: 'mat.moss.spell', num: 1, den: 4, qty: 24 },
@@ -405,15 +408,15 @@ export const ENEMIES: EnemyDef[] = [
     { itemId: 'mat.ore.tin', num: 1, den: 4, qty: 5 },
     { itemId: 'mat.part.beetle_carapace', num: 1, den: 8, qty: 1 },
   ], { min: 2, max: 3 }),
-  enemy('wood.jay', 'Berry jay', 'Woodland edge', 10, [
+  enemy('wood.jay', 'Berry jay', 'Woodland edge', 9, [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 12 },
     { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 12 },
   ], null),
-  // Level 8 is approved. HP 50 and max hit 3 follow HP = 5 × (level + 2) and max hit = 1 + floor(level/4).
   enemy('wood.fox', 'Forest fox', 'Woodland edge', 8, [
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 3 },
+    { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
-  enemy('wood.grub', 'Resin grub', 'Woodland edge', 10, [
+  enemy('wood.grub', 'Resin grub', 'Woodland edge', 11, [
     { itemId: 'mat.tree.resin', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.moss.spell', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.wax.grub', num: 1, den: 8, qty: 1 },
@@ -423,13 +426,14 @@ export const ENEMIES: EnemyDef[] = [
     { itemId: 'mat.herb.meadow_cuttings', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.meat.tortoise', num: 1, den: 2, qty: 1 },
   ], null),
-  enemy('wood.boar', 'Wild boar', 'Woodland edge', 10, [
+  enemy('wood.boar', 'Wild boar', 'Woodland edge', 12, [
     { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 6 },
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
     { itemId: 'mat.meat.boar', num: 1, den: 2, qty: 1 },
     { itemId: 'mat.hide.thick', num: 1, den: 3, qty: 1 },
+    { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
-  enemy('wood.poacher', 'Hedge poacher', 'Woodland edge', 12, [
+  enemy('wood.poacher', 'Hedge poacher', 'Woodland edge', 14, [
     { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 6 },
     { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 6 },
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
@@ -441,22 +445,43 @@ export const ENEMY_BY_ID: Record<string, EnemyDef> = Object.fromEntries(ENEMIES.
 
 /** Meadow verge, in unlock order. Twelve completed kills of one rung open the next. */
 export const MEADOW_LADDER = ['meadow.hare', 'meadow.rat', 'meadow.ram', 'meadow.moss', 'meadow.beetle'] as const;
+/** Woodland edge, in unlock order. Fox is the first fightable rung once the area is open. */
+export const WOODLAND_LADDER = ['wood.fox', 'wood.jay', 'wood.tortoise', 'wood.grub', 'wood.boar', 'wood.poacher'] as const;
 export const RUNG_KILLS = 12;
+/** Locked future-area node. It is not an enemy and has no fight. */
+export const TEASER_AREA = '???' as const;
+export const TEASER_COPY = 'Kill the Hedge poacher to open ??? (coming later)';
 
-/** Beetle kills, or any Woodland kill, open the whole ladder and Woodland edge. */
+/** Beetle kills, or any Woodland kill, open Woodland edge and the whole Meadow ladder. */
 export function woodlandOpen(kills: Record<string, number>): boolean {
   if ((kills['meadow.beetle'] ?? 0) >= 1) return true;
   return ENEMIES.some((enemy) => enemy.area === 'Woodland edge' && (kills[enemy.id] ?? 0) >= 1);
 }
 
+/** A completed Hedge poacher kill unlocks every Woodland rung and the future-area teaser. */
+export function teaserOpen(kills: Record<string, number>): boolean {
+  return (kills['wood.poacher'] ?? 0) >= 1;
+}
+
 export function enemyUnlocked(kills: Record<string, number>, id: string): boolean {
   const enemy = ENEMY_BY_ID[id];
   if (!enemy) return false;
-  if (enemy.area === 'Woodland edge') return woodlandOpen(kills);
+  if (enemy.area === 'Woodland edge') {
+    if (!woodlandOpen(kills)) return false;
+    if (teaserOpen(kills)) return true;
+    const index = WOODLAND_LADDER.indexOf(id as (typeof WOODLAND_LADDER)[number]);
+    if (index <= 0) return index === 0;
+    return (kills[WOODLAND_LADDER[index - 1]] ?? 0) >= RUNG_KILLS;
+  }
   if (woodlandOpen(kills)) return true;
   const index = MEADOW_LADDER.indexOf(id as (typeof MEADOW_LADDER)[number]);
   if (index <= 0) return index === 0;
   return (kills[MEADOW_LADDER[index - 1]] ?? 0) >= RUNG_KILLS;
+}
+
+function rungPlural(name: string): string {
+  const lower = name.toLowerCase();
+  return lower.endsWith('fox') ? `${lower}es` : `${lower}s`;
 }
 
 /** Copy for a locked rung. Null when the enemy can be fought. */
@@ -464,10 +489,16 @@ export function lockLine(kills: Record<string, number>, id: string): string | nu
   if (enemyUnlocked(kills, id)) return null;
   const enemy = ENEMY_BY_ID[id];
   if (!enemy) return null;
-  if (enemy.area === 'Woodland edge') return 'Kill the Thorn beetle to open Woodland edge.';
+  if (enemy.area === 'Woodland edge') {
+    if (!woodlandOpen(kills)) return 'Kill the Thorn beetle to open Woodland edge.';
+    const index = WOODLAND_LADDER.indexOf(id as (typeof WOODLAND_LADDER)[number]);
+    const previous = ENEMY_BY_ID[WOODLAND_LADDER[index - 1]];
+    const have = kills[previous.id] ?? 0;
+    return `Kill 12 ${rungPlural(previous.name)} to unlock (${have}/${RUNG_KILLS})`;
+  }
   const previous = ENEMY_BY_ID[MEADOW_LADDER[MEADOW_LADDER.indexOf(id as (typeof MEADOW_LADDER)[number]) - 1]];
   const have = kills[previous.id] ?? 0;
-  return `Kill 12 ${previous.name.toLowerCase()}s to unlock (${have}/${RUNG_KILLS})`;
+  return `Kill 12 ${rungPlural(previous.name)} to unlock (${have}/${RUNG_KILLS})`;
 }
 
 export function expectedDropValue(drops: DropDef[]): number {
@@ -541,6 +572,7 @@ function addItems(): void {
     { id: 'mat.moss.spell', name: 'Spell moss', sell: 1, icon: 'moss' },
     { id: 'mat.part.beetle_carapace', name: 'Beetle carapace fragments', sell: 10, icon: 'part' },
     { id: 'mat.wax.grub', name: 'Grub wax', sell: 16, icon: 'part' },
+    { id: 'mat.bone.ordinary', name: 'Ordinary bones', sell: 1, icon: 'part' },
   ];
   for (const row of mats) item({ ...row, kind: 'material' });
   for (const food of FOODS) item({ ...food, kind: 'food', icon: 'food' });
@@ -647,9 +679,18 @@ export function levelForXp(xp: number): number {
   return level;
 }
 
+/**
+ * The only skill-price lookup. k is 1-based: the next purchase is SC(skills already bought + 1).
+ * The free starting roster is not a purchase, so it does not increment k.
+ */
+export function skillCost(k: number): number | null {
+  if (!Number.isInteger(k) || k < 1 || k > SKILL_PRICES.length) return null;
+  return SKILL_PRICES[k - 1];
+}
+
 export function skillPrice(purchaseIndex: number): number | null {
   if (purchaseIndex < 0 || purchaseIndex >= DEMO_PURCHASE_SLOTS) return null;
-  return SKILL_PRICES[purchaseIndex];
+  return skillCost(purchaseIndex + 1);
 }
 
 export const STARTER_WEAPON = 'gear.melee.bronze_sword';

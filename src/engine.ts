@@ -64,10 +64,11 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 
-export const SAVE_FORMAT = 3;
-/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Both migrate to 3. */
+export const SAVE_FORMAT = 4;
+/** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
 const SAVE_FORMAT_V1 = 1;
 const SAVE_FORMAT_V2 = 2;
+const SAVE_FORMAT_V3 = 3;
 export const SAVE_KEY = 'idle-game-demo-save';
 export const UNREADABLE_SAVE_KEY = 'idle-game-demo-save-unreadable';
 
@@ -151,6 +152,8 @@ export interface Save {
   enemyMastery: Record<string, number>;
   /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
   enemyKills: Record<string, number>;
+  /** Construction completions, keyed by activity id. Empty until that skill exists. */
+  buildings: Record<string, boolean>;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
   savedAt?: number;
 }
@@ -252,6 +255,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     mastery: {},
     enemyMastery: {},
     enemyKills: {},
+    buildings: {},
   };
   return state;
 }
@@ -1048,7 +1052,8 @@ export function deserialize(raw: string): Save | null {
   if (
     parsed.saveFormat !== SAVE_FORMAT &&
     parsed.saveFormat !== SAVE_FORMAT_V1 &&
-    parsed.saveFormat !== SAVE_FORMAT_V2
+    parsed.saveFormat !== SAVE_FORMAT_V2 &&
+    parsed.saveFormat !== SAVE_FORMAT_V3
   ) {
     return null;
   }
@@ -1184,17 +1189,19 @@ export function deserialize(raw: string): Save | null {
     mastery,
     enemyMastery,
     enemyKills: {},
+    buildings: {},
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
+  if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings)) return null;
   return loaded;
 }
 
-/** Format 1 and 2 derive kills from mastery. Format 3 keeps the stored counts. */
+/** Formats 1 and 2 derive kills from mastery. Formats 3 and 4 keep the stored counts. */
 function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
-  if (format === SAVE_FORMAT) {
+  if (format === SAVE_FORMAT || format === SAVE_FORMAT_V3) {
     if (raw == null) {
       state.enemyKills = killsFromMastery(state.enemyMastery);
       return true;
@@ -1206,6 +1213,32 @@ function migrateEnemyKills(state: Save, format: number, raw: unknown): boolean {
   }
   state.enemyKills = killsFromMastery(state.enemyMastery);
   return true;
+}
+
+/** Format 4 stores buildings. Older saves load with an empty map. */
+function migrateBuildings(state: Save, format: number, raw: unknown): boolean {
+  if (format !== SAVE_FORMAT) {
+    state.buildings = {};
+    return true;
+  }
+  if (raw == null) {
+    state.buildings = {};
+    return true;
+  }
+  const buildings = readBuildings(raw);
+  if (!buildings) return false;
+  state.buildings = buildings;
+  return true;
+}
+
+function readBuildings(value: unknown): Record<string, boolean> | null {
+  if (!isRecord(value)) return null;
+  const out: Record<string, boolean> = {};
+  for (const [key, built] of Object.entries(value)) {
+    if (built !== true) return null;
+    out[key] = true;
+  }
+  return out;
 }
 
 function killsFromMastery(mastery: Record<string, number>): Record<string, number> {

@@ -1,5 +1,8 @@
 import {
   AREAS,
+  TEASER_AREA,
+  TEASER_COPY,
+  WOODLAND_LADDER,
   COMBAT_SKILLS,
   COMBAT_STYLES,
   ENEMIES,
@@ -62,7 +65,7 @@ export interface View {
   skill: SkillId | null;
   filter: Filter;
   selected: string | null;
-  area: (typeof AREAS)[number];
+  area: (typeof AREAS)[number] | typeof TEASER_AREA;
   style: CombatStyle | null;
   message: string;
   /** Second tap of Reset account. Not saved. */
@@ -481,12 +484,28 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   return `<div class="row node ${reached ? '' : 'dim'}"><div class="ico wood">${icon(ITEMS[output.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(output.id))}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output.qty}</small><small>${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${have ? '' : ' · missing inputs'}</small></div>${right}</div>`;
 }
 
+function areaButtons(view: View): string {
+  const areas: string[] = [...AREAS, TEASER_AREA];
+  return areas.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
+}
+
 function combatHtml(state: Save, view: View): string {
   if (!ownsCombatSkill(state)) {
     return `${title('Combat')}<div class="empty">Buy Attack, Strength, or Defence to fight. Meadow verge and Woodland edge stay locked until then.</div>`;
   }
   const style = view.style && state.owned.includes(view.style) ? view.style : (COMBAT_STYLES.find((id) => state.owned.includes(id)) ?? null);
+  if (view.area === TEASER_AREA) {
+    const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
+      .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
+      .join('');
+    return `<div class="areahead"><div><h2>${esc(TEASER_AREA)}</h2><small>${styles}</small></div><small>${areaButtons(view)}</small></div>
+      <div class="panel"><p class="note">${esc(TEASER_COPY)}</p></div>`;
+  }
   const enemies = ENEMIES.filter((enemy) => enemy.area === view.area);
+  if (view.area === 'Woodland edge') {
+    const order = WOODLAND_LADDER as readonly string[];
+    enemies.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  }
   const selected =
     enemies.find((enemy) => enemy.id === view.selected) ??
     enemies.find((enemy) => state.activity?.kind === 'combat' && state.activity.enemyId === enemy.id) ??
@@ -498,7 +517,7 @@ function combatHtml(state: Save, view: View): string {
   const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
     .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
     .join('');
-  const areas = AREAS.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
+  const areas = areaButtons(view);
   const list = enemies
     .map((enemy) => {
       const gate = lockLine(state.enemyKills, enemy.id);

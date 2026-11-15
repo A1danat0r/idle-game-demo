@@ -35,8 +35,8 @@ describe('check 20 ×10 combat values', () => {
   it('scales HP, max hit, heals and regen by 10, with its own damage rounding', () => {
     expect(ENEMY_BY_ID['meadow.hare'].hp).toBe(150);
     expect(ENEMY_BY_ID['wood.fox'].hp).toBe(500);
-    expect(ENEMY_BY_ID['wood.jay'].hp).toBe(600);
-    expect(ENEMY_BY_ID['wood.poacher'].hp).toBe(700);
+    expect(ENEMY_BY_ID['wood.jay'].hp).toBe(550);
+    expect(ENEMY_BY_ID['wood.poacher'].hp).toBe(800);
     expect(ENEMY_BY_ID['meadow.hare'].maxHit).toBe(10);
     expect(ENEMY_BY_ID['wood.fox'].maxHit).toBe(30);
     expect(ENEMY_BY_ID['wood.poacher'].maxHit).toBe(40);
@@ -162,7 +162,7 @@ describe('old-save HP migration', () => {
     });
     const loaded = deserialize(raw);
     expect(loaded).not.toBeNull();
-    expect(loaded!.saveFormat).toBe(3);
+    expect(loaded!.saveFormat).toBe(4);
     expect(loaded!.combatScale).toBe(10);
     expect(loaded!.hp).toBe(90);
     expect(loaded!.combat?.enemyHp).toBe(350);

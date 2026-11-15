@@ -1,7 +1,10 @@
 import {
+  ATTACK_INTERVAL_MS,
   ENEMY_BY_ID,
+  KILL_PAUSE_MS,
   MEADOW_LADDER,
   RUNG_KILLS,
+  WOODLAND_LADDER,
   REGEN_HP,
   enemyUnlocked,
   expectedCoinValue,
@@ -208,7 +211,7 @@ function bestCoinActivity(state: Save): Grind {
     if (enemyUnlocked(state.enemyKills, 'wood.poacher') && foodFree('wood.poacher', state)) {
       combats.push({
         id: 'wood.poacher',
-        rate: fightSeconds(state, 12, enemyCoinValue(state, 'wood.poacher')),
+        rate: fightSeconds(state, ENEMY_BY_ID['wood.poacher'].level, enemyCoinValue(state, 'wood.poacher')),
       });
     }
   }
@@ -523,6 +526,7 @@ export function runReferenceRoute(options: { seed?: number; expectedLoot?: boole
 export function formatRouteResult(result: RouteResult): string {
   const lines = [
     `elapsed ${result.elapsedHours}h`,
+    `woodland climb ${woodlandClimbHours().toFixed(4)}h expected, not walked`,
     `coins left ${Math.round(result.coins)}`,
     `coins earned ${Math.round(result.earned)}`,
     `kills ${result.kills}`,
@@ -537,4 +541,25 @@ export function formatRouteResult(result: RouteResult): string {
     ...result.segments.map((event) => `  ${event.skill} to ${event.target} (${event.id}) at ${event.atHours}h coins ${event.coins}`),
   ];
   return lines.join('\n');
+}
+
+/**
+ * Expected Woodland climb at the official cap loadout: Attack 30, Strength 30, iron spear.
+ * Five rungs of 12 kills plus the Hedge poacher that opens the teaser. Every rung is a
+ * 3-hit kill at hit chance 1, so each kill is 10.2s. Routes A and A_meadowgrind never call this.
+ */
+export function woodlandClimbHours(): number {
+  const spear = ITEMS['gear.melee.iron_spear'];
+  const power = spear?.pow ?? 0;
+  const accuracy = spear?.acc ?? 0;
+  let kills = 0;
+  for (const id of WOODLAND_LADDER) {
+    const enemy = ENEMY_BY_ID[id];
+    const hits = hitsPerKill(30, enemy.level, power);
+    const chance = playerHitChance(30, enemy.level, accuracy);
+    if (hits !== 3 || chance !== 1) return Number.NaN;
+    kills += id === 'wood.poacher' ? 1 : RUNG_KILLS;
+  }
+  const seconds = (kills * (3 * ATTACK_INTERVAL_MS + KILL_PAUSE_MS)) / 1000;
+  return seconds / 3600;
 }

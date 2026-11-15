@@ -176,7 +176,7 @@ describe('xp and prices', () => {
     expect(grub).toBeCloseTo(10, 5);
     const beetle = ENEMY_BY_ID['meadow.beetle'];
     expect(expectedDropValue(beetle.drops) + expectedCoinValue(beetle)).toBeCloseTo(6.25, 5);
-    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6.25, 5);
   });
 
   it('charges the next purchase and refuses a short balance', () => {
@@ -319,12 +319,12 @@ describe('player hit chance', () => {
 
   it('uses the approved Forest fox level', () => {
     expect(ENEMY_BY_ID['meadow.beetle'].level).toBe(5);
-    expect(ENEMY_BY_ID['wood.jay'].level).toBe(10);
-    expect(ENEMY_BY_ID['wood.poacher'].level).toBe(12);
+    expect(ENEMY_BY_ID['wood.jay'].level).toBe(9);
+    expect(ENEMY_BY_ID['wood.poacher'].level).toBe(14);
     expect(ENEMY_BY_ID['wood.fox'].level).toBe(8);
     expect(ENEMY_BY_ID['wood.fox'].hp).toBe(500);
     expect(ENEMY_BY_ID['wood.fox'].maxHit).toBe(30);
-    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6, 5);
+    expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6.25, 5);
   });
 
   it('deals no damage and grants no XP on a miss, and still pays 120 when the kill lands', () => {
@@ -484,7 +484,7 @@ describe('combat', () => {
     expect(playerMaxHp(7)).toBe(240);
     expect(playerMaxHp(23)).toBe(560);
     expect(ENEMY_BY_ID['meadow.hare'].hp).toBe(150);
-    expect(ENEMY_BY_ID['wood.poacher'].hp).toBe(700);
+    expect(ENEMY_BY_ID['wood.poacher'].hp).toBe(800);
     expect(ENEMY_BY_ID['wood.poacher'].maxHit).toBe(40);
   });
 
@@ -501,10 +501,11 @@ describe('combat', () => {
       focused.xp.Defence = XP_TABLE[30];
       focused.xp.Hitpoints = XP_TABLE[30];
       focused.hp = playerMaxHp(30);
+      focused.enemyKills['wood.poacher'] = 1;
       startCombat(focused, 'wood.poacher', 'Attack');
       let guard = 0;
       while (focused.stats.kills < kills && !focused.paused && guard++ < kills + 5) {
-        simulate(focused, 4 * 2400 + 3000);
+        simulate(focused, 6 * 2400 + 3000);
       }
       expect(focused.paused).toBe(false);
       expect(focused.stats.kills).toBeGreaterThanOrEqual(kills);
@@ -602,7 +603,7 @@ describe('save, offline, shop', () => {
     expect(loaded).not.toBeNull();
     expect(loaded!.nodes).toEqual(['mat.stone.limestone', 'mat.wood.maple']);
     expect(loaded!.owned).toContain('Mining');
-    expect(loaded!.saveFormat).toBe(3);
+    expect(loaded!.saveFormat).toBe(4);
     expect(loaded!.mastery).toEqual({});
     expect(loaded!.enemyMastery).toEqual({});
     expect(loaded!.coins).toBe(40);
@@ -725,8 +726,8 @@ describe('approved combat details', () => {
     const cases: [number, string, number][] = [
       [1, 'meadow.hare', 0.904],
       [1, 'wood.fox', 0.82],
-      [1, 'wood.jay', 0.796],
-      [1, 'wood.poacher', 0.772],
+      [1, 'wood.jay', 0.808],
+      [1, 'wood.poacher', 0.748],
       [30, 'meadow.hare', 1],
       [30, 'wood.fox', 1],
       [30, 'wood.poacher', 1],
@@ -736,6 +737,7 @@ describe('approved combat details', () => {
       state.xp.Defence = XP_TABLE[30];
       state.xp.Hitpoints = XP_TABLE[30];
       state.hp = 70;
+      if (enemyId.startsWith('wood.') && enemyId !== 'wood.fox') state.enemyKills['wood.poacher'] = 1;
       startCombat(state, enemyId, 'Strength');
       let guard = 0;
       while (state.stats.playerSwings < 1000 && !state.paused && guard++ < 6000) simulate(state, 2400);

@@ -132,7 +132,7 @@ await shot('05-equipment');
 await click('[data-dev-open]');
 await page.waitForSelector('[data-export]');
 const exported = await page.locator('[data-export]').inputValue();
-if (!exported.includes('"saveFormat": 1')) throw new Error('export missing saveFormat');
+if (!exported.includes('"saveFormat":4')) throw new Error('export missing saveFormat');
 await shot('07-dev');
 
 await page.evaluate(() => {
@@ -218,7 +218,7 @@ await click('[data-style="Strength"]');
 await click('[data-fight="wood.fox"]');
 await page.waitForFunction(() => /fox/i.test(document.querySelector('[data-activity]')?.textContent ?? ''));
 const foxLine = await page.locator('main').innerText();
-if (!foxLine.includes('Lv 8') || !foxLine.includes('50 HP')) throw new Error(`fox panel:\n${foxLine}`);
+if (!foxLine.includes('Lv 8') || !foxLine.includes('500 HP')) throw new Error(`fox panel:\n${foxLine}`);
 await assertBar('fox');
 await shot('11-fox');
 

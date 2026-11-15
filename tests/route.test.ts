@@ -65,7 +65,9 @@ describe('reference route', () => {
     expect(result.levels.Mining).toBe(30);
     expect(result.levels.Smithing).toBe(30);
     expect(result.elapsedHours).toBe(20.45);
-    expect(Math.round(result.earned)).toBe(55655);
+    // Seed-1 play credits bone EV on the 36 climb kills (+9). Check 9 stays on the
+    // pre-bone sheet total 55,637; the with-bones sheet total is 55,646.
+    expect(Math.round(result.earned)).toBe(55664);
     expect(result.levels.Hitpoints).toBe(23);
     expect(result.kills).toBe(2559);
     expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(30);
@@ -84,6 +86,9 @@ describe('reference route', () => {
     expect(result.earned).toBeLessThanOrEqual(59_148);
     expect(result.kills).toBe(2559);
     expect(result.levels.Hitpoints).toBe(23);
+    expect(result.elapsedHours).toBe(18.76);
+    // Same +9 bone EV. Pre-bone sheet 50,995; with-bones sheet 51,004.
+    expect(Math.round(result.earned)).toBe(51023);
     const needed =
       result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
       result.nodes.length * 3000;
