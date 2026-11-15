@@ -1246,6 +1246,19 @@ export function writeSave(storage: StorageLike, state: Save): void {
   storage.setItem(SAVE_KEY, serialize(state));
 }
 
+/** Remove the game save and the unreadable-save copy. Does not touch the Debug switch. */
+export function resetAccount(storage: StorageLike): void {
+  storage.removeItem(SAVE_KEY);
+  storage.removeItem(UNREADABLE_SAVE_KEY);
+}
+
+/** Confirm wipes the save. Cancel does nothing. */
+export function confirmAccountReset(storage: StorageLike, confirmed: boolean): boolean {
+  if (!confirmed) return false;
+  resetAccount(storage);
+  return true;
+}
+
 /** Returns the imported save, or null when the JSON is not a readable save. */
 export function importSave(raw: string): Save | null {
   return deserialize(raw);

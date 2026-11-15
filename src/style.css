@@ -31,6 +31,15 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 .tag { font-size: 10px; padding: 2px 6px; border: 1px solid #4a5370; border-radius: 10px; color: var(--muted); display: inline-flex; gap: 3px; align-items: center; white-space: nowrap; }
 .tag.on { color: #7be08a; border-color: #3f8a4a; }
 .tag.btn { color: #10141f; background: linear-gradient(var(--gold), #c8962e); border-color: var(--gold); font-weight: 700; }
+.tag.btn.danger { color: #fff; background: linear-gradient(#a83244, #6e1c28); border-color: #e07080; }
+.tag.btn.ghost { color: var(--text); background: transparent; border-color: #4a5370; }
+.resetbox .tag.btn { display: flex; width: 100%; justify-content: center; margin-top: 8px; padding: 8px 10px; font-size: 13px; white-space: normal; text-align: center; }
+.statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.statgrid > div { min-width: 0; }
+.statgrid b { display: block; font-size: 15px; overflow-wrap: anywhere; }
+.statline { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 13px; margin-top: 6px; }
+.statline span { min-width: 0; }
+.statline b { overflow-wrap: anywhere; text-align: right; }
 .art-tag { position: absolute; right: 6px; bottom: 4px; font-size: 9px; color: #ff8fb1; border: 1px dashed #ff8fb1; padding: 0 4px; border-radius: 4px; }
 .mock { font-size: 9px; color: #ff8fb1; border: 1px dashed #ff8fb1; padding: 1px 5px; border-radius: 4px; }
 

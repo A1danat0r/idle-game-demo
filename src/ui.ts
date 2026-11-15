@@ -43,6 +43,7 @@ import {
 } from './engine';
 import { icon } from './icons';
 import { enemyFigure, playerFigure } from './sprites';
+import { deriveProfileStats } from './profile';
 import {
   actionXpMultiplier,
   globalXpBonus,
@@ -64,6 +65,8 @@ export interface View {
   area: (typeof AREAS)[number];
   style: CombatStyle | null;
   message: string;
+  /** Second tap of Reset account. Not saved. */
+  resetConfirm?: boolean;
 }
 
 const esc = (value: string) =>
@@ -311,12 +314,43 @@ export function mainHtml(state: Save, view: View, now: number, devOn = false): s
   if (view.tab === 'skill') return skillHtml(state, view.skill);
   if (view.tab === 'combat') return combatHtml(state, view);
   if (view.tab === 'inventory') return inventoryHtml(state, view, now);
-  if (view.tab === 'profile') return profileHtml(devOn);
+  if (view.tab === 'profile') return profileHtml(state, devOn, view.resetConfirm === true);
   return equipmentHtml(state);
 }
 
-function profileHtml(devOn: boolean): string {
+function profileHtml(state: Save, devOn: boolean, resetConfirm: boolean): string {
+  const stats = deriveProfileStats(state);
+  const kills =
+    stats.killsByEnemy.length === 0
+      ? '<p class="note">No kills yet.</p>'
+      : stats.killsByEnemy
+          .map((row) => `<p class="statline"><span>${esc(row.name)}</span><b>${fmt(row.kills)}</b></p>`)
+          .join('');
+  const reset = resetConfirm
+    ? `<p class="note">This deletes the save on this device and starts over. Offline time is not granted.</p>
+      <button type="button" class="tag btn danger" data-reset-confirm>Confirm reset</button>
+      <button type="button" class="tag btn ghost" data-reset-cancel>Cancel</button>`
+    : `<p class="note">Wipes this save on this device. The Debug switch stays as it is.</p>
+      <button type="button" class="tag btn danger" data-reset-ask>Reset account</button>`;
   return `${title('Profile')}
+    <div class="panel">
+      <h3>Stats</h3>
+      <div class="statgrid">
+        <div><small>Total level</small><b>${fmt(stats.totalLevel)}</b></div>
+        <div><small>Total XP</small><b>${fmtXp(stats.totalXp)}</b></div>
+        <div><small>Coins</small><b>${fmtCoins(stats.coins)}</b></div>
+        <div><small>Kills</small><b>${fmt(stats.kills)}</b></div>
+        <div><small>Coins from kills</small><b>${fmtCoins(stats.coinsFromKills)}</b></div>
+        <div><small>Coins from sales</small><b>${fmtCoins(stats.coinsFromSales)}</b></div>
+        <div><small>Enemies mastered</small><b>${fmt(stats.enemiesMastered)}</b></div>
+        <div><small>Nodes mastered</small><b>${fmt(stats.nodesMastered)}</b></div>
+      </div>
+      <p class="statline"><span>Ladder open</span><b>${esc(stats.ladderOpen)}</b></p>
+    </div>
+    <div class="panel">
+      <h3>Kills</h3>
+      ${kills}
+    </div>
     <div class="panel">
       <h3>Build</h3>
       <p class="aboutline"><b>${esc(__BUILD_LABEL__)}</b> ${esc(__COMMIT_SHA__)}</p>
@@ -325,6 +359,10 @@ function profileHtml(devOn: boolean): string {
       <h3>Debug</h3>
       <p class="note">Turns the dev tools on or off. Remembered on this device, including the installed app. A link with ?dev=1 still turns them on.</p>
       <button type="button" class="tag btn" data-debug-toggle>${devOn ? 'Debug on' : 'Debug off'}</button>
+    </div>
+    <div class="panel resetbox">
+      <h3>Reset</h3>
+      ${reset}
     </div>`;
 }
 

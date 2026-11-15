@@ -82,13 +82,17 @@ describe('touches while the loop ticks', () => {
       await page.locator('[data-tab="skills"]').evaluate((el) => (el as HTMLElement).click());
       const point = await page.locator('[data-tab="combat"]').evaluate((el) => {
         const rect = el.getBoundingClientRect();
-        return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
+        const x = rect.x + rect.width / 2;
+        const y = rect.y + rect.height / 2;
+        const under = document.elementFromPoint(x, y);
+        return {
+          x,
+          y,
+          hit: !!under?.closest('[data-tab="combat"]'),
+          under: under?.textContent?.trim().slice(0, 40) ?? '',
+        };
       });
-      const hit = await page.evaluate(({ x, y }) => {
-        const el = document.elementFromPoint(x, y);
-        return !!el?.closest('[data-tab="combat"]');
-      }, point);
-      expect(hit).toBe(true);
+      expect(point.hit, point.under).toBe(true);
       await session.send('Input.dispatchTouchEvent', {
         type: 'touchStart',
         touchPoints: [{ x: Math.round(point.x), y: Math.round(point.y), id: 1 }],
