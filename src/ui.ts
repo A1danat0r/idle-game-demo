@@ -498,8 +498,8 @@ function combatHtml(state: Save, view: View): string {
     const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
       .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
       .join('');
-    return `<div class="areahead"><div><h2>${esc(TEASER_AREA)}</h2><small>${styles}</small></div><small>${areaButtons(view)}</small></div>
-      <div class="panel"><p class="note">${esc(TEASER_COPY)}</p></div>`;
+    return `${areaHead(TEASER_AREA, styles, view)}
+      <div class="panel"><p class="note">${esc(TEASER_COPY)}</p>${fightButton(null, false)}</div>`;
   }
   const enemies = ENEMIES.filter((enemy) => enemy.area === view.area);
   if (view.area === 'Woodland edge') {
@@ -517,7 +517,6 @@ function combatHtml(state: Save, view: View): string {
   const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
     .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
     .join('');
-  const areas = areaButtons(view);
   const list = enemies
     .map((enemy) => {
       const gate = lockLine(state.enemyKills, enemy.id);
@@ -536,14 +535,17 @@ function combatHtml(state: Save, view: View): string {
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
     .join(' ');
   const chance = Math.round(shownHitChance(state, selected.level) * 100);
-  return `<div class="areahead"><div><h2>${esc(view.area)}</h2><small>${styles}</small></div><small>${areas}</small></div>
+  return `${areaHead(view.area, styles, view)}
     <div class="fight">
-      <div class="scene">
-        <div class="fighter">${playerFigure(84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
-        <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
-        <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
+      <div class="stage">
+        <div class="scene">
+          <div class="fighter">${playerFigure(84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
+          <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
+          <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
+        </div>
+        ${fightControl(state, selected.id)}
       </div>
-      <div class="panel enemies"><h3>Enemies</h3>${list}${fightControl(state, selected.id)}</div>
+      <div class="panel enemies"><h3>Enemies</h3>${list}</div>
     </div>
     <div class="two">
       <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
@@ -585,11 +587,22 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     ${sell}`;
 }
 
+function areaHead(title: string, styles: string, view: View): string {
+  return `<div class="areahead"><h2>${esc(title)}</h2><div class="chips">${styles}${areaButtons(view)}</div></div>`;
+}
+
+/** A visible Fight control. Locked rungs and the teaser keep the button and disable it. */
+function fightButton(enemyId: string | null, enabled: boolean): string {
+  const target = enemyId ? ` data-fight="${enemyId}"` : '';
+  const disabled = enabled ? '' : ' disabled';
+  return `<button type="button" class="tag btn"${target}${disabled}>Fight</button>`;
+}
+
 function fightControl(state: Save, enemyId: string): string {
   if (!weaponReady(state)) return '<p class="note">Equip a weapon first.</p>';
   const gate = lockLine(state.enemyKills, enemyId);
-  if (gate) return `<p class="note">${esc(gate)}</p>`;
-  return `<button type="button" class="tag btn" data-fight="${enemyId}">Fight</button>`;
+  const button = fightButton(enemyId, !gate);
+  return gate ? `<p class="note">${esc(gate)}</p>${button}` : button;
 }
 
 function weaponReady(state: Save): boolean {

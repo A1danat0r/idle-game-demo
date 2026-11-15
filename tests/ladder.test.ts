@@ -64,10 +64,10 @@ describe('check 26 meadow ladder', () => {
     }
     const locked = mainHtml(state, combatView('Meadow verge', 'meadow.rat'), 0);
     expect(locked).toContain('Kill 12 burrowing hares to unlock (0/12)');
-    expect(locked).not.toContain('data-fight="meadow.rat"');
+    expect(locked).toContain('data-fight="meadow.rat" disabled');
     const wood = mainHtml(state, combatView('Woodland edge', 'wood.fox'), 0);
     expect(wood).toContain('Kill the Thorn beetle to open Woodland edge.');
-    expect(wood).not.toContain('data-fight=');
+    expect(wood).toContain('data-fight="wood.fox" disabled');
 
     stopActivity(state);
     startCombat(state, 'meadow.hare', 'Strength');
@@ -119,10 +119,14 @@ describe('check 27 woodland ladder', () => {
     const wood = mainHtml(state, combatView('Woodland edge', 'wood.fox'), 0);
     expect(wood).toContain('Kill 12 forest foxes to unlock (0/12)');
     expect(wood).toContain('data-fight="wood.fox"');
-    expect(wood).not.toContain('data-fight="wood.jay"');
+    expect(wood).not.toContain('data-fight="wood.fox" disabled');
+    const jay = mainHtml(state, combatView('Woodland edge', 'wood.jay'), 0);
+    expect(jay).toContain('data-fight="wood.jay" disabled');
+    expect(jay).toContain('Kill 12 forest foxes to unlock (0/12)');
     expect(wood).toContain(`data-area="${TEASER_AREA}"`);
     const early = mainHtml(state, combatView(TEASER_AREA, 'wood.fox'), 0);
     expect(early).toContain(TEASER_COPY);
+    expect(early).toContain('disabled>Fight</button>');
     expect(early).not.toContain('data-fight');
     expect(early).not.toContain('data-enemy');
     expect(startCombat(state, 'meadow.hare', 'Strength')).toBe(true);
@@ -166,6 +170,7 @@ describe('check 27 woodland ladder', () => {
     const teaser = mainHtml(state, combatView(TEASER_AREA, 'wood.poacher'), 0);
     expect(teaser).toContain(TEASER_COPY);
     expect(teaser).toContain(`data-area="${TEASER_AREA}"`);
+    expect(teaser).toContain('disabled>Fight</button>');
     expect(teaser).not.toContain('data-fight');
     expect(teaser).not.toContain('data-enemy');
   });
