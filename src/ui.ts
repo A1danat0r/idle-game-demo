@@ -3,8 +3,8 @@ import {
   TEASER_AREA,
   TEASER_COPY,
   WOODLAND_LADDER,
-  COMBAT_SKILLS,
   COMBAT_STYLES,
+  SKILL_GROUPS,
   ENEMIES,
   ENEMY_BY_ID,
   ITEMS,
@@ -12,7 +12,7 @@ import {
   NODES,
   RECIPE_BY_ID,
   RECIPES,
-  SKILL_IDS,
+  DEMO_PURCHASE_SLOTS,
   SKILL_PRICES,
   SHOP_ITEMS,
   SHOP_PRICE,
@@ -163,6 +163,15 @@ const SKILL_ICON: Record<SkillId, IconName> = {
   Strength: 'sword',
   Defence: 'shield',
   Hitpoints: 'food',
+  Foraging: 'herb',
+  Farming: 'herb',
+  Crafting: 'part',
+  Alchemy: 'herb',
+  Construction: 'stone',
+  Enchanting: 'gem',
+  Exploration: 'gem',
+  Ranged: 'ammo',
+  Magic: 'gem',
 };
 
 /** The running action's item icon, then its skill icon, then the idle mark. */
@@ -375,17 +384,19 @@ function profileHtml(state: Save, devOn: boolean, resetConfirm: boolean): string
 
 function skillsHtml(state: Save): string {
   const next = skillPrice(state.purchaseCount);
-  const rest = SKILL_IDS.filter((skill) => !(COMBAT_SKILLS as readonly string[]).includes(skill));
-  const rows = [...COMBAT_SKILLS, ...rest]
-    .filter((skill) => skill !== 'Hitpoints' || state.owned.includes('Hitpoints'))
-    .map((skill) => skillRow(state, skill, next))
-    .join('');
-  const curve = SKILL_PRICES.slice(0, 7)
+  const groups = SKILL_GROUPS.map((group) => {
+    const rows = group.skills
+      .filter((skill) => skill !== 'Hitpoints' || state.owned.includes('Hitpoints'))
+      .map((skill) => skillRow(state, skill, next))
+      .join('');
+    return `<h3>${group.name}</h3><div class="list">${rows}</div>`;
+  }).join('');
+  const curve = SKILL_PRICES.slice(0, DEMO_PURCHASE_SLOTS)
     .map((price, index) => `<div class="k ${index === state.purchaseCount ? 'next' : ''}"><small>#${index + 1}</small>${fmt(price)}</div>`)
     .join('');
   return `${title('Skills')}
     <p class="note">The next skill costs the same whichever one you buy. Hitpoints is free with the first combat skill.</p>
-    <div class="list">${rows}</div>
+    ${groups}
     <div class="panel"><h3>Skill prices</h3><div class="curve">${curve}</div></div>`;
 }
 
@@ -404,7 +415,7 @@ function skillRow(state: Save, skill: SkillId, next: number | null): string {
 }
 
 function isCombat(skill: SkillId): boolean {
-  return skill === 'Attack' || skill === 'Strength' || skill === 'Defence';
+  return skill === 'Attack' || skill === 'Strength' || skill === 'Defence' || skill === 'Ranged' || skill === 'Magic';
 }
 
 function skillHtml(state: Save, skill: SkillId | null): string {
@@ -413,7 +424,9 @@ function skillHtml(state: Save, skill: SkillId | null): string {
   }
   const view = xpView(state.xp[skill] ?? 0);
   const tier =
-    skill === 'Woodcutting' || skill === 'Mining' ? `<small>Tool tier ${toolTier(state, skill)}</small>` : '';
+    skill === 'Woodcutting' || skill === 'Mining' || skill === 'Fishing' || skill === 'Foraging'
+      ? `<small>Tool tier ${toolTier(state, skill)}</small>`
+      : '';
   const scene = skillScene(skill);
   const maxed = countMaxed(state.mastery, skill);
   const bonus = globalXpBonus(state.mastery, skill);

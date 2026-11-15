@@ -28,8 +28,11 @@ export const SKILL_PRICES: readonly number[] = [
   466774, 746839, 1194943,
 ];
 
-/** Purchases the demo can make. Woodcutting and Hitpoints are never purchases. */
-export const DEMO_PURCHASE_SLOTS = 7;
+/**
+ * Purchases the demo can make. Woodcutting and Hitpoints are never purchases.
+ * The seven current paid skills plus the nine new ones.
+ */
+export const DEMO_PURCHASE_SLOTS = 16;
 
 export const SKILL_IDS = [
   'Woodcutting',
@@ -38,8 +41,17 @@ export const SKILL_IDS = [
   'Attack',
   'Strength',
   'Defence',
+  'Ranged',
+  'Magic',
   'Mining',
   'Smithing',
+  'Foraging',
+  'Farming',
+  'Crafting',
+  'Alchemy',
+  'Construction',
+  'Enchanting',
+  'Exploration',
   'Hitpoints',
 ] as const;
 export type SkillId = (typeof SKILL_IDS)[number];
@@ -52,13 +64,25 @@ export type CombatStyle = (typeof COMBAT_STYLES)[number];
  * Attack, Strength and Defence are the fight styles. Hitpoints is granted with the
  * first of those and is neither a gathering nor a production skill.
  */
-export const COMBAT_SKILLS = ['Attack', 'Strength', 'Defence', 'Hitpoints'] as const;
+export const COMBAT_SKILLS = ['Attack', 'Strength', 'Defence', 'Ranged', 'Magic', 'Hitpoints'] as const;
 
-export const GATHER_SKILLS = ['Woodcutting', 'Fishing', 'Mining'] as const;
-export const PRODUCE_SKILLS = ['Cooking', 'Smithing'] as const;
+export const GATHER_SKILLS = ['Woodcutting', 'Fishing', 'Mining', 'Foraging', 'Farming', 'Exploration'] as const;
+export const PRODUCE_SKILLS = ['Cooking', 'Smithing', 'Crafting', 'Alchemy', 'Construction', 'Enchanting'] as const;
+
+/** Six tabs, with the new skills grouped inside the existing three lists. */
+export const SKILL_GROUPS = [
+  { name: 'Combat', skills: COMBAT_SKILLS },
+  { name: 'Gathering', skills: GATHER_SKILLS },
+  { name: 'Production', skills: PRODUCE_SKILLS },
+] as const;
 
 export function isCombatStyle(skill: SkillId): skill is CombatStyle {
   return skill === 'Attack' || skill === 'Strength' || skill === 'Defence';
+}
+
+/** Buying any fight style grants Hitpoints. Ranged and Magic are fight styles even before their weapons are in. */
+export function grantsHitpoints(skill: SkillId): boolean {
+  return skill === 'Attack' || skill === 'Strength' || skill === 'Defence' || skill === 'Ranged' || skill === 'Magic';
 }
 
 export type ItemKind = 'material' | 'food' | 'gear' | 'tool' | 'ammo';
@@ -116,7 +140,7 @@ export interface Stack {
 
 export interface NodeDef {
   id: string;
-  skill: 'Woodcutting' | 'Fishing' | 'Mining';
+  skill: 'Woodcutting' | 'Fishing' | 'Mining' | 'Foraging' | 'Exploration';
   level: number;
   seconds: number;
   xp: number;
@@ -185,6 +209,24 @@ export const NODES: NodeDef[] = [
   node('mat.gem.jade', 'Mining', 20, 3.7, 86),
   node('mat.ore.iron', 'Mining', 20, 3.8, 88),
   node('mat.mineral.pottery_clay', 'Mining', 25, 3.9, 91),
+  node('mat.herb.meadow', 'Foraging', 1, 2.8, 45),
+  node('mat.reagent.spell_moss', 'Foraging', 1, 2.9, 46),
+  node('mat.seed.flax', 'Foraging', 1, 3.0, 48),
+  node('mat.seed.potato', 'Foraging', 5, 3.0, 48),
+  node('mat.cutting.meadow_herb', 'Foraging', 10, 3.2, 51),
+  node('mat.fruit.berries', 'Foraging', 10, 3.3, 53),
+  node('mat.seed.carrot', 'Foraging', 12, 3.3, 53),
+  node('mat.fruit.crabapple', 'Foraging', 15, 3.4, 54),
+  node('mat.forage.wild_wax_comb', 'Foraging', 20, 3.6, 84),
+  node('mat.fungi.mushroom', 'Foraging', 20, 3.7, 86),
+  node('mat.seed.cotton', 'Foraging', 20, 3.8, 88),
+  node('mat.plant.cattail', 'Foraging', 22, 3.7, 86),
+  node('mat.seed.onion', 'Foraging', 25, 3.8, 88),
+  node('mat.spawn.mushroom', 'Foraging', 25, 3.9, 91),
+  node('mat.herb.bitterroot', 'Foraging', 30, 4.0, 93),
+  node('mat.seed.wheat', 'Foraging', 30, 4.1, 95),
+  node('mat.gem.weathered_agate', 'Exploration', 1, 3.4, 27),
+  node('mat.relic.weathered_slate', 'Exploration', 10, 3.8, 30),
 ];
 
 export const NODE_BY_ID: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.id, n]));
@@ -247,11 +289,15 @@ export const RECIPES: RecipeDef[] = [
 
 export const RECIPE_BY_ID: Record<string, RecipeDef> = Object.fromEntries(RECIPES.map((r) => [r.id, r]));
 
-export const TOOL_TIER: Record<string, { skill: 'Woodcutting' | 'Mining'; tier: number }> = {
+export const TOOL_TIER: Record<string, { skill: 'Woodcutting' | 'Mining' | 'Fishing' | 'Foraging'; tier: number }> = {
   'tool.woodcutting.bronze_axe': { skill: 'Woodcutting', tier: 1 },
   'tool.woodcutting.iron_axe': { skill: 'Woodcutting', tier: 2 },
   'tool.mining.bronze_pickaxe': { skill: 'Mining', tier: 1 },
   'tool.mining.iron_pickaxe': { skill: 'Mining', tier: 2 },
+  'tool.fishing.bronze_rod': { skill: 'Fishing', tier: 1 },
+  'tool.fishing.iron_rod': { skill: 'Fishing', tier: 2 },
+  'tool.foraging.bronze_sickle': { skill: 'Foraging', tier: 1 },
+  'tool.foraging.iron_sickle': { skill: 'Foraging', tier: 2 },
 };
 
 /** Catalogue tool factor, approved at t252. Each tier multiplies action time. */
@@ -350,12 +396,21 @@ const EXPECTED_LANDED: Record<string, number> = {
   '8:5': 5.4703,
   '8:4': 4.4734,
   '8:3': 3.4329,
+  '9:5': 5.4727,
+  '9:4': 4.3815,
+  '9:3': 3.5205,
   '10:5': 5.4752,
   '10:4': 4.4777,
   '10:3': 3.4813,
+  '11:5': 5.4769,
+  '11:4': 4.3991,
+  '11:3': 3.4483,
   '12:5': 5.4787,
   '12:4': 4.481,
   '12:3': 3.5161,
+  '14:5': 5.4813,
+  '14:4': 4.4834,
+  '14:3': 3.4579,
 };
 export function expectedLandedHits(enemyLevel: number, baseHits: number): number {
   return EXPECTED_LANDED[`${enemyLevel}:${baseHits}`] ?? baseHits;
@@ -573,6 +628,22 @@ function addItems(): void {
     { id: 'mat.part.beetle_carapace', name: 'Beetle carapace fragments', sell: 10, icon: 'part' },
     { id: 'mat.wax.grub', name: 'Grub wax', sell: 16, icon: 'part' },
     { id: 'mat.bone.ordinary', name: 'Ordinary bones', sell: 1, icon: 'part' },
+    { id: 'mat.reagent.spell_moss', name: 'Spell moss', sell: 1, icon: 'moss' },
+    { id: 'mat.seed.potato', name: 'Seed potatoes', sell: 2, icon: 'herb' },
+    { id: 'mat.cutting.meadow_herb', name: 'Meadow-herb cuttings', sell: 3, icon: 'herb' },
+    { id: 'mat.fruit.berries', name: 'Meadow berries', sell: 3, icon: 'berry' },
+    { id: 'mat.seed.carrot', name: 'Carrot seed', sell: 4, icon: 'herb' },
+    { id: 'mat.fruit.crabapple', name: 'Crabapples', sell: 5, icon: 'berry' },
+    { id: 'mat.forage.wild_wax_comb', name: 'Wild wax comb', sell: 6, icon: 'part' },
+    { id: 'mat.fungi.mushroom', name: 'Meadow mushrooms', sell: 6, icon: 'herb' },
+    { id: 'mat.seed.cotton', name: 'Cotton seed', sell: 7, icon: 'herb' },
+    { id: 'mat.plant.cattail', name: 'Cattail', sell: 7, icon: 'herb' },
+    { id: 'mat.seed.onion', name: 'Onion sets', sell: 8, icon: 'herb' },
+    { id: 'mat.spawn.mushroom', name: 'Mushroom spawn', sell: 8, icon: 'herb' },
+    { id: 'mat.herb.bitterroot', name: 'Bitterroot', sell: 10, icon: 'herb' },
+    { id: 'mat.seed.wheat', name: 'Wheat seed', sell: 10, icon: 'herb' },
+    { id: 'mat.gem.weathered_agate', name: 'Weathered agate', sell: 1, icon: 'gem' },
+    { id: 'mat.relic.weathered_slate', name: 'Weathered slate', sell: 3, icon: 'stone' },
   ];
   for (const row of mats) item({ ...row, kind: 'material' });
   for (const food of FOODS) item({ ...food, kind: 'food', icon: 'food' });
@@ -594,6 +665,10 @@ function addItems(): void {
     { id: 'tool.woodcutting.iron_axe', name: 'Iron axe', sell: 39, icon: 'axe' },
     { id: 'tool.mining.bronze_pickaxe', name: 'Bronze pickaxe', sell: 17, icon: 'pick' },
     { id: 'tool.mining.iron_pickaxe', name: 'Iron pickaxe', sell: 69, icon: 'pick' },
+    { id: 'tool.fishing.bronze_rod', name: 'Bronze-fitted rod', sell: 5, icon: 'fish' },
+    { id: 'tool.fishing.iron_rod', name: 'Iron-fitted rod', sell: 5, icon: 'fish' },
+    { id: 'tool.foraging.bronze_sickle', name: 'Bronze sickle', sell: 4, icon: 'axe' },
+    { id: 'tool.foraging.iron_sickle', name: 'Iron sickle', sell: 4, icon: 'axe' },
   ];
   for (const row of tools) item({ ...row, kind: 'tool' });
   const ammo: { id: string; name: string; sell: number }[] = [
@@ -704,5 +779,14 @@ export const SKILL_SHORT: Record<SkillId, string> = {
   Defence: 'Defence',
   Mining: 'Mining',
   Smithing: 'Smithing',
+  Foraging: 'Forage',
+  Farming: 'Farming',
+  Crafting: 'Crafting',
+  Alchemy: 'Alchemy',
+  Construction: 'Construct',
+  Enchanting: 'Enchant',
+  Exploration: 'Explore',
+  Ranged: 'Ranged',
+  Magic: 'Magic',
   Hitpoints: 'Hitpoints',
 };

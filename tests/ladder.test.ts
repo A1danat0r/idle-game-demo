@@ -8,11 +8,11 @@ import {
   enemyUnlocked,
   expectedCoinValue,
   expectedDropValue,
+  expectedLandedHits,
   hitsPerKill,
   lockLine,
   playerHitChance,
   playerMaxHp,
-  skillCost,
   skillPrice,
   teaserOpen,
 } from '../src/content';
@@ -289,22 +289,18 @@ describe('bones, prices, and the woodland climb', () => {
     expect(state.stats.coinsFromKills).toBe(0);
   });
 
-  it('prices an official-route save next purchase at SC(4)', () => {
-    expect(skillCost(1)).toBe(750);
-    expect(skillCost(4)).toBe(2653);
-    expect(skillPrice(3)).toBe(2653);
-    expect(skillPrice(7)).toBeNull();
+  it('prices the next skill after the official route at 17389 and the ninth new skill at 746839', () => {
+    expect(skillPrice(7)).toBe(17389);
+    expect(skillPrice(15)).toBe(746839);
+    expect(skillPrice(16)).toBeNull();
     const state = newGame(0);
-    state.owned.push('Cooking', 'Mining', 'Smithing');
-    state.xp.Cooking = 0;
-    state.xp.Mining = 0;
-    state.xp.Smithing = 0;
-    state.purchaseCount = 3;
-    state.coins = 2653;
-    expect(buySkill(state, 'Strength')).toBe(true);
+    state.owned.push('Cooking', 'Mining', 'Smithing', 'Strength', 'Defence', 'Attack', 'Fishing', 'Hitpoints');
+    state.purchaseCount = 7;
+    state.coins = 17389;
+    expect(buySkill(state, 'Foraging')).toBe(true);
     expect(state.coins).toBe(0);
-    expect(state.purchaseCount).toBe(4);
-    expect(skillPrice(state.purchaseCount)).toBe(4245);
+    expect(state.purchaseCount).toBe(8);
+    expect(skillPrice(state.purchaseCount)).toBe(27822);
   });
 
   it('measures the woodland climb at 0.1728h for the official cap loadout', () => {
@@ -314,6 +310,11 @@ describe('bones, prices, and the woodland climb', () => {
       expect(playerHitChance(30, ENEMY_BY_ID[id].level, spear.acc ?? 0), id).toBe(1);
     }
     expect(woodlandClimbHours()).toBeCloseTo(0.1728, 4);
+    expect(expectedLandedHits(9, 5)).toBe(5.4727);
+    expect(expectedLandedHits(9, 3)).toBe(3.5205);
+    expect(expectedLandedHits(11, 4)).toBe(4.3991);
+    expect(expectedLandedHits(14, 5)).toBe(5.4813);
+    expect(expectedLandedHits(14, 3)).toBe(3.4579);
   });
 });
 
