@@ -812,8 +812,16 @@ function equipmentHtml(state: Save): string {
     <div class="panel"><h3>Tools</h3>${toolRows || '<p class="note">No tools owned. The highest owned axe or pickaxe applies on its own.</p>'}</div>`;
 }
 
+/** Whole minutes, rounded down. Under an hour: "5 min". An exact hour keeps the zero: "2 h 0 min". */
+function awayTime(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours <= 0) return `${rest} min`;
+  return `${hours} h ${rest} min`;
+}
+
 export function reportHtml(report: CatchupReport): string {
-  const hours = (ms: number) => `${(ms / 3_600_000).toFixed(2)} h`;
   const xp = Object.entries(report.xpGained)
     .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
@@ -838,8 +846,8 @@ export function reportHtml(report: CatchupReport): string {
   return `<div class="popup" data-catchup><div class="card">
     <h2>While you were away</h2>
     <dl>
-      <dt>Away</dt><dd>${hours(report.awayMs)}</dd>
-      <dt>Credited</dt><dd>${hours(report.creditedMs)}${report.capped ? ' (24h cut)' : ''}</dd>
+      <dt>Away</dt><dd>${awayTime(report.awayMs)}</dd>
+      <dt>Credited</dt><dd>${awayTime(report.creditedMs)}${report.capped ? ' (24h cut)' : ''}</dd>
       <dt>Activity</dt><dd>${esc(report.activity)}</dd>
       <dt>Actions</dt><dd>${report.actions}</dd>
       <dt>Kills</dt><dd>${report.kills}</dd>
