@@ -17,6 +17,7 @@ import {
 import type { Save } from './engine';
 import { habitatPace, skillLevel } from './engine';
 import { actionMasteryXp, masteryLevel, masteryThreshold } from './mastery';
+import { HARVEST_FACTOR, PLOT_GATES, isPlotCrop } from './plots';
 
 const PERK_LEVELS = [10, 20, 30, 40] as const;
 const ENEMY_PERK_KILLS = [60, 266, 619, 1118] as const;
@@ -96,6 +97,33 @@ export function unlockGroups(state: Save, skill: SkillId): UnlockGroup[] {
     if (recipe.skill !== skill) continue;
     const mark = itemNote(recipe.id, recipe.level, now, xpNow);
     items.push({ id: recipe.id, title: actionTitle(recipe), level: recipe.level, ...mark });
+  }
+  if (skill === 'Farming') {
+    for (const gate of PLOT_GATES) {
+      const bought = state.plotsBought >= gate.plot - 1;
+      if (bought) {
+        items.push({ id: `plot.${gate.plot}`, title: `Plot ${gate.plot}`, level: gate.level, reached: true, note: 'Bought' });
+        continue;
+      }
+      if (now < gate.level) {
+        const left = Math.max(0, (XP_TABLE[gate.level] ?? 0) - xpNow);
+        items.push({
+          id: `plot.${gate.plot}`,
+          title: `Plot ${gate.plot}`,
+          level: gate.level,
+          reached: false,
+          note: `${fmt(left)} XP to go · ${fmt(gate.cost)} coins`,
+        });
+        continue;
+      }
+      items.push({
+        id: `plot.${gate.plot}`,
+        title: `Plot ${gate.plot}`,
+        level: gate.level,
+        reached: true,
+        note: `${fmt(gate.cost)} coins`,
+      });
+    }
   }
   const levels = [...new Set(items.map((item) => item.level))].sort((a, b) => a - b);
   return levels.map((level) => ({
@@ -206,7 +234,7 @@ function skillHalf(state: Save, skill: SkillId): string {
   return `${names} at ${skill} ${next.level} (${fmt(xpLeft)} XP)`;
 }
 
-function masteryHalf(state: Save, id: string, skill: SkillId, seconds: number): string {
+function masteryHalf(state: Save, id: string, skill: SkillId, seconds: number, unit = 'actions'): string {
   const mxp = state.mastery[id] ?? 0;
   const level = masteryLevel(mxp);
   const name = masteryLabel(id);
@@ -215,14 +243,24 @@ function masteryHalf(state: Save, id: string, skill: SkillId, seconds: number): 
     return `${name} mastery 40 (maxed): 5% double output · +3% ${skill} XP (cap +15%)`;
   }
   const remaining = Math.max(0, masteryThreshold(next) - mxp);
-  const actions = Math.ceil(remaining / actionMasteryXp(seconds));
-  return `${name} mastery ${next}: ${PERK_LABEL[next]} (${fmt(remaining)} MXP, ${fmt(actions)} actions)`;
+  const gain = actionMasteryXp(seconds);
+  const actions = gain > 0 ? Math.ceil(remaining / gain) : remaining;
+  return `${name} mastery ${next}: ${PERK_LABEL[next]} (${fmt(remaining)} MXP, ${fmt(actions)} ${unit})`;
 }
 
 /** Activity-screen Next row. Null when nothing gatherable or producible is selected. */
 export function activityNextLine(state: Save): string | null {
   const track = activityTrack(state);
   if (!track) return null;
+  if (track.skill === 'Farming') {
+    const planted = state.plots.find((plot) => plot && isPlotCrop(plot.recipeId));
+    const recipe = planted ? RECIPE_BY_ID[planted.recipeId] : null;
+    if (planted && recipe) {
+      const seconds = planted.legacy ? recipe.seconds : recipe.seconds * HARVEST_FACTOR;
+      const unit = planted.legacy ? 'actions' : 'harvests';
+      return `Next: ${skillHalf(state, track.skill)} · ${masteryHalf(state, planted.recipeId, track.skill, seconds, unit)}.`;
+    }
+  }
   return `Next: ${skillHalf(state, track.skill)} · ${masteryHalf(state, track.id, track.skill, track.seconds)}.`;
 }
 

@@ -79,6 +79,17 @@ import {
   trackName,
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
+import {
+  BONE_COMPOST_ITEM_ID,
+  COMPOST_ITEM_ID,
+  PLOT_GATES,
+  HARVEST_FACTOR,
+  harvestProduce,
+  harvestXp,
+  isPlotCrop,
+  plotGrowMs,
+  type CompostKind,
+} from './plots';
 
 export const SAVE_FORMAT = 4;
 /** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
@@ -175,11 +186,16 @@ export interface Save {
   buildings: Record<string, boolean>;
   /** One-time structures completed at least once. Dismantle clears `buildings` and leaves this set. Format 4. */
   buildingsEver: Record<string, boolean>;
-  /** The one Farming plot. Null when nothing is planted. */
-  plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
+  /**
+   * Owned Farming plots, plot 1 first. Null is an empty plot.
+   * One entry per owned plot. Missing on older format-4 saves, which used `plot`.
+   */
+  plots: (PlotState | null)[];
+  /** Paid plots bought, 0–7. Plot 1 is free with Farming and is not counted here. */
+  plotsBought: number;
   /**
    * The one expedition. Null when none is out.
-   * Runs beside the selected activity and the Farming plot. A missing key loads as null.
+   * Runs beside the selected activity and the Farming plots. A missing key loads as null.
    */
   expedition: { routeId: string; startedAt: number; durationMs: number; creditedMs: number } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
@@ -237,6 +253,19 @@ export interface CatchupReport {
   perksUnlocked: string[];
   /** Set when an expedition was out for this window. Absent or null when none was. */
   expeditionLine?: string | null;
+  /** One line per plot that harvested in this window. */
+  plotHarvests?: string[];
+}
+
+/** One planted or empty-owned Farming plot. `legacy` finishes with the old per-action output. */
+export interface PlotState {
+  recipeId: string;
+  remainingMs: number;
+  compost: CompostKind;
+  /** Bank was full, so the harvest is waiting. */
+  ready?: boolean;
+  /** Migrated from the single-plot save. Harvest pays the old per-action output. */
+  legacy?: boolean;
 }
 
 export function emptyStats(): StatsLog {
@@ -288,7 +317,8 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     enemyKills: {},
     buildings: {},
     buildingsEver: {},
-    plot: null,
+    plots: [],
+    plotsBought: 0,
     expedition: null,
   };
   return state;
@@ -562,7 +592,7 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (recipe.comingLater || recipe.locked) return false;
   if (recipe.skill === 'Exploration') return false;
   if (recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]) return false;
-  if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
+  if (isPlotCrop(recipeId)) return false;
   if (!hasInputs(state, recipeId)) return false;
   const same = state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
   if (same) return true;
@@ -707,6 +737,7 @@ export function buySkill(state: Save, skill: SkillId): boolean {
     state.xp.Hitpoints = 0;
     state.hp = maxHp(state);
   }
+  if (skill === 'Farming') ensureFarmPlots(state);
   return true;
 }
 
@@ -1252,32 +1283,65 @@ function levelsOf(state: Save): Partial<Record<SkillId, number>> {
 }
 
 /**
- * Advance a visible tab to `now`.
- * A backwards clock credits 0 and moves the last-credited time to `now`,
- * so the next positive gap runs immediately instead of waiting for the clock to catch up.
+ * Plot 1 exists once Farming is owned. Paid plots stay even if the level later drops.
+ * A longer saved list is kept, so a bought plot is never dropped on load.
  */
-export function plantCrop(state: Save, recipeId: string): boolean {
-  const recipe = RECIPE_BY_ID[recipeId];
-  if (!recipe || recipe.skill !== 'Farming') return false;
-  if (state.plot) return false;
+export function ensureFarmPlots(state: Save): void {
+  if (!Array.isArray(state.plots)) state.plots = [];
+  if (!Number.isInteger(state.plotsBought) || state.plotsBought < 0) state.plotsBought = 0;
+  if (state.plotsBought > PLOT_GATES.length) state.plotsBought = PLOT_GATES.length;
+  if (!state.owned.includes('Farming')) return;
+  const implied = Math.min(PLOT_GATES.length, Math.max(0, state.plots.length - 1));
+  if (state.plotsBought < implied) state.plotsBought = implied;
+  const need = 1 + state.plotsBought;
+  while (state.plots.length < need) state.plots.push(null);
+}
+
+/** Buy the next paid plot. It needs the Farming level and the coins. Order is fixed by the count. */
+export function buyPlot(state: Save): boolean {
   if (!state.owned.includes('Farming')) return false;
-  if (skillLevel(state, 'Farming') < recipe.level) return false;
-  if (!hasInputs(state, recipeId)) return false;
-  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
-  state.plot = { recipeId, remainingMs: actionDurationMs(state, recipeId), ready: false };
+  ensureFarmPlots(state);
+  const gate = PLOT_GATES[state.plotsBought];
+  if (!gate) return false;
+  if (skillLevel(state, 'Farming') < gate.level) return false;
+  if (state.coins < gate.cost) return false;
+  state.coins = roundXp(state.coins - gate.cost);
+  noteSpent(state, gate.cost);
+  state.plotsBought += 1;
+  state.plots.push(null);
   return true;
 }
 
-export function cancelPlot(state: Save): void {
-  state.plot = null;
+/** Plant on an empty owned plot. This is not the selected activity, and it does not require Farming to be selected. */
+export function plantOnPlot(state: Save, index: number, recipeId: string, compost: CompostKind): boolean {
+  if (!state.owned.includes('Farming')) return false;
+  ensureFarmPlots(state);
+  if (!Number.isInteger(index) || index < 0 || index >= state.plots.length) return false;
+  if (state.plots[index]) return false;
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe || !isPlotCrop(recipeId)) return false;
+  if (skillLevel(state, 'Farming') < recipe.level) return false;
+  if (!hasInputs(state, recipeId)) return false;
+  const compostId = compost === 'bone' ? BONE_COMPOST_ITEM_ID : compost === 'compost' ? COMPOST_ITEM_ID : null;
+  if (compostId && (state.bank[compostId] ?? 0) < 1) return false;
+  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
+  if (compostId) takeItem(state, compostId, 1);
+  state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost), compost };
+  return true;
 }
 
-function harvestPlot(state: Save, sink?: Sink): void {
-  const plot = state.plot;
+/** Drop the crop. No refund, no XP, no mastery. */
+export function cancelPlot(state: Save, index: number): void {
+  if (!state.plots[index]) return;
+  state.plots[index] = null;
+}
+
+function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[]): void {
+  const plot = state.plots[index];
   if (!plot) return;
   const recipe = RECIPE_BY_ID[plot.recipeId];
   if (!recipe) {
-    state.plot = null;
+    state.plots[index] = null;
     return;
   }
   if (!bankHasSpace(state)) {
@@ -1285,19 +1349,43 @@ function harvestPlot(state: Save, sink?: Sink): void {
     plot.remainingMs = 0;
     return;
   }
-  for (const made of recipe.outputs) giveItem(state, made.id, made.qty, sink);
-  addXp(state, 'Farming', recipe.xp * actionXpMultiplier(state.mastery, recipe.id, 'Farming'));
-  grantActionMastery(state, recipe.id, 'Farming', recipe.seconds, {});
+  const legacy = plot.legacy === true;
+  let qtyTotal = 0;
+  let itemId = recipe.outputs[0]?.id ?? recipe.id;
+  if (legacy) {
+    for (const made of recipe.outputs) {
+      giveItem(state, made.id, made.qty, sink);
+      qtyTotal += made.qty;
+      itemId = made.id;
+    }
+    addXp(state, 'Farming', recipe.xp * actionXpMultiplier(state.mastery, recipe.id, 'Farming'));
+    grantActionMastery(state, recipe.id, 'Farming', recipe.seconds, {});
+  } else {
+    const doubled = doubledOutput(state, recipe.id);
+    for (const made of recipe.outputs) {
+      const qty = harvestProduce(made.qty, plot.compost) * (doubled ? 2 : 1);
+      giveItem(state, made.id, qty, sink);
+      qtyTotal += qty;
+      itemId = made.id;
+    }
+    addXp(state, 'Farming', harvestXp(recipe.xp) * actionXpMultiplier(state.mastery, recipe.id, 'Farming'));
+    grantActionMastery(state, recipe.id, 'Farming', recipe.seconds * HARVEST_FACTOR, {});
+  }
   state.stats.actions += 1;
   if (sink) sink.actions += 1;
-  state.plot = null;
+  state.plots[index] = null;
+  if (lines) lines.push(`Plot ${index + 1}: ${itemName(itemId)} ×${qtyTotal.toLocaleString('en-US')}`);
 }
 
-function growPlot(state: Save, ms: number, sink?: Sink): void {
-  const plot = state.plot;
-  if (!plot || ms <= 0) return;
-  if (!plot.ready) plot.remainingMs = Math.max(0, plot.remainingMs - ms);
-  if (plot.remainingMs <= 0) harvestPlot(state, sink);
+/** Each planted plot advances by the same window and harvests at most once. */
+function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[]): void {
+  ensureFarmPlots(state);
+  for (let index = 0; index < state.plots.length; index += 1) {
+    const plot = state.plots[index];
+    if (!plot) continue;
+    if (!plot.ready && ms > 0) plot.remainingMs -= ms;
+    if (plot.remainingMs <= 0 || plot.ready) harvestPlot(state, index, sink, lines);
+  }
 }
 
 /** 15 min, 1 h, and 8 h. An expedition stores one of these for the whole trip. */
@@ -1537,6 +1625,12 @@ function describeExpedition(before: Save['expedition'], grant: ExpeditionGrant |
   return expeditionReportLine(name, null, Math.max(0, duration - credited));
 }
 
+/**
+ * Advance a visible tab to `now`.
+ * A backwards clock credits 0 and moves the last-credited time to `now`,
+ * so the next positive gap runs immediately instead of waiting for the clock to catch up.
+ * Plots and the expedition share that window with the selected activity.
+ */
 export function advanceOpenTab(
   state: Save,
   now: number,
@@ -1548,7 +1642,7 @@ export function advanceOpenTab(
   if (gap > 0) {
     stopLegacyExploration(state);
     simulate(state, gap, undefined, notes ? { notes } : undefined);
-    growPlot(state, gap);
+    growPlots(state, gap);
     advanceExpedition(state, gap, undefined, notes);
     noteTime(state, gap);
     state.lastCredited = now;
@@ -1580,6 +1674,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     masteryLevels: [],
     perksUnlocked: [],
     expeditionLine: null,
+    plotHarvests: [],
   };
   if (away < 0) {
     report.backwards = true;
@@ -1607,8 +1702,10 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     consumed: {},
     stopped: null,
   };
+  const plotHarvests: string[] = [];
   simulate(state, credited, sink);
-  growPlot(state, credited, sink);
+  growPlots(state, credited, sink, plotHarvests);
+  report.plotHarvests = plotHarvests;
   const expeditionGrant = advanceExpedition(state, credited, sink);
   stopLegacyExploration(state);
   report.expeditionLine = describeExpedition(expBefore, expeditionGrant, state.expedition);
@@ -1821,7 +1918,8 @@ export function deserialize(raw: string): Save | null {
     enemyKills: {},
     buildings: {},
     buildingsEver: {},
-    plot: null,
+    plots: [],
+    plotsBought: 0,
     expedition: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
@@ -1829,7 +1927,7 @@ export function deserialize(raw: string): Save | null {
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
-  loaded.plot = readPlot(parsed.plot);
+  if (!installPlots(loaded, parsed)) return null;
   loaded.expedition = readExpedition(parsed.expedition);
   migrateForaging(loaded);
   return loaded;
@@ -1875,10 +1973,66 @@ function migrateForaging(state: Save): void {
   }
 }
 
-function readPlot(value: unknown): Save['plot'] {
+/**
+ * Format 4 keeps `plots` when it is present. A save that still has the single `plot`
+ * maps it onto plot 1 and finishes it with the old per-action output.
+ * A missing key means no plots, then Farming's free plot is added.
+ */
+function installPlots(state: Save, parsed: Record<string, unknown>): boolean {
+  if (parsed.plots !== undefined && parsed.plots !== null) {
+    const plots = readPlots(parsed.plots);
+    if (!plots) return false;
+    state.plots = plots;
+    state.plotsBought = readPlotsBought(parsed.plotsBought);
+  } else if (parsed.plot != null) {
+    const old = readLegacyPlot(parsed.plot);
+    state.plots = old ? [old] : [];
+    state.plotsBought = 0;
+    if (old && (old.ready === true || old.remainingMs <= 0)) harvestPlot(state, 0);
+  } else {
+    state.plots = [];
+    state.plotsBought = readPlotsBought(parsed.plotsBought);
+  }
+  ensureFarmPlots(state);
+  return true;
+}
+
+function readPlotsBought(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(PLOT_GATES.length, Math.floor(value)));
+}
+
+function readPlots(value: unknown): Save['plots'] | null {
+  if (!Array.isArray(value)) return null;
+  const plots: Save['plots'] = [];
+  for (const entry of value) {
+    if (entry == null) {
+      plots.push(null);
+      continue;
+    }
+    if (!isRecord(entry) || typeof entry.recipeId !== 'string' || typeof entry.remainingMs !== 'number' || !Number.isFinite(entry.remainingMs)) {
+      return null;
+    }
+    const compost: CompostKind = entry.compost === 'compost' || entry.compost === 'bone' ? entry.compost : null;
+    const plot: PlotState = { recipeId: entry.recipeId, remainingMs: entry.remainingMs, compost };
+    if (entry.ready === true) plot.ready = true;
+    if (entry.legacy === true) plot.legacy = true;
+    plots.push(plot);
+  }
+  return plots;
+}
+
+function readLegacyPlot(value: unknown): PlotState | null {
   if (!isRecord(value)) return null;
-  if (typeof value.recipeId !== 'string' || typeof value.remainingMs !== 'number' || typeof value.ready !== 'boolean') return null;
-  return { recipeId: value.recipeId, remainingMs: value.remainingMs, ready: value.ready };
+  if (typeof value.recipeId !== 'string' || typeof value.remainingMs !== 'number' || !Number.isFinite(value.remainingMs)) return null;
+  const plot: PlotState = {
+    recipeId: value.recipeId,
+    remainingMs: value.remainingMs,
+    compost: null,
+    legacy: true,
+  };
+  if (value.ready === true) plot.ready = true;
+  return plot;
 }
 
 /** Formats 1 and 2 derive kills from mastery. Formats 3 and 4 keep the stored counts. */
@@ -2049,6 +2203,7 @@ export function setSkillLevel(state: Save, skill: SkillId, level: number): void 
   if (!state.owned.includes(skill)) state.owned.push(skill);
   state.xp[skill] = xpForLevel(level);
   if (skill === 'Hitpoints') state.hp = Math.min(state.hp, maxHp(state));
+  if (skill === 'Farming') ensureFarmPlots(state);
 }
 
 export { ENEMIES };
