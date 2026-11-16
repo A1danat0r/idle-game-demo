@@ -19,12 +19,16 @@ import {
   startGather,
   stopActivity,
   cancelPlot,
+  returnExpedition,
+  startExpedition,
+  EXPEDITION_MS,
   dismantleBuilding,
   dismantleRefund,
   startProduce,
   tabLockDecision,
   unequip,
   confirmAccountReset,
+  expeditionClock,
   writeSave,
   type CatchupReport,
   type FloatNote,
@@ -40,7 +44,7 @@ import {
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
 import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesWhileSheetOpen, presentNotes, type FloaterView } from './floaters';
-import { activityDestination, activityHtml, activityPercent, combatBackScreen, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -250,7 +254,7 @@ function render(): void {
     headerHtml(state, devOn),
     message,
     mainHtml(state, view, gameNow(), devOn),
-    activityHtml(state),
+    backgroundStripHtml(state) + activityHtml(state),
     tabsHtml(view),
   );
   const next = app.querySelector('main');
@@ -272,6 +276,12 @@ function patchLive(): void {
   }
   const label = app.querySelector('[data-live="act-pct"]');
   if (label) label.textContent = `${Math.round(pct)}%`;
+  const clock = state.expedition
+    ? expeditionClock(state.expedition.durationMs - state.expedition.creditedMs)
+    : '';
+  app.querySelectorAll('[data-live="expedition-clock"]').forEach((el) => {
+    el.textContent = clock;
+  });
 }
 
 function escapeText(value: string): string {
@@ -298,7 +308,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab === 'combat') openCombatTab();
@@ -322,6 +332,22 @@ app.addEventListener('click', (event) => {
     view.message = startProduce(state, target.dataset.recipe) ? '' : 'Missing inputs.';
   }
   if (target.hasAttribute('data-cancel-plot')) cancelPlot(state);
+  if (target.dataset.duration) {
+    const ms = Number(target.dataset.duration);
+    if ((EXPEDITION_MS as readonly number[]).includes(ms)) view.routeMs = ms;
+    if (target.dataset.route) view.routeId = target.dataset.route;
+  } else if (target.dataset.route && !target.dataset.pack) {
+    view.routeId = target.dataset.route;
+  }
+  if (target.dataset.pack && !target.hasAttribute('disabled')) {
+    const ms = view.routeMs != null && (EXPEDITION_MS as readonly number[]).includes(view.routeMs) ? view.routeMs : EXPEDITION_MS[0];
+    view.routeId = target.dataset.pack;
+    view.message = startExpedition(state, target.dataset.pack, ms, gameNow()) ? '' : 'That route is not ready.';
+  }
+  if (target.hasAttribute('data-return-expedition')) {
+    returnExpedition(state);
+    view.message = '';
+  }
   if (target.dataset.dismantle) {
     const id = target.dataset.dismantle;
     const refund = dismantleRefund(id);
