@@ -1523,6 +1523,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     stopLegacyExploration(state);
     report.expeditionLine = describeExpedition(expBefore, null, state.expedition);
     report.levelsAfter = levelsOf(state);
+    mergeLegacyItemCounts(report.itemsGained);
+    mergeLegacyItemCounts(report.itemsConsumed);
     return report;
   }
   const credited = Math.min(away, OFFLINE_CAP_MS);
@@ -1550,6 +1552,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   report.kills = sink.kills;
   report.foodEaten = sink.foodEaten;
   report.coinsGained = sink.coins;
+  mergeLegacyItemCounts(sink.gained);
+  mergeLegacyItemCounts(sink.consumed);
   report.itemsGained = sink.gained;
   report.itemsConsumed = sink.consumed;
   for (const skill of Object.keys({ ...xpBefore, ...state.xp }) as SkillId[]) {
@@ -1569,6 +1573,28 @@ export function creditOffline(state: Save, now: number): CatchupReport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Catalogue id kept, demo-only id removed. Counts add onto the survivor.
+ * A missing old key is left alone. A zero total is omitted. Mastery is not touched.
+ */
+const LEGACY_ITEM_IDS: Record<string, string> = {
+  'mat.berry.meadow': 'mat.fruit.berries',
+  'mat.herb.meadow_cuttings': 'mat.cutting.meadow_herb',
+  'mat.moss.spell': 'mat.reagent.spell_moss',
+  'mat.part.beetle_carapace': 'mat.combat.beetle_carapace',
+  'mat.wax.grub': 'mat.combat.grub_wax',
+};
+
+export function mergeLegacyItemCounts(map: Record<string, number>): void {
+  for (const [oldId, nextId] of Object.entries(LEGACY_ITEM_IDS)) {
+    if (!Object.prototype.hasOwnProperty.call(map, oldId)) continue;
+    const total = (map[nextId] ?? 0) + (map[oldId] ?? 0);
+    delete map[oldId];
+    if (total > 0) map[nextId] = total;
+    else delete map[nextId];
+  }
 }
 
 export function deserialize(raw: string): Save | null {
@@ -1606,6 +1632,7 @@ export function deserialize(raw: string): Save | null {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
     if (value > 0) bank[key] = value;
   }
+  mergeLegacyItemCounts(bank);
   const statsIn = isRecord(parsed.stats) ? parsed.stats : {};
   const stats = emptyStats();
   if (typeof statsIn.actions === 'number') stats.actions = statsIn.actions;

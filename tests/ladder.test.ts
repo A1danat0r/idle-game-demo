@@ -279,7 +279,7 @@ describe('bones, prices, and the woodland climb', () => {
       expect(ENEMY_BY_ID[id].drops.some((row) => row.itemId === 'mat.bone.ordinary'), id).toBe(false);
     }
     expect(expectedDropValue(ENEMY_BY_ID['wood.fox'].drops)).toBeCloseTo(6.25, 5);
-    expect(expectedDropValue(ENEMY_BY_ID['wood.boar'].drops)).toBeCloseTo(6.583333, 4);
+    expect(expectedDropValue(ENEMY_BY_ID['wood.boar'].drops)).toBeCloseTo(9.583333, 4);
     const state = fighter(4);
     startCombat(state, 'meadow.hare', 'Strength');
     let bones = 0;

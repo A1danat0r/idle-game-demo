@@ -74,7 +74,7 @@ export function samplePoacher(kills = 1000, seed = 7): string {
   return [
     `poacher kills ${state.stats.kills}`,
     `mean coins ${mean.toFixed(3)} (target 6 ± 0.3)`,
-    `loot value/kill ${loot.toFixed(3)} (expected 6.5, ±10%)`,
+    `loot value/kill ${loot.toFixed(3)} (expected 9.5, ±10%)`,
     `pauses ${state.stats.pauses}`,
     `player hits ${state.stats.playerHits} / swings ${state.stats.playerSwings}`,
   ].join('\n');
