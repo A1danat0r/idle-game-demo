@@ -118,12 +118,19 @@ export function combatBackScreen(view: View): CombatScreen {
   return 'areas';
 }
 
-/** Highlighted style: the chip, else the running fight, else the first owned style. */
+/** The training-row chip. A set chip wins; otherwise the running fight, otherwise the first owned style. */
 export function combatStyleChoice(state: Save, view: View): CombatStyle | null {
   if (view.style && state.owned.includes(view.style)) return view.style;
   const activity = state.activity;
   if (activity?.kind === 'combat' && state.owned.includes(activity.style)) return activity.style;
   return COMBAT_STYLES.find((id) => state.owned.includes(id)) ?? null;
+}
+
+/** Fight-screen header: the running fight's style, or the chip when nothing is running. */
+export function fightHeaderStyle(state: Save, view: View): CombatStyle | null {
+  const activity = state.activity;
+  if (activity?.kind === 'combat' && state.owned.includes(activity.style)) return activity.style;
+  return combatStyleChoice(state, view);
 }
 
 const esc = (value: string) =>
@@ -621,6 +628,7 @@ function areaProgress(state: Save, area: 'Meadow verge' | 'Woodland edge'): stri
   const boss = ENEMY_BY_ID[ids[ids.length - 1]];
   const beaten = (kills[boss.id] ?? 0) >= 1;
   if (open === ids.length && beaten) return [`All ${ids.length} open · Boss beaten ✓`];
+  if (open === ids.length) return [`All ${ids.length} open`, `Boss ${boss.name}: not beaten`];
   const lines = [`Rungs ${open}/${ids.length} open`];
   let highest = ids[0];
   for (const id of ids) if (enemyUnlocked(kills, id)) highest = id;
@@ -653,15 +661,18 @@ function combatHead(back: string, heading: string, extra = ''): string {
 
 function areasHtml(state: Save): string {
   const fight = fightingEnemy(state);
+  const woodLocked = !woodlandOpen(state.enemyKills);
   const cards = (['Meadow verge', 'Woodland edge'] as const).map((area) => {
     const lines = areaProgress(state, area).map((line) => `<small>${esc(line)}</small>`).join('');
     const badge = fight && fight.area === area ? `<small>In fight: ${esc(fight.name)}</small>` : '';
-    return `<button type="button" class="row areacard" data-open-area="${area}"><div class="grow"><b>${esc(area)}</b><small>${levelSpan(area)}</small>${lines}${badge}</div></button>`;
+    const lock = area === 'Woodland edge' && woodLocked ? ' <span class="tag">[lock]</span>' : '';
+    return `<button type="button" class="row areacard" data-open-area="${area}"><div class="grow"><b>${esc(area)}${lock}</b><small>${levelSpan(area)}</small>${lines}${badge}</div></button>`;
   }).join('');
   const opened = teaserOpen(state.enemyKills);
+  const teaserName = '<b>??? <span class="tag">[lock]</span></b>';
   const teaser = opened
-    ? `<button type="button" class="row areacard" data-open-area="${TEASER_AREA}"><div class="grow"><b>???</b><small>??? — coming later</small></div></button>`
-    : `<div class="row locked"><div class="grow"><b>???</b><small>${esc(TEASER_COPY)}</small></div></div>`;
+    ? `<button type="button" class="row areacard" data-open-area="${TEASER_AREA}"><div class="grow">${teaserName}<small>??? — coming later</small></div></button>`
+    : `<div class="row locked"><div class="grow">${teaserName}<small>${esc(TEASER_COPY)}</small></div></div>`;
   return `${title('Areas')}${cards}${teaser}`;
 }
 
@@ -673,20 +684,42 @@ function ladderHtml(state: Save, view: View): string {
   const rows = ids.map((id) => {
     const enemy = ENEMY_BY_ID[id];
     const gate = lockLine(state.enemyKills, id);
-    const boss = id === ids[ids.length - 1] ? ' <span class="tag">BOSS</span>' : '';
-    const progress = gate ? esc(gate) : esc(rungProgress(state.enemyKills, id, ids));
+    const last = id === ids[ids.length - 1];
+    const boss = last ? ' <span class="tag">BOSS</span>' : '';
+    const lock = gate ? ' <span class="tag">[lock]</span>' : '';
+    const openStats = gate
+      ? `<small>Lv ${enemy.level}</small>`
+      : `<small>Lv ${enemy.level} · ${enemy.hp} HP · max hit ${enemy.maxHit}</small>${masteryLine(state.enemyMastery[id] ?? 0)}`;
+    const progress = gate
+      ? `<small>${esc(gate)}</small>`
+      : last
+        ? ''
+        : `<small>${esc(rungProgress(state.enemyKills, id, ids))}</small>`;
     const badge = fight && fight.id === id ? '<small>In fight</small>' : '';
-    return `<div class="row${gate ? ' locked' : ''}">${enemyFigure(id, 34)}<button type="button" class="grow" data-enemy="${id}"><b>${esc(enemy.name)}${boss}</b><small>Lv ${enemy.level} · ${enemy.hp} HP - max hit ${enemy.maxHit}</small>${masteryLine(state.enemyMastery[id] ?? 0)}<small>${progress}</small>${badge}</button>${fightButton(id, !gate)}</div>`;
+    return `<div class="row${gate ? ' locked' : ''}">${enemyFigure(id, 34)}<button type="button" class="grow" data-enemy="${id}"><b>${esc(enemy.name)}${lock}${boss}</b>${openStats}${progress}${badge}</button>${fightButton(id, !gate)}</div>`;
   }).join('');
   return `${combatHead('Areas', area, `<small>${levelSpan(area)}</small>`)}
     <div class="train"><span class="note">Training</span><div class="chips">${styleChips(state, style)}</div></div>
     ${rows}`;
 }
 
+function foodPanel(state: Save): string {
+  const foods = Object.keys(state.bank).filter((id) => isFood(id) && (state.bank[id] ?? 0) > 0);
+  const food = state.foodSlot && (state.bank[state.foodSlot] ?? 0) > 0
+    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
+    : `<div class="slot"><div><b>No food slotted</b><small>Pick a cooked food below</small></div></div>`;
+  const foodList = foods
+    .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
+    .join(' ');
+  return `<div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>`;
+}
+
 function teaserHtml(state: Save): string {
   const copy = teaserOpen(state.enemyKills) ? '??? — coming later' : TEASER_COPY;
+  const stop = state.activity?.kind === 'combat' ? `<button type="button" class="tag btn" data-stop>Stop</button>` : '';
   return `${combatHead('Areas', '???')}
-    <div class="panel"><p class="note">${esc(copy)}</p>${fightButton(null, false)}</div>`;
+    <div class="panel"><p class="note">${esc(copy)}</p><div class="fightrow">${fightButton(null, false)}${stop}</div>${loadoutLine(state)}</div>
+    ${foodPanel(state)}`;
 }
 
 function loadoutLine(state: Save): string {
@@ -718,35 +751,31 @@ function fightScreen(state: Save, view: View): string {
   const live = state.combat && fighting && fighting.id === selected.id ? state.combat : null;
   const enemyHp = live ? live.enemyHp : selected.hp;
   const enemyMax = live ? live.enemyMaxHp : selected.hp;
-  const style = combatStyleChoice(state, view);
+  const chip = combatStyleChoice(state, view);
+  const headerStyle = fightHeaderStyle(state, view);
+  const nextFight = headerStyle && chip && chip !== headerStyle ? `<p class="note" data-next-fight>Next fight: ${esc(chip)}</p>` : '';
   const drops = selected.drops
     .map((drop) => `<div class="cell t-base">${icon(ITEMS[drop.itemId].icon, 28)}<small>${esc(itemName(drop.itemId))}</small><span class="qty">${drop.num}/${drop.den} ×${drop.qty}</span></div>`)
     .join('');
   const coins = selected.coins ? `<div class="cell t-coin">${icon('coin', 28)}<small>Coins</small><span class="qty">${selected.coins.min}–${selected.coins.max}</span></div>` : '';
-  const foods = Object.keys(state.bank).filter((id) => isFood(id) && (state.bank[id] ?? 0) > 0);
-  const food = state.foodSlot && (state.bank[state.foodSlot] ?? 0) > 0
-    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
-    : `<div class="slot"><div><b>No food slotted</b><small>Pick a cooked food below</small></div></div>`;
-  const foodList = foods
-    .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
-    .join(' ');
   const chance = Math.round(shownHitChance(state, selected.level) * 100);
   const stop = state.activity?.kind === 'combat' ? `<button type="button" class="tag btn" data-stop>Stop</button>` : '';
-  return `${combatHead(area, `Style: ${style ?? 'none'}`)}
+  return `${combatHead(area, `Style: ${headerStyle ?? 'none'}`)}
+    ${nextFight}
     ${nextRow(combatNextLine(state, selected.id))}
     <div class="fight">
       <div class="stage">
         <div class="scene">
           <div class="fighter">${playerFigure(84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
           <div class="vs"><small>${live ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
-          <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
+          <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax} · max hit ${selected.maxHit}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
         </div>
-        <div class="fightrow">${fightControl(state, selected.id, style)}${stop}</div>
+        <div class="fightrow">${fightControl(state, selected.id, chip)}${stop}</div>
         ${loadoutLine(state)}
       </div>
     </div>
     <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
-    <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>`;
+    ${foodPanel(state)}`;
 }
 
 function combatHtml(state: Save, view: View): string {
@@ -762,7 +791,8 @@ function combatHtml(state: Save, view: View): string {
 
 function nextRow(line: string | null): string {
   if (!line) return '';
-  return `<button type="button" class="nextrow" data-milestone-open>${esc(line)}</button>`;
+  const body = line.startsWith('Next:') ? line : `Next: ${line}`;
+  return `<button type="button" class="nextrow" data-milestone-open>${esc(body)} &gt;</button>`;
 }
 
 export function milestoneSheetHtml(state: Save, view: View): string {
