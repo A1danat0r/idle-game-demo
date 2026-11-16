@@ -298,7 +298,30 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(row).toContain('Rebuild');
     expect(rowHtml(html, 'Build supply racks')).toContain('returns 2 Pine frame kits');
     expect(countedName(2, 'con.kit.pine_frame')).toBe('2 Pine frame kits');
+    expect(countedName(4, 'con.kit.pine_frame')).toBe('4 Pine frame kits');
+    expect(countedName(1, 'con.kit.pine_frame')).toBe('1 Pine frame kit');
+    expect(countedName(5, 'mat.wood.pine')).toBe('5 Pine logs');
+    expect(countedName(4, 'mat.fibre.flax')).toBe('4 Flax fibre');
+    expect(countedName(3, 'mat.bar.bronze')).toBe('3 Bronze bars');
     expect(`Returned ${countedName(2, 'con.kit.pine_frame')}.`).toBe('Returned 2 Pine frame kits.');
+    expect(rowHtml(html, 'Build supply racks')).toContain('4 Pine frame kits, 4 Bronze wire, 6 Fired roof tiles');
+    expect(rowHtml(html, 'Build supply racks')).not.toContain('4 Pine frame kit,');
+  });
+
+  it('pluralizes countable recipe amounts and leaves logs and fibre alone', () => {
+    expect(countedName(4, 'con.kit.pine_frame')).toBe('4 Pine frame kits');
+    expect(countedName(5, 'mat.wood.pine')).toBe('5 Pine logs');
+    expect(countedName(4, 'mat.fibre.flax')).toBe('4 Flax fibre');
+    for (const recipe of RECIPES) {
+      for (const stack of [...recipe.inputs, ...recipe.outputs]) {
+        const name = itemName(stack.id);
+        const line = countedName(stack.qty, stack.id);
+        if (stack.qty === 1 || name.endsWith('logs') || name.endsWith('fibre')) {
+          expect(line).toBe(`${stack.qty} ${name}`);
+        }
+        if (name.endsWith(' kit') && stack.qty > 1) expect(line).toBe(`${stack.qty} ${name}s`);
+      }
+    }
   });
 
   it('charges the rebuild fee and no XP after a dismantle', () => {

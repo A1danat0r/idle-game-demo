@@ -1,4 +1,4 @@
-import { itemName } from './content';
+import { countedName } from './content';
 import type { FloatNote } from './engine';
 
 /** Completions inside this window share one popup. */
@@ -45,8 +45,13 @@ export function formatActionNotes(notes: Extract<FloatNote, { kind: 'action' }>[
     if (shown <= 0) continue;
     lines.push(skills.length === 1 ? `+${shown} XP` : `+${shown} ${skill} XP`);
   }
-  for (const [id, qty] of items) lines.push(`+${qty} ${itemName(id)}`);
+  for (const [id, qty] of items) lines.push(`+${countedName(qty, id)}`);
   return lines.join('\n');
+}
+
+/** An open sheet covers the screen, so gain and combat pop-ups are not drawn. */
+export function notesWhileSheetOpen(notes: FloatNote[], sheetOpen: boolean): FloatNote[] {
+  return sheetOpen ? [] : notes;
 }
 
 /** Merge a burst of notes into at most FLOAT_CAP texts. Extra hits keep the latest ones. */

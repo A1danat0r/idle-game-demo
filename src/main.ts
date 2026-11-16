@@ -38,7 +38,7 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
-import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, presentNotes, type FloaterView } from './floaters';
+import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesWhileSheetOpen, presentNotes, type FloaterView } from './floaters';
 import { activityDestination, activityHtml, activityPercent, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
@@ -140,7 +140,21 @@ function showReport(report: CatchupReport): void {
 let pendingNotes: FloatNote[] = [];
 let noteTimer = 0;
 
+function sheetOpen(): boolean {
+  return view.milestoneOpen === true || !!document.querySelector('.sheet');
+}
+
+function clearFloaters(): void {
+  document.querySelectorAll('#floaters .floater').forEach((el) => el.remove());
+  pendingNotes = [];
+  if (noteTimer) {
+    window.clearTimeout(noteTimer);
+    noteTimer = 0;
+  }
+}
+
 function queueNotes(notes: FloatNote[]): void {
+  if (sheetOpen()) return;
   pendingNotes.push(...notes);
   if (noteTimer) return;
   noteTimer = window.setTimeout(flushNotes, FLOAT_BATCH_MS);
@@ -148,8 +162,9 @@ function queueNotes(notes: FloatNote[]): void {
 
 function flushNotes(): void {
   noteTimer = 0;
-  const notes = pendingNotes;
+  const notes = notesWhileSheetOpen(pendingNotes, sheetOpen());
   pendingNotes = [];
+  if (notes.length === 0) return;
   const views = presentNotes(notes).filter((item) => item.place === 'bar' || view.tab === 'combat');
   for (const item of views) spawnFloater(item);
 }
@@ -217,7 +232,8 @@ function tick(): void {
 }
 
 function render(): void {
-  if (view.tab !== 'combat') {
+  if (sheetOpen()) clearFloaters();
+  else if (view.tab !== 'combat') {
     document.querySelectorAll('#floaters .floater.anchored, #floaters [data-float-combat] .floater').forEach((el) => el.remove());
   }
   const key = renderKey(state, view, devOn ? 'dev' : '');
@@ -461,7 +477,7 @@ function openDev(): void {
     const qty = Number(dev.querySelector<HTMLInputElement>('[data-give-qty]')?.value ?? '1');
     if (!ITEMS[id] || !Number.isInteger(qty) || qty <= 0) return;
     state.bank[id] = (state.bank[id] ?? 0) + qty;
-    afterChange(`Added ${qty} ${id}.`);
+    afterChange(`Added ${countedName(qty, id)}.`);
   });
   dev.querySelector('[data-poacher]')?.addEventListener('click', () => show(samplePoacher()));
   dev.querySelector('[data-hit-rates]')?.addEventListener('click', () => show(hitRateReport()));
