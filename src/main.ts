@@ -1,6 +1,6 @@
 import './style.css';
 import { hitRateReport, killCycleReport, meadowHour, samplePoacher, survivabilityReport } from './checks';
-import { ITEMS, countedName, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
+import { ITEMS, TEASER_AREA, ENEMY_BY_ID, countedName, teaserOpen, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
 import {
   advanceOpenTab,
   buyNode,
@@ -17,6 +17,7 @@ import {
   setFood,
   startCombat,
   startGather,
+  stopActivity,
   cancelPlot,
   dismantleBuilding,
   dismantleRefund,
@@ -39,7 +40,7 @@ import {
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
 import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesWhileSheetOpen, presentNotes, type FloaterView } from './floaters';
-import { activityDestination, activityHtml, activityPercent, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityDestination, activityHtml, activityPercent, combatBackScreen, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -297,9 +298,10 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-area], [data-fight], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   if (target.dataset.tab === 'skill') openActivityTab();
+  else if (target.dataset.tab === 'combat') openCombatTab();
   else if (target.dataset.tab) {
     view.tab = target.dataset.tab as TabId;
     if (view.tab !== 'profile') view.resetConfirm = false;
@@ -328,18 +330,41 @@ app.addEventListener('click', (event) => {
       ? returned ? `Returned ${returned}.` : 'Returned no kits.'
       : 'That structure is not standing.';
   }
-  if (target.dataset.enemy) view.selected = target.dataset.enemy;
+  if (target.dataset.enemy && !target.dataset.fight) {
+    view.selected = target.dataset.enemy;
+    const enemy = ENEMY_BY_ID[target.dataset.enemy];
+    if (enemy) view.area = enemy.area;
+    view.combatScreen = 'fight';
+  }
   if (target.dataset.style && isCombatStyle(target.dataset.style as SkillId)) view.style = target.dataset.style as CombatStyle;
-  if (target.dataset.area === 'Meadow verge' || target.dataset.area === 'Woodland edge' || target.dataset.area === '???') {
-    view.area = target.dataset.area;
-  }
-  if (target.dataset.fight && !target.hasAttribute('disabled')) {
-    const style = view.style && state.owned.includes(view.style) ? view.style : firstStyle();
-    if (style) {
-      startCombat(state, target.dataset.fight, style);
-      view.message = '';
+  if (target.dataset.openArea === TEASER_AREA) {
+    if (teaserOpen(state.enemyKills)) {
+      view.area = TEASER_AREA;
+      view.combatScreen = 'teaser';
     }
+  } else if (target.dataset.openArea === 'Meadow verge' || target.dataset.openArea === 'Woodland edge') {
+    view.area = target.dataset.openArea;
+    view.combatScreen = 'ladder';
   }
+  if (target.hasAttribute('data-combat-back')) view.combatScreen = combatBackScreen(view);
+  if (target.dataset.fight && !target.hasAttribute('disabled')) {
+    const style = combatStyleChoice(state, view);
+    const id = target.dataset.fight;
+    if (style) {
+      startCombat(state, id, style);
+      view.style = style;
+    }
+    view.selected = id;
+    const enemy = ENEMY_BY_ID[id];
+    if (enemy) view.area = enemy.area;
+    view.combatScreen = 'fight';
+    view.message = '';
+  }
+  if (target.hasAttribute('data-stop')) {
+    stopActivity(state);
+    view.message = '';
+  }
+  if (target.hasAttribute('data-loadout')) view.tab = 'equipment';
   if (target.dataset.food) setFood(state, target.dataset.food);
   if (target.dataset.filter) view.filter = target.dataset.filter as Filter;
   if (target.dataset.select) view.selected = target.dataset.select;
@@ -386,6 +411,7 @@ function openActivityTab(): void {
   const choice = activityDestination(state, view.skill);
   if (choice.tab === 'combat') {
     view.tab = 'combat';
+    view.combatScreen = 'fight';
     if (isCombatStyle(choice.skill)) view.style = choice.skill;
     if (choice.area) view.area = choice.area;
     if (choice.selected) view.selected = choice.selected;
@@ -395,21 +421,28 @@ function openActivityTab(): void {
   view.tab = 'skill';
 }
 
+function openCombatTab(): void {
+  view.tab = 'combat';
+  if (view.combatScreen) return;
+  if (state.activity?.kind === 'combat') {
+    const enemy = ENEMY_BY_ID[state.activity.enemyId];
+    view.combatScreen = 'fight';
+    view.selected = state.activity.enemyId;
+    if (enemy) view.area = enemy.area;
+    if (isCombatStyle(state.activity.style)) view.style = state.activity.style;
+    return;
+  }
+  view.combatScreen = 'areas';
+}
+
 function openSkill(skill: SkillId): void {
   if (isCombatStyle(skill)) {
     view.style = skill;
-    view.tab = 'combat';
+    openCombatTab();
     return;
   }
   view.skill = skill;
   view.tab = 'skill';
-}
-
-function firstStyle(): CombatStyle | null {
-  if (state.owned.includes('Strength')) return 'Strength';
-  if (state.owned.includes('Attack')) return 'Attack';
-  if (state.owned.includes('Defence')) return 'Defence';
-  return null;
 }
 
 function openDev(): void {

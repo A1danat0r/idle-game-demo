@@ -66,9 +66,10 @@ describe('skills order and enemy placeholders', () => {
     expect(player).not.toEqual(enemyFigure('meadow.hare'));
     const state = newGame(0);
     state.owned.push('Strength');
-    const meadow = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Meadow verge' }, 0);
-    const wood = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Woodland edge', selected: 'wood.fox' }, 0);
-    expect(meadow).toContain('data-art="player"');
+    const meadow = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Meadow verge', combatScreen: 'ladder' }, 0);
+    const wood = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Woodland edge', selected: 'wood.fox', combatScreen: 'ladder' }, 0);
+    const fight = mainHtml(state, { ...skillsView, tab: 'combat', area: 'Meadow verge', selected: 'meadow.hare', combatScreen: 'fight' }, 0);
+    expect(fight).toContain('data-art="player"');
     expect(meadow).toContain('data-art="meadow.hare"');
     expect(meadow).toContain('data-art="meadow.beetle"');
     expect(meadow).not.toContain('data-art="wood.fox"');

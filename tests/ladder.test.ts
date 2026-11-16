@@ -30,7 +30,7 @@ import {
 import { ENEMY_MASTERY_XP } from '../src/mastery';
 import { ladderFoodFree, woodlandClimbHours } from '../src/route';
 import { ENEMY_SPRITES, enemyFigure } from '../src/sprites';
-import { mainHtml, type View } from '../src/ui';
+import { mainHtml, type CombatScreen, type View } from '../src/ui';
 
 function fighter(seed = 1) {
   const state = newGame(0, seed);
@@ -42,7 +42,7 @@ function fighter(seed = 1) {
   return state;
 }
 
-function combatView(area: View['area'], selected: string): View {
+function combatView(area: View['area'], selected: string, combatScreen?: CombatScreen): View {
   return {
     tab: 'combat',
     skill: 'Woodcutting',
@@ -51,6 +51,7 @@ function combatView(area: View['area'], selected: string): View {
     area,
     style: 'Strength',
     message: '',
+    combatScreen: combatScreen ?? (area === '???' ? 'teaser' : 'ladder'),
   };
 }
 
@@ -123,7 +124,9 @@ describe('check 27 woodland ladder', () => {
     const jay = mainHtml(state, combatView('Woodland edge', 'wood.jay'), 0);
     expect(jay).toContain('data-fight="wood.jay" disabled');
     expect(jay).toContain('Kill 12 forest foxes to unlock (0/12)');
-    expect(wood).toContain(`data-area="${TEASER_AREA}"`);
+    const areas = mainHtml(state, combatView('Meadow verge', 'wood.fox', 'areas'), 0);
+    expect(areas).toContain(TEASER_COPY);
+    expect(areas).not.toContain(`data-open-area="${TEASER_AREA}"`);
     const early = mainHtml(state, combatView(TEASER_AREA, 'wood.fox'), 0);
     expect(early).toContain(TEASER_COPY);
     expect(early).toContain('disabled>Fight</button>');
@@ -168,8 +171,10 @@ describe('check 27 woodland ladder', () => {
     expect(teaserOpen(state.enemyKills)).toBe(true);
     for (const id of rungs) expect(enemyUnlocked(state.enemyKills, id), id).toBe(true);
     const teaser = mainHtml(state, combatView(TEASER_AREA, 'wood.poacher'), 0);
-    expect(teaser).toContain(TEASER_COPY);
-    expect(teaser).toContain(`data-area="${TEASER_AREA}"`);
+    expect(teaser).toContain('??? — coming later');
+    expect(teaser).not.toContain(TEASER_COPY);
+    const areas = mainHtml(state, combatView('Meadow verge', 'wood.poacher', 'areas'), 0);
+    expect(areas).toContain(`data-open-area="${TEASER_AREA}"`);
     expect(teaser).toContain('disabled>Fight</button>');
     expect(teaser).not.toContain('data-fight');
     expect(teaser).not.toContain('data-enemy');

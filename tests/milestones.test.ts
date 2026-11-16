@@ -91,7 +91,7 @@ describe('milestone next row and sheet', () => {
     expect(combatNextLine(state, 'meadow.beetle')).toBe(
       'Thorn beetle mastery 40 in 118 kills · +10% loot coins from kill 1,119.',
     );
-    const html = mainHtml(state, view('combat', { milestoneOpen: true, selected: 'meadow.beetle' }), 0);
+    const html = mainHtml(state, view('combat', { milestoneOpen: true, selected: 'meadow.beetle', combatScreen: 'fight' }), 0);
     expect(html).toContain('Thorn beetle mastery 40 in 118 kills');
     expect(html).toContain('60 kills · mastery 10');
     expect(html).toContain('266 kills · mastery 20');

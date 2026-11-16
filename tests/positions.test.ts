@@ -58,7 +58,8 @@ describe('combat numbers sit on the figure that was hit', () => {
     await page.locator('[data-apply-level]').click();
     await page.locator('[data-dev-close]').click();
     await page.locator('[data-tab="combat"]').click();
-    await page.locator('[data-fight]').click();
+    await page.locator('[data-open-area="Meadow verge"]').click();
+    await page.locator('[data-fight="meadow.hare"]').click();
 
     const playerHit = page.locator('.floater.player').first();
     await playerHit.waitFor({ timeout: 12000 });

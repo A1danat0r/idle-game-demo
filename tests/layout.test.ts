@@ -99,8 +99,8 @@ describe('combat figures at 390×844', () => {
     const meadow = combatSave();
     const woodland = combatSave();
     woodland.enemyKills['meadow.beetle'] = 1;
-    await expectFiguresAboveBar(meadow, { ...view, tab: 'combat', area: 'Meadow verge', selected: 'meadow.hare', style: 'Strength' });
-    await expectFiguresAboveBar(woodland, { ...view, tab: 'combat', area: 'Woodland edge', selected: 'wood.fox', style: 'Strength' });
+    await expectFiguresAboveBar(meadow, { ...view, tab: 'combat', area: 'Meadow verge', selected: 'meadow.hare', style: 'Strength', combatScreen: 'fight' });
+    await expectFiguresAboveBar(woodland, { ...view, tab: 'combat', area: 'Woodland edge', selected: 'wood.fox', style: 'Strength', combatScreen: 'fight' });
   });
 });
 
