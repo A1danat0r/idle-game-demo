@@ -883,6 +883,7 @@ export const SINGULAR_NAMES: Record<string, string> = {
   'ammo.thrown.iron_javelin': 'Iron javelin',
   'ammo.thrown.iron_knife': 'Iron throwing knife',
   'mat.wood.maple': 'Maple log',
+  'mat.berry.meadow': 'Meadow berry',
   'mat.fruit.berries': 'Meadow berry',
   'mat.herb.meadow': 'Meadow herb',
   'mat.fungi.mushroom': 'Meadow mushroom',

@@ -6,7 +6,12 @@ import {
   AREAS,
   TEASER_AREA,
   TEASER_COPY,
+  MEADOW_LADDER,
   WOODLAND_LADDER,
+  RUNG_KILLS,
+  enemyUnlocked,
+  teaserOpen,
+  woodlandOpen,
   COMBAT_STYLES,
   SKILL_GROUPS,
   ENEMIES,
@@ -95,6 +100,30 @@ export interface View {
   milestoneOpen?: boolean;
   /** Track shown in the sheet. Null follows the running action or selected enemy. */
   milestoneTrack?: string | null;
+  /** Combat tab screen. Not saved. */
+  combatScreen?: CombatScreen;
+}
+
+export type CombatScreen = 'areas' | 'ladder' | 'fight' | 'teaser';
+
+/** First open this session: a running or paused fight, otherwise Areas. */
+export function combatScreenFor(state: Save, view: View): CombatScreen {
+  if (view.combatScreen) return view.combatScreen;
+  return state.activity?.kind === 'combat' ? 'fight' : 'areas';
+}
+
+/** Header back: Fight → that area's ladder, and every other combat screen → Areas. */
+export function combatBackScreen(view: View): CombatScreen {
+  if (view.combatScreen === 'fight') return view.area === TEASER_AREA ? 'teaser' : 'ladder';
+  return 'areas';
+}
+
+/** Highlighted style: the chip, else the running fight, else the first owned style. */
+export function combatStyleChoice(state: Save, view: View): CombatStyle | null {
+  if (view.style && state.owned.includes(view.style)) return view.style;
+  const activity = state.activity;
+  if (activity?.kind === 'combat' && state.owned.includes(activity.style)) return activity.style;
+  return COMBAT_STYLES.find((id) => state.owned.includes(id)) ?? null;
 }
 
 const esc = (value: string) =>
@@ -567,45 +596,129 @@ function needLine(itemId: string): string {
   return made ? `Needs ${name} (${made.skill})` : `Needs ${name}`;
 }
 
-function areaButtons(view: View): string {
-  const areas: string[] = [...AREAS, TEASER_AREA];
-  return areas.map((area) => `<button type="button" class="tag ${view.area === area ? 'on' : ''}" data-area="${area}">${area}</button>`).join('');
+function ladderIds(area: View['area']): readonly string[] {
+  if (area === 'Meadow verge') return MEADOW_LADDER;
+  if (area === 'Woodland edge') return WOODLAND_LADDER;
+  return [];
 }
 
-function combatHtml(state: Save, view: View): string {
-  if (!ownsCombatSkill(state)) {
-    return `${title('Combat')}<div class="empty">Buy Attack, Strength, or Defence to fight. Meadow verge and Woodland edge stay locked until then.</div>`;
+function levelSpan(area: View['area']): string {
+  const levels = ladderIds(area).map((id) => ENEMY_BY_ID[id].level);
+  if (levels.length === 0) return '';
+  return `Lv ${Math.min(...levels)}–${Math.max(...levels)}`;
+}
+
+function fightingEnemy(state: Save) {
+  if (state.activity?.kind !== 'combat') return null;
+  return ENEMY_BY_ID[state.activity.enemyId] ?? null;
+}
+
+function areaProgress(state: Save, area: 'Meadow verge' | 'Woodland edge'): string[] {
+  const ids = ladderIds(area);
+  const kills = state.enemyKills;
+  if (area === 'Woodland edge' && !woodlandOpen(kills)) return ['Kill the Thorn beetle to open Woodland edge.'];
+  const open = ids.filter((id) => enemyUnlocked(kills, id)).length;
+  const boss = ENEMY_BY_ID[ids[ids.length - 1]];
+  const beaten = (kills[boss.id] ?? 0) >= 1;
+  if (open === ids.length && beaten) return [`All ${ids.length} open · Boss beaten ✓`];
+  const lines = [`Rungs ${open}/${ids.length} open`];
+  let highest = ids[0];
+  for (const id of ids) if (enemyUnlocked(kills, id)) highest = id;
+  const next = ids[ids.indexOf(highest) + 1];
+  if (next) {
+    const have = Math.min(kills[highest] ?? 0, RUNG_KILLS);
+    lines.push(`${ENEMY_BY_ID[highest].name} ${have}/${RUNG_KILLS} → ${ENEMY_BY_ID[next].name}`);
   }
-  const style = view.style && state.owned.includes(view.style) ? view.style : (COMBAT_STYLES.find((id) => state.owned.includes(id)) ?? null);
-  if (view.area === TEASER_AREA) {
-    const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
-      .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
-      .join('');
-    return `${areaHead(TEASER_AREA, styles, view)}
-      <div class="panel"><p class="note">${esc(TEASER_COPY)}</p>${fightButton(null, false)}</div>`;
+  lines.push(`Boss ${boss.name}: ${beaten ? 'beaten ✓' : 'not beaten'}`);
+  return lines;
+}
+
+function rungProgress(kills: Record<string, number>, id: string, ids: readonly string[]): string {
+  const have = kills[id] ?? 0;
+  if (have >= RUNG_KILLS) return `${RUNG_KILLS}/${RUNG_KILLS} done`;
+  const next = ids[ids.indexOf(id) + 1];
+  if (next) return `${have}/${RUNG_KILLS} → ${ENEMY_BY_ID[next].name}`;
+  return `${have}/${RUNG_KILLS}`;
+}
+
+function styleChips(state: Save, style: CombatStyle | null): string {
+  return COMBAT_STYLES.filter((id) => state.owned.includes(id))
+    .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
+    .join('');
+}
+
+function combatHead(back: string, heading: string, extra = ''): string {
+  return `<div class="combathead"><button type="button" class="tag btn ghost" data-combat-back>‹ ${esc(back)}</button><h2>${esc(heading)}</h2>${extra}</div>`;
+}
+
+function areasHtml(state: Save): string {
+  const fight = fightingEnemy(state);
+  const cards = (['Meadow verge', 'Woodland edge'] as const).map((area) => {
+    const lines = areaProgress(state, area).map((line) => `<small>${esc(line)}</small>`).join('');
+    const badge = fight && fight.area === area ? `<small>In fight: ${esc(fight.name)}</small>` : '';
+    return `<button type="button" class="row areacard" data-open-area="${area}"><div class="grow"><b>${esc(area)}</b><small>${levelSpan(area)}</small>${lines}${badge}</div></button>`;
+  }).join('');
+  const opened = teaserOpen(state.enemyKills);
+  const teaser = opened
+    ? `<button type="button" class="row areacard" data-open-area="${TEASER_AREA}"><div class="grow"><b>???</b><small>??? — coming later</small></div></button>`
+    : `<div class="row locked"><div class="grow"><b>???</b><small>${esc(TEASER_COPY)}</small></div></div>`;
+  return `${title('Areas')}${cards}${teaser}`;
+}
+
+function ladderHtml(state: Save, view: View): string {
+  const area = view.area === 'Woodland edge' ? 'Woodland edge' : 'Meadow verge';
+  const ids = ladderIds(area);
+  const style = combatStyleChoice(state, view);
+  const fight = fightingEnemy(state);
+  const rows = ids.map((id) => {
+    const enemy = ENEMY_BY_ID[id];
+    const gate = lockLine(state.enemyKills, id);
+    const boss = id === ids[ids.length - 1] ? ' <span class="tag">BOSS</span>' : '';
+    const progress = gate ? esc(gate) : esc(rungProgress(state.enemyKills, id, ids));
+    const badge = fight && fight.id === id ? '<small>In fight</small>' : '';
+    return `<div class="row${gate ? ' locked' : ''}">${enemyFigure(id, 34)}<button type="button" class="grow" data-enemy="${id}"><b>${esc(enemy.name)}${boss}</b><small>Lv ${enemy.level} · ${enemy.hp} HP - max hit ${enemy.maxHit}</small>${masteryLine(state.enemyMastery[id] ?? 0)}<small>${progress}</small>${badge}</button>${fightButton(id, !gate)}</div>`;
+  }).join('');
+  return `${combatHead('Areas', area, `<small>${levelSpan(area)}</small>`)}
+    <div class="train"><span class="note">Training</span><div class="chips">${styleChips(state, style)}</div></div>
+    ${rows}`;
+}
+
+function teaserHtml(state: Save): string {
+  const copy = teaserOpen(state.enemyKills) ? '??? — coming later' : TEASER_COPY;
+  return `${combatHead('Areas', '???')}
+    <div class="panel"><p class="note">${esc(copy)}</p>${fightButton(null, false)}</div>`;
+}
+
+function loadoutLine(state: Save): string {
+  const weapon = state.equipped.weapon;
+  let text = 'No weapon';
+  if (weapon) {
+    const qty = state.bank[weapon] ?? 0;
+    if (isBow(weapon)) {
+      const arrow = arrowToUse(state.bank);
+      const ammo = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
+      text = `${itemName(weapon)} · ${ammo}`;
+    } else if (weapon.startsWith('ammo.thrown.')) {
+      text = `${itemName(weapon)} ×${qty}`;
+    } else if (qty > 0) {
+      text = itemName(weapon);
+    }
   }
-  const enemies = ENEMIES.filter((enemy) => enemy.area === view.area);
-  if (view.area === 'Woodland edge') {
-    const order = WOODLAND_LADDER as readonly string[];
-    enemies.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  }
+  return `<button type="button" class="note loadout" data-loadout>${esc(text)}</button>`;
+}
+
+function fightScreen(state: Save, view: View): string {
+  const area = view.area === 'Woodland edge' ? 'Woodland edge' : 'Meadow verge';
+  const enemies = ladderIds(area).map((id) => ENEMY_BY_ID[id]);
   const selected =
     enemies.find((enemy) => enemy.id === view.selected) ??
     enemies.find((enemy) => state.activity?.kind === 'combat' && state.activity.enemyId === enemy.id) ??
     enemies[0];
-  const fighting = state.activity?.kind === 'combat' ? ENEMY_BY_ID[state.activity.enemyId] : null;
+  const fighting = fightingEnemy(state);
   const live = state.combat && fighting && fighting.id === selected.id ? state.combat : null;
   const enemyHp = live ? live.enemyHp : selected.hp;
   const enemyMax = live ? live.enemyMaxHp : selected.hp;
-  const styles = COMBAT_STYLES.filter((id) => state.owned.includes(id))
-    .map((id) => `<button type="button" class="tag ${style === id ? 'on' : ''}" data-style="${id}">${id}</button>`)
-    .join('');
-  const list = enemies
-    .map((enemy) => {
-      const gate = lockLine(state.enemyKills, enemy.id);
-      return `<button type="button" class="mini ${selected.id === enemy.id ? 'sel' : ''}" data-enemy="${enemy.id}">${enemyFigure(enemy.id, 28)}${esc(enemy.name)}<small>Lv ${enemy.level} · ${enemy.hp} HP</small><small>Mastery Lv ${masteryLevel(state.enemyMastery[enemy.id] ?? 0)}</small>${gate ? `<small>${esc(gate)}</small>` : ''}${bar(masteryProgress(state.enemyMastery[enemy.id] ?? 0), 'thin')}</button>`;
-    })
-    .join('');
+  const style = combatStyleChoice(state, view);
   const drops = selected.drops
     .map((drop) => `<div class="cell t-base">${icon(ITEMS[drop.itemId].icon, 28)}<small>${esc(itemName(drop.itemId))}</small><span class="qty">${drop.num}/${drop.den} ×${drop.qty}</span></div>`)
     .join('');
@@ -618,33 +731,33 @@ function combatHtml(state: Save, view: View): string {
     .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
     .join(' ');
   const chance = Math.round(shownHitChance(state, selected.level) * 100);
-  const enemyLine = ownsCombatSkill(state) ? combatNextLine(state, selected.id) : null;
-  return `${areaHead(view.area, styles, view)}
-    ${nextRow(enemyLine)}
+  const stop = state.activity?.kind === 'combat' ? `<button type="button" class="tag btn" data-stop>Stop</button>` : '';
+  return `${combatHead(area, `Style: ${style ?? 'none'}`)}
+    ${nextRow(combatNextLine(state, selected.id))}
     <div class="fight">
       <div class="stage">
         <div class="scene">
           <div class="fighter">${playerFigure(84)}<div class="hp"><b>You</b> ${state.hp}/${maxHp(state)}${bar((state.hp / maxHp(state)) * 100, 'red')}</div></div>
-          <div class="vs"><small>${fighting ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
+          <div class="vs"><small>${live ? 'In fight' : 'Ready'}</small>${bar(activityPct(state), 'green', 'fight-bar')}<small>${chance}% hit</small></div>
           <div class="fighter">${enemyFigure(selected.id, 84)}<div class="hp"><b>${esc(selected.name)}</b> <em>Lv ${selected.level}</em> ${Math.max(0, Math.ceil(enemyHp))}/${enemyMax}${bar((enemyHp / enemyMax) * 100, 'red')}${masteryLine(state.enemyMastery[selected.id] ?? 0)}</div></div>
         </div>
-        ${fightControl(state, selected.id, style)}
-        ${arrowLine(state)}
+        <div class="fightrow">${fightControl(state, selected.id, style)}${stop}</div>
+        ${loadoutLine(state)}
       </div>
-      <div class="panel enemies"><h3>Enemies</h3>${list}</div>
     </div>
-    <div class="two">
-      <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
-      <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>
-    </div>`;
+    <div class="panel"><h3>Drops</h3><div class="lootgrid">${drops}${coins}</div><p class="note">Each drop rolls on its own.</p></div>
+    <div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>`;
 }
 
-function arrowLine(state: Save): string {
-  const weapon = state.equipped.weapon;
-  if (!weapon || !isBow(weapon)) return '';
-  const arrow = arrowToUse(state.bank);
-  const text = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
-  return `<p class="note" data-arrows>${esc(text)}</p>`;
+function combatHtml(state: Save, view: View): string {
+  if (!ownsCombatSkill(state)) {
+    return `${title('Combat')}<div class="empty">Buy Attack, Strength, or Defence to fight. Meadow verge and Woodland edge stay locked until then.</div>`;
+  }
+  const screen = combatScreenFor(state, view);
+  if (screen === 'areas') return areasHtml(state);
+  if (screen === 'teaser' || view.area === TEASER_AREA) return teaserHtml(state);
+  if (screen === 'ladder') return ladderHtml(state, view);
+  return fightScreen(state, view);
 }
 
 function nextRow(line: string | null): string {
@@ -720,10 +833,6 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     <div class="filters">${filters.map((filter) => `<button type="button" class="${view.filter === filter ? 'on' : ''}" data-filter="${filter}">${names[filter]}</button>`).join('')}</div>
     <div class="invgrid">${cells || '<div class="empty">Nothing stored yet.</div>'}</div>
     ${sell}`;
-}
-
-function areaHead(title: string, styles: string, view: View): string {
-  return `<div class="areahead"><h2>${esc(title)}</h2><div class="chips">${styles}${areaButtons(view)}</div></div>`;
 }
 
 /** A visible Fight control. Locked rungs and the teaser keep the button and disable it. */

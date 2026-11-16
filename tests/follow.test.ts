@@ -336,6 +336,9 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(countedName(5, 'mat.wood.pine')).toBe('5 Pine logs');
     expect(countedName(1, 'mat.fitting.iron')).toBe('1 Iron fitting');
     expect(countedName(2, 'mat.fitting.iron')).toBe('2 Iron fittings');
+    expect(countedName(1, 'mat.berry.meadow')).toBe('1 Meadow berry');
+    expect(countedName(2, 'mat.berry.meadow')).toBe('2 Meadow berries');
+    expect(itemName('mat.berry.meadow')).toBe('Meadow berries');
     expect(countedName(1, 'mat.seed.potato')).toBe('1 Seed potato');
     expect(countedName(2, 'mat.seed.potato')).toBe('2 Seed potatoes');
     expect(countedName(1, 'mat.fibre.flax')).toBe('1 Flax fibre');

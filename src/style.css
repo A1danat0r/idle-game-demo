@@ -82,7 +82,16 @@ h3 { font-size: 13px; text-transform: uppercase; margin-bottom: 6px; display: fl
 .areahead { display: flex; flex-direction: column; align-items: stretch; gap: 4px; margin: 0 0 4px; }
 .areahead h2 { font-size: 16px; line-height: 1.1; }
 .chips { display: flex; flex-wrap: wrap; gap: 3px; }
-.fight { display: grid; grid-template-columns: 1fr 112px; gap: 6px; align-items: start; }
+.combathead { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; }
+.combathead h2 { font-size: 16px; line-height: 1.1; }
+.combathead small { margin-left: auto; }
+.areacard { width: 100%; text-align: left; color: inherit; font: inherit; cursor: pointer; margin-top: 8px; }
+.train { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-bottom: 6px; }
+.train .note { margin: 0; }
+.fight { display: block; }
+.fightrow { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.loadout { display: block; width: 100%; text-align: left; background: none; border: 0; font: inherit; cursor: pointer; }
+.enemyrow .grow, .row > button.grow { background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; padding: 0; }
 .stage { display: flex; flex-direction: column; align-items: stretch; gap: 4px; min-width: 0; }
 .stage .tag.btn { align-self: center; }
 .fight .scene { justify-content: space-between; align-items: flex-end; padding: 6px 4px 8px; margin: 0; background: linear-gradient(#141d33, #0d1a1a); }

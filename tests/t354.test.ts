@@ -63,6 +63,7 @@ describe('t354 thrown weapons, mastery 40, and sells', () => {
       area: 'Meadow verge',
       style: 'Ranged',
       message: '',
+      combatScreen: 'fight',
     };
     const bare = newGame(0);
     bare.owned.push('Ranged', 'Hitpoints');
