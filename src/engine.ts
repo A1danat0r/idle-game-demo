@@ -13,8 +13,10 @@ import {
   KILL_PAUSE_MS,
   LEVEL_CAP,
   NODE_BY_ID,
+  NODES,
   OFFLINE_CAP_MS,
   RECIPE_BY_ID,
+  RECIPES,
   REGEN_HP,
   REGEN_MS,
   COMBAT_HP_SCALE,
@@ -43,6 +45,7 @@ import {
   isCombatStyle,
   isFood,
   actionTitle,
+  countedLabel,
   itemName,
   levelForXp,
   playerMaxHp,
@@ -168,6 +171,11 @@ export interface Save {
   buildingsEver: Record<string, boolean>;
   /** The one Farming plot. Null when nothing is planted. */
   plot: { recipeId: string; remainingMs: number; ready: boolean } | null;
+  /**
+   * The one expedition. Null when none is out.
+   * Runs beside the selected activity and the Farming plot. A missing key loads as null.
+   */
+  expedition: { routeId: string; startedAt: number; durationMs: number; creditedMs: number } | null;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
   savedAt?: number;
 }
@@ -221,6 +229,8 @@ export interface CatchupReport {
   masteryLevels: { id: string; name: string; before: number; after: number }[];
   /** Perk and global-bonus lines unlocked during this catch-up. */
   perksUnlocked: string[];
+  /** Set when an expedition was out for this window. Absent or null when none was. */
+  expeditionLine?: string | null;
 }
 
 export function emptyStats(): StatsLog {
@@ -273,6 +283,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     buildings: {},
     buildingsEver: {},
     plot: null,
+    expedition: null,
   };
   return state;
 }
@@ -453,6 +464,7 @@ function beginActivity(state: Save): void {
 }
 
 export function startGather(state: Save, nodeId: string): boolean {
+  if (NODE_BY_ID[nodeId]?.skill === 'Exploration') return false;
   if (!nodeUsable(state, nodeId)) return false;
   const same = state.activity?.kind === 'gather' && state.activity.nodeId === nodeId;
   if (same) return true;
@@ -467,6 +479,7 @@ export function startProduce(state: Save, recipeId: string): boolean {
   if (!state.owned.includes(recipe.skill)) return false;
   if (skillLevel(state, recipe.skill) < recipe.level) return false;
   if (recipe.comingLater || recipe.locked) return false;
+  if (recipe.skill === 'Exploration') return false;
   if (recipe.requiresBuilding && !state.buildings[recipe.requiresBuilding]) return false;
   if (recipe.skill === 'Farming') return plantCrop(state, recipeId);
   if (!hasInputs(state, recipeId)) return false;
@@ -1160,6 +1173,190 @@ function growPlot(state: Save, ms: number, sink?: Sink): void {
   if (plot.remainingMs <= 0) harvestPlot(state, sink);
 }
 
+/** 15 min, 1 h, and 8 h. An expedition stores one of these for the whole trip. */
+export const EXPEDITION_MS = [15 * 60 * 1000, 60 * 60 * 1000, 8 * 60 * 60 * 1000] as const;
+
+export interface ExplorationRoute {
+  id: string;
+  level: number;
+  seconds: number;
+  xp: number;
+  inputs: { id: string; qty: number }[];
+  outputs: { id: string; qty: number }[];
+  cost: number;
+  locked?: string;
+}
+
+/** Exploration nodes and recipes, level order. Nodes stay ahead of recipes at the same level. */
+export function explorationRoutes(): ExplorationRoute[] {
+  const nodes = NODES.filter((node) => node.skill === 'Exploration').map((node) => ({
+    id: node.id,
+    level: node.level,
+    seconds: node.seconds,
+    xp: node.xp,
+    inputs: [],
+    outputs: [{ id: node.id, qty: 1 }],
+    cost: node.cost,
+  }));
+  const recipes = RECIPES.filter((recipe) => recipe.skill === 'Exploration').map((recipe) => ({
+    id: recipe.id,
+    level: recipe.level,
+    seconds: recipe.seconds,
+    xp: recipe.xp,
+    inputs: recipe.inputs,
+    outputs: recipe.outputs,
+    cost: 0,
+    locked: recipe.locked ?? (recipe.comingLater ? 'Coming later' : undefined),
+  }));
+  return [...nodes, ...recipes].sort((a, b) => a.level - b.level);
+}
+
+export function explorationRoute(id: string): ExplorationRoute | null {
+  return explorationRoutes().find((route) => route.id === id) ?? null;
+}
+
+export function expeditionRouteName(id: string): string {
+  const node = NODE_BY_ID[id];
+  if (node) return itemName(id);
+  const recipe = RECIPE_BY_ID[id];
+  return recipe ? actionTitle(recipe) : id;
+}
+
+/** Whole minutes and seconds. Minutes are not capped at 59, so an hour is 60:00. */
+export function expeditionClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(total / 60);
+  const seconds = total % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+export function expeditionRemainingMs(state: Save): number {
+  const trip = state.expedition;
+  if (!trip) return 0;
+  return Math.max(0, trip.durationMs - trip.creditedMs);
+}
+
+function expeditionTicks(state: Save, routeId: string, elapsedMs: number): number {
+  const tickMs = actionSeconds(state, routeId) * 1000;
+  if (!(tickMs > 0) || elapsedMs <= 0) return 0;
+  return Math.floor(elapsedMs / tickMs);
+}
+
+export interface ExpeditionPreview {
+  ticks: number;
+  items: { id: string; qty: number }[];
+  xp: number;
+  mxp: number;
+}
+
+/** Base haul for a duration. Double-output rolls are not included. */
+export function expeditionPreview(state: Save, routeId: string, durationMs: number): ExpeditionPreview {
+  const route = explorationRoute(routeId);
+  const ticks = expeditionTicks(state, routeId, durationMs);
+  const xp = ticks * (route?.xp ?? 0);
+  return {
+    ticks,
+    items: (route?.outputs ?? []).map((output) => ({ id: output.id, qty: output.qty * ticks })),
+    xp,
+    mxp: ticks * actionMasteryXp(route?.seconds ?? 0),
+  };
+}
+
+export function startExpedition(state: Save, routeId: string, durationMs: number, now: number): boolean {
+  if (!(EXPEDITION_MS as readonly number[]).includes(durationMs)) return false;
+  if (state.expedition) return false;
+  const route = explorationRoute(routeId);
+  if (!route || route.locked) return false;
+  if (!state.owned.includes('Exploration')) return false;
+  if (skillLevel(state, 'Exploration') < route.level) return false;
+  if (route.cost > 0 && !state.nodes.includes(routeId)) return false;
+  if (route.inputs.some((input) => (state.bank[input.id] ?? 0) < input.qty)) return false;
+  for (const input of route.inputs) takeItem(state, input.id, input.qty);
+  state.expedition = { routeId, startedAt: now, durationMs, creditedMs: 0 };
+  return true;
+}
+
+interface ExpeditionGrant {
+  ticks: number;
+  xp: number;
+  items: Record<string, number>;
+}
+
+function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink): ExpeditionGrant {
+  const route = explorationRoute(routeId);
+  const ticks = expeditionTicks(state, routeId, elapsedMs);
+  const items: Record<string, number> = {};
+  const outputs = route?.outputs ?? [];
+  for (let tick = 0; tick < ticks; tick += 1) {
+    const doubled = outputs.length > 0 && doubledOutput(state, routeId);
+    for (const output of outputs) {
+      const qty = output.qty * (doubled ? 2 : 1);
+      giveItem(state, output.id, qty, sink);
+      items[output.id] = (items[output.id] ?? 0) + qty;
+    }
+  }
+  const xp = addXp(state, 'Exploration', ticks * (route?.xp ?? 0));
+  if (route && ticks > 0) {
+    state.mastery[routeId] = (state.mastery[routeId] ?? 0) + ticks * actionMasteryXp(route.seconds);
+    state.stats.actions += 1;
+    if (sink) sink.actions += 1;
+  }
+  return { ticks, xp, items };
+}
+
+/** Credit time toward the trip. The haul is paid only when the stored duration is reached. */
+function advanceExpedition(state: Save, ms: number, sink?: Sink): ExpeditionGrant | null {
+  const trip = state.expedition;
+  if (!trip || ms <= 0) return null;
+  const room = Math.max(0, trip.durationMs - trip.creditedMs);
+  trip.creditedMs += Math.min(ms, room);
+  if (trip.creditedMs + 1e-9 < trip.durationMs) return null;
+  const grant = grantExpedition(state, trip.routeId, trip.durationMs, sink);
+  state.expedition = null;
+  return grant;
+}
+
+/** Pay the ticks already credited and end the trip. Inputs are not returned. */
+export function returnExpedition(state: Save): boolean {
+  const trip = state.expedition;
+  if (!trip) return false;
+  grantExpedition(state, trip.routeId, trip.creditedMs);
+  state.expedition = null;
+  return true;
+}
+
+function isLegacyExploration(activity: Activity | null): boolean {
+  if (!activity) return false;
+  if (activity.kind === 'gather') return NODE_BY_ID[activity.nodeId]?.skill === 'Exploration';
+  if (activity.kind === 'produce') return RECIPE_BY_ID[activity.recipeId]?.skill === 'Exploration';
+  return false;
+}
+
+function stopLegacyExploration(state: Save): void {
+  if (!isLegacyExploration(state.activity)) return;
+  state.activity = null;
+  state.progressMs = 0;
+}
+
+function expeditionItemText(items: Record<string, number>): string {
+  const parts = Object.entries(items).filter(([, qty]) => qty > 0);
+  if (parts.length === 0) return 'none';
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${qty}`).join(', ');
+}
+
+function expeditionLine(name: string, ticks: number, items: Record<string, number>, xp: number, tail: string): string {
+  return `Expedition: ${name}, ${ticks}, ${expeditionItemText(items)}, ${Math.floor(xp)} XP — ${tail}`;
+}
+
+function describeExpedition(before: Save['expedition'], grant: ExpeditionGrant | null, after: Save['expedition']): string | null {
+  if (!before) return null;
+  const name = expeditionRouteName(before.routeId);
+  if (grant) return expeditionLine(name, grant.ticks, grant.items, grant.xp, 'finished');
+  const duration = after?.durationMs ?? before.durationMs;
+  const credited = after?.creditedMs ?? before.creditedMs;
+  return expeditionLine(name, 0, {}, 0, `out, ${expeditionClock(Math.max(0, duration - credited))} left`);
+}
+
 export function advanceOpenTab(
   state: Save,
   now: number,
@@ -1169,8 +1366,10 @@ export function advanceOpenTab(
   const gap = now - state.lastCredited;
   if (gap < 0 || gap >= silentGapMs) return creditOffline(state, now);
   if (gap > 0) {
+    stopLegacyExploration(state);
     simulate(state, gap, undefined, notes ? { notes } : undefined);
     growPlot(state, gap);
+    advanceExpedition(state, gap);
     noteTime(state, gap);
     state.lastCredited = now;
   }
@@ -1181,6 +1380,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   const away = now - state.lastCredited;
   const before = levelsOf(state);
   const xpBefore = { ...state.xp };
+  const expBefore = state.expedition ? { ...state.expedition } : null;
   const report: CatchupReport = {
     awayMs: away,
     creditedMs: 0,
@@ -1199,11 +1399,14 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     stopped: 'window',
     masteryLevels: [],
     perksUnlocked: [],
+    expeditionLine: null,
   };
   if (away < 0) {
     report.backwards = true;
     report.stopped = 'backwards';
     state.lastCredited = now;
+    stopLegacyExploration(state);
+    report.expeditionLine = describeExpedition(expBefore, null, state.expedition);
     report.levelsAfter = levelsOf(state);
     return report;
   }
@@ -1224,6 +1427,9 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   };
   simulate(state, credited, sink);
   growPlot(state, credited, sink);
+  const expeditionGrant = advanceExpedition(state, credited, sink);
+  stopLegacyExploration(state);
+  report.expeditionLine = describeExpedition(expBefore, expeditionGrant, state.expedition);
   noteTime(state, credited);
   report.actions = sink.actions;
   report.kills = sink.kills;
@@ -1407,6 +1613,7 @@ export function deserialize(raw: string): Save | null {
     buildings: {},
     buildingsEver: {},
     plot: null,
+    expedition: null,
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
@@ -1414,7 +1621,22 @@ export function deserialize(raw: string): Save | null {
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
   loaded.plot = readPlot(parsed.plot);
+  loaded.expedition = readExpedition(parsed.expedition);
   return loaded;
+}
+
+function readExpedition(value: unknown): Save['expedition'] {
+  if (value == null) return null;
+  if (!isRecord(value)) return null;
+  const routeId = value.routeId;
+  const startedAt = value.startedAt;
+  const durationMs = value.durationMs;
+  const creditedMs = value.creditedMs;
+  if (typeof routeId !== 'string' || routeId.length === 0) return null;
+  if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) return null;
+  if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return null;
+  if (typeof creditedMs !== 'number' || !Number.isFinite(creditedMs) || creditedMs < 0) return null;
+  return { routeId, startedAt, durationMs, creditedMs: Math.min(creditedMs, durationMs) };
 }
 
 function readPlot(value: unknown): Save['plot'] {

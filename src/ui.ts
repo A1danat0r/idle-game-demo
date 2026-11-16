@@ -48,6 +48,12 @@ import {
   actionSeconds,
   activityLabel,
   dismantleRefund,
+  EXPEDITION_MS,
+  expeditionClock,
+  expeditionPreview,
+  expeditionRemainingMs,
+  expeditionRouteName,
+  explorationRoutes,
   formulaLevel,
   maxHp,
   nodeUsable,
@@ -62,6 +68,7 @@ import { icon } from './icons';
 import {
   activityNextLine,
   activityTrack,
+  explorationNextLine,
   combatNextLine,
   combatSheetLines,
   masteryHeading,
@@ -102,6 +109,10 @@ export interface View {
   milestoneTrack?: string | null;
   /** Combat tab screen. Not saved. */
   combatScreen?: CombatScreen;
+  /** Exploration route whose mastery the Next row follows. Not saved. */
+  routeId?: string | null;
+  /** Chosen expedition length. Not saved. One of 15 min, 1 h, 8 h. */
+  routeMs?: number | null;
 }
 
 export type CombatScreen = 'areas' | 'ladder' | 'fight' | 'teaser';
@@ -185,6 +196,12 @@ export function headerHtml(state: Save, devOn: boolean): string {
     ${devOn ? '<button type="button" class="devbtn" data-dev-open>Dev</button>' : ''}
     <button type="button" class="build" data-about><b>${esc(__BUILD_LABEL__)}</b>${esc(__COMMIT_SHA__)}</button>
   </header>`;
+}
+
+/** One line above the activity slot. Hidden unless an expedition is out. */
+export function backgroundStripHtml(state: Save): string {
+  if (!state.expedition) return '';
+  return `<div class="bgstrip" data-bgstrip>Expedition <span data-live="expedition-clock">${expeditionClock(expeditionRemainingMs(state))}</span></div>`;
 }
 
 export function activityHtml(state: Save): string {
@@ -314,6 +331,7 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     shop: state.shop,
     purchaseCount: state.purchaseCount,
     plot: state.plot ? `${state.plot.recipeId}:${state.plot.ready ? 1 : 0}` : '',
+    expedition: state.expedition?.routeId ?? '',
   });
 }
 
@@ -382,7 +400,7 @@ export function tabsHtml(view: View): string {
 
 export function mainHtml(state: Save, view: View, now: number, devOn = false): string {
   if (view.tab === 'skills') return skillsHtml(state);
-  if (view.tab === 'skill') return skillHtml(state, view.skill) + milestoneSheetHtml(state, view);
+  if (view.tab === 'skill') return skillHtml(state, view) + milestoneSheetHtml(state, view);
   if (view.tab === 'combat') return combatHtml(state, view) + milestoneSheetHtml(state, view);
   if (view.tab === 'inventory') return inventoryHtml(state, view, now);
   if (view.tab === 'profile') return profileHtml(state, devOn, view.resetConfirm === true);
@@ -477,11 +495,12 @@ function isCombat(skill: SkillId): boolean {
   return skill === 'Attack' || skill === 'Strength' || skill === 'Defence' || skill === 'Ranged' || skill === 'Magic';
 }
 
-function skillHtml(state: Save, skill: SkillId | null): string {
+function skillHtml(state: Save, view: View): string {
+  const skill = view.skill;
   if (!skill || !state.owned.includes(skill) || skill === 'Hitpoints' || isCombat(skill)) {
     return `<div class="empty">Choose a gathering or production skill from Skills.</div>`;
   }
-  const view = xpView(state.xp[skill] ?? 0);
+  const xp = xpView(state.xp[skill] ?? 0);
   const tier =
     skill === 'Woodcutting' || skill === 'Mining' || skill === 'Fishing' || skill === 'Foraging'
       ? `<small>Tool tier ${toolTier(state, skill)}</small>`
@@ -491,6 +510,14 @@ function skillHtml(state: Save, skill: SkillId | null): string {
   const bonus = globalXpBonus(state.mastery, skill);
   const bonusLine =
     maxed > 0 ? `<small class="ok">+${Math.round(bonus * 100)}% XP, ${Math.min(maxed, 5)} of 5 mastered</small>` : '';
+  const head = `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${xp.level} · ${xp.text}</small>${bar(xp.pct)}${bonusLine}${tier}</div></div>`;
+  if (skill === 'Exploration') {
+    return `${head}
+      ${nextRow(explorationNextLine(state, chosenRoute(view)))}
+      ${scene}
+      ${expeditionCard(state)}
+      <div class="list">${explorationRoutes().map((route) => routeRow(state, view, route)).join('')}</div>`;
+  }
   const rows = [
     ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
     ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
@@ -498,11 +525,71 @@ function skillHtml(state: Save, skill: SkillId | null): string {
   const plot = skill === 'Farming' && state.plot
     ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
     : '';
-  return `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${view.level} · ${view.text}</small>${bar(view.pct)}${bonusLine}${tier}</div></div>
+  return `${head}
     ${nextRow(activityNextLine(state))}
     ${scene}
     ${plot}
     <div class="list">${rows}</div>`;
+}
+
+function chosenRoute(view: View): string {
+  const routes = explorationRoutes();
+  if (view.routeId && routes.some((route) => route.id === view.routeId)) return view.routeId;
+  return routes[0]?.id ?? '';
+}
+
+function chosenDuration(view: View): number {
+  if (view.routeMs != null && (EXPEDITION_MS as readonly number[]).includes(view.routeMs)) return view.routeMs;
+  return EXPEDITION_MS[0];
+}
+
+const DURATION_LABEL: Record<number, string> = {
+  [EXPEDITION_MS[0]]: '15 min',
+  [EXPEDITION_MS[1]]: '1 h',
+  [EXPEDITION_MS[2]]: '8 h',
+};
+
+function expeditionCard(state: Save): string {
+  const trip = state.expedition;
+  if (!trip) return '';
+  const left = expeditionClock(expeditionRemainingMs(state));
+  return `<div class="panel" data-expedition-card><b>${esc(expeditionRouteName(trip.routeId))}</b><p class="note">Back in <b data-live="expedition-clock">${left}</b></p><button type="button" class="tag btn" data-return-expedition>Return now</button></div>`;
+}
+
+function routeRow(state: Save, view: View, route: ReturnType<typeof explorationRoutes>[number]): string {
+  const level = skillLevel(state, 'Exploration');
+  const reached = level >= route.level;
+  const owned = route.cost <= 0 || state.nodes.includes(route.id);
+  const duration = chosenDuration(view);
+  const selected = chosenRoute(view) === route.id;
+  const packs = route.inputs.length === 0
+    ? 'Packs nothing'
+    : `Packs ${route.inputs.map((input) => countedName(input.qty, input.id)).join(', ')}`;
+  const preview = expeditionPreview(state, route.id, duration);
+  const haulItems = preview.items
+    .filter((item) => item.qty > 0)
+    .map((item) => `${fmt(item.qty)} ${countedLabel(item.qty, item.id)}`)
+    .join(', ');
+  const haul = haulItems ? `${haulItems} · ${fmt(preview.xp)} XP` : `${fmt(preview.xp)} XP`;
+  const missing = route.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
+  const busy = state.expedition != null;
+  const chips = EXPEDITION_MS.map((ms) => `<button type="button" class="tag ${duration === ms ? 'on' : ''}" data-duration="${ms}" data-route="${route.id}">${DURATION_LABEL[ms]}</button>`).join('');
+  let right = '';
+  if (route.locked) {
+    right = `<button type="button" class="tag btn" disabled>Pack and go</button>`;
+  } else if (!reached) {
+    right = `<span class="tag">${lock} Lv ${route.level}</span>`;
+  } else if (!owned) {
+    right = `<small>Unlock</small>${coin(route.cost)}<button type="button" class="tag btn" data-buy-node="${route.id}">Buy</button>`;
+  } else if (busy || missing) {
+    right = `<button type="button" class="tag btn" disabled>Pack and go</button>`;
+  } else {
+    right = `<button type="button" class="tag btn" data-pack="${route.id}">Pack and go</button>`;
+  }
+  const note = route.locked ?? (missing ? needLine(missing.id) : '');
+  const outputId = route.outputs[0]?.id;
+  const iconName = (outputId && ITEMS[outputId]?.icon) || 'gem';
+  return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small><small>Haul ${esc(haul)}</small>${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;
 }
 
 function skillScene(skill: SkillId): string {
@@ -777,8 +864,11 @@ export function milestoneSheetHtml(state: Save, view: View): string {
       .join('');
     return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(ENEMY_BY_ID[enemyId].name)}</h2><div class="list">${rows}</div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
   }
-  const track = activityTrack(state);
-  if (!track) return '';
+  const selectedRoute = view.tab === 'skill' && view.skill === 'Exploration' ? chosenRoute(view) : '';
+  const track = selectedRoute
+    ? { id: selectedRoute, skill: 'Exploration' as const, seconds: trackSeconds(selectedRoute) }
+    : activityTrack(state);
+  if (!track || track.seconds <= 0) return '';
   const picked = view.milestoneTrack && trackSeconds(view.milestoneTrack) > 0 ? view.milestoneTrack : track.id;
   const groups = unlockGroups(state, track.skill)
     .map((group) => {
@@ -968,6 +1058,7 @@ export function reportHtml(report: CatchupReport): string {
       <dt>Food eaten</dt><dd>${report.foodEaten}</dd>
       <dt>Mastery</dt><dd>${esc(masteryText(report))}</dd>
       <dt>Perks</dt><dd>${esc((report.perksUnlocked ?? []).join('; ') || 'none')}</dd>
+      ${report.expeditionLine ? `<dt>Expedition</dt><dd>${esc(report.expeditionLine)}</dd>` : ''}
       <dt>Stopped</dt><dd>${esc(why)}</dd>
     </dl>
     <button type="button" class="tag btn" data-catchup-close>Continue</button>

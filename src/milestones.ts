@@ -177,6 +177,15 @@ export function activityNextLine(state: Save): string | null {
   return `Next: ${skillHalf(state, track.skill)} · ${masteryHalf(state, track.id, track.skill, track.seconds)}.`;
 }
 
+/** Next row for one Exploration route. The running activity is a different skill. */
+export function explorationNextLine(state: Save, routeId: string): string | null {
+  const seconds = trackSeconds(routeId);
+  if (seconds <= 0) return null;
+  const skill = NODE_BY_ID[routeId]?.skill ?? RECIPE_BY_ID[routeId]?.skill;
+  if (skill !== 'Exploration') return null;
+  return `Next: ${skillHalf(state, 'Exploration')} · ${masteryHalf(state, routeId, 'Exploration', seconds)}.`;
+}
+
 /** Combat Next row for the selected enemy. Does not repeat the 12-kill ladder. */
 export function combatNextLine(state: Save, enemyId: string): string | null {
   const enemy = ENEMY_BY_ID[enemyId];
