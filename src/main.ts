@@ -16,6 +16,7 @@ import {
   sell,
   setFood,
   startCombat,
+  startForage,
   startGather,
   stopActivity,
   cancelPlot,
@@ -308,8 +309,9 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-recipe], [data-dismantle], [data-cancel-plot], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
+  const openTop = target.dataset.tab === 'skill' || !!target.dataset.openSkill;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab === 'combat') openCombatTab();
   else if (target.dataset.tab) {
@@ -326,6 +328,10 @@ app.addEventListener('click', (event) => {
   }
   if (target.dataset.node && !target.dataset.buyNode) {
     startGather(state, target.dataset.node);
+    view.message = '';
+  }
+  if (target.dataset.habitat && !target.dataset.buyNode) {
+    startForage(state, target.dataset.habitat);
     view.message = '';
   }
   if (target.dataset.recipe && !target.hasAttribute('disabled')) {
@@ -431,6 +437,7 @@ app.addEventListener('click', (event) => {
     }
   }
   afterChange(view.message);
+  if (openTop) app.querySelector('main')?.scrollTo(0, 0);
 });
 
 function openActivityTab(): void {

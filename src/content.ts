@@ -287,6 +287,81 @@ export const NODES: NodeDef[] = [
 
 export const NODE_BY_ID: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.id, n]));
 
+export interface HabitatEntry {
+  nodeId: string;
+  weight: number;
+}
+
+export interface HabitatDef {
+  id: string;
+  name: string;
+  entries: readonly HabitatEntry[];
+}
+
+/** One roll table per habitat. Weights are the spec odds. Node ids, costs, and levels stay on the nodes. */
+export const HABITATS: readonly HabitatDef[] = [
+  {
+    id: 'meadow',
+    name: 'Meadow verge',
+    entries: [
+      { nodeId: 'mat.herb.meadow', weight: 5 },
+      { nodeId: 'mat.seed.flax', weight: 3 },
+      { nodeId: 'mat.reagent.spell_moss', weight: 2 },
+      { nodeId: 'mat.seed.potato', weight: 2 },
+      { nodeId: 'mat.seed.carrot', weight: 2 },
+      { nodeId: 'mat.fruit.crabapple', weight: 2 },
+      { nodeId: 'mat.herb.bitterroot', weight: 2 },
+    ],
+  },
+  {
+    id: 'woodland',
+    name: 'Woodland edge',
+    entries: [
+      { nodeId: 'mat.cutting.meadow_herb', weight: 2 },
+      { nodeId: 'mat.fruit.berries', weight: 2 },
+      { nodeId: 'mat.forage.wild_wax_comb', weight: 2 },
+      { nodeId: 'mat.fungi.mushroom', weight: 2 },
+      { nodeId: 'mat.spawn.mushroom', weight: 2 },
+      { nodeId: 'mat.fruit.plum', weight: 2 },
+      { nodeId: 'mat.cutting.emberleaf', weight: 2 },
+      { nodeId: 'mat.herb.emberleaf', weight: 2 },
+    ],
+  },
+  {
+    id: 'riverbank',
+    name: 'Riverbank',
+    entries: [
+      { nodeId: 'mat.seed.cotton', weight: 2 },
+      { nodeId: 'mat.plant.cattail', weight: 2 },
+      { nodeId: 'mat.seed.onion', weight: 2 },
+      { nodeId: 'mat.seed.wheat', weight: 2 },
+      { nodeId: 'mat.seed.garlic', weight: 2 },
+      { nodeId: 'mat.seed.turnip', weight: 2 },
+      { nodeId: 'mat.seed.hemp', weight: 2 },
+    ],
+  },
+];
+
+export const HABITAT_BY_ID: Record<string, HabitatDef> = Object.fromEntries(HABITATS.map((habitat) => [habitat.id, habitat]));
+
+const HABITAT_BY_NODE: Record<string, HabitatDef> = {};
+for (const habitat of HABITATS) {
+  for (const entry of habitat.entries) HABITAT_BY_NODE[entry.nodeId] = habitat;
+}
+
+export function habitatForNode(nodeId: string): HabitatDef | undefined {
+  return HABITAT_BY_NODE[nodeId];
+}
+
+export function habitatMasteryId(habitatId: string): string {
+  return `forage.${habitatId}`;
+}
+
+export function habitatByMasteryId(id: string): HabitatDef | undefined {
+  if (!id.startsWith('forage.')) return undefined;
+  return HABITAT_BY_ID[id.slice('forage.'.length)];
+}
+
 function recipe(
   id: string,
   skill: RecipeDef['skill'],
