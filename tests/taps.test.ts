@@ -67,7 +67,7 @@ describe('touches while the loop ticks', () => {
     expect(await tabAfter!.evaluate((el) => el.isConnected)).toBe(true);
     const text = await popup.innerText();
     expect(text).toContain('+42 XP');
-    expect(text).toContain('Pine logs');
+    expect(text).toContain('Pine log');
     const pass = await popup.evaluate((el) => {
       const style = getComputedStyle(el);
       const rect = el.getBoundingClientRect();

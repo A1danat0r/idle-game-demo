@@ -21,6 +21,7 @@ import {
   playerMaxHp,
 } from '../src/content';
 import { masteryLevel } from '../src/mastery';
+import { showOfflineSummary } from '../src/provisional';
 import { activityDestination, activityHtml, mainHtml, renderKey, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
@@ -667,6 +668,30 @@ describe('save, offline, shop', () => {
     const after = creditOffline(state, now + 30_000);
     expect(after.creditedMs).toBe(30_000);
     expect(after.actions).toBeLessThan(20);
+  });
+
+  it('credits a 299s absence without the away summary and shows the summary at 300s', () => {
+    const short = newGame(0);
+    startGather(short, 'mat.wood.pine');
+    const shortXp = short.xp.Woodcutting ?? 0;
+    const shortBank = short.bank['mat.wood.pine'] ?? 0;
+    const shortReport = creditOffline(short, 299_000);
+    expect(shortReport.awayMs).toBe(299_000);
+    expect(shortReport.creditedMs).toBe(299_000);
+    expect(shortReport.actions).toBeGreaterThan(0);
+    expect(short.xp.Woodcutting ?? 0).toBeGreaterThan(shortXp);
+    expect(short.bank['mat.wood.pine'] ?? 0).toBeGreaterThan(shortBank);
+    expect(showOfflineSummary(shortReport.awayMs)).toBe(false);
+
+    const full = newGame(0);
+    startGather(full, 'mat.wood.pine');
+    const fullXp = full.xp.Woodcutting ?? 0;
+    const fullReport = creditOffline(full, 300_000);
+    expect(fullReport.awayMs).toBe(300_000);
+    expect(fullReport.creditedMs).toBe(300_000);
+    expect(full.xp.Woodcutting ?? 0).toBeGreaterThan(fullXp);
+    expect(showOfflineSummary(fullReport.awayMs)).toBe(true);
+    expect(reportHtml(fullReport)).toContain('While you were away');
   });
 
   it('restocks each shop meat 24h after that meat\'s counter starts', () => {

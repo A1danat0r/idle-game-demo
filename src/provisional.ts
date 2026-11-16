@@ -23,11 +23,14 @@ export const TAB_LOCK_STALE_MS = 4000;
 export const SILENT_GAP_MS = 5000;
 
 /**
- * §7.1: show the catch-up pop-up on load or return when at least 1s was
- * credited, the 24h cap cut the window, or the clock went backwards.
- * Editorial wording, Nora 2026-11-13.
+ * Show "While you were away" only when the absence is at least 5 minutes.
+ * Exactly 300s shows it. Shorter gaps still credit progress, with no summary.
  */
-export const CATCHUP_REPORT_MIN_MS = 1000;
+export const CATCHUP_REPORT_MIN_MS = 300_000;
+
+export function showOfflineSummary(awayMs: number): boolean {
+  return awayMs >= CATCHUP_REPORT_MIN_MS;
+}
 
 /** Remembered Debug switch. localStorage, so it survives reloads in the browser and in the installed app. */
 export const DEV_STORAGE_KEY = 'idle-game-demo-dev';

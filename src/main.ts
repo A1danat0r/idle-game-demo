@@ -30,7 +30,7 @@ import {
   type Save,
 } from './engine';
 import {
-  CATCHUP_REPORT_MIN_MS,
+  showOfflineSummary,
   SILENT_GAP_MS,
   TAB_LOCK_STALE_MS,
   DEV_STORAGE_KEY,
@@ -130,7 +130,7 @@ function readLock(): { id: string; beat: number } | null {
 }
 
 function shouldShow(report: CatchupReport): boolean {
-  return report.backwards || report.capped || report.creditedMs >= CATCHUP_REPORT_MIN_MS;
+  return showOfflineSummary(report.awayMs);
 }
 
 function showReport(report: CatchupReport): void {
@@ -286,7 +286,7 @@ function fastForward(ms: number): void {
   persistClock();
   const report = creditOffline(state, gameNow());
   writeSave(localStorage, state);
-  if (shouldShow(report) || report.creditedMs > 0) showReport(report);
+  if (shouldShow(report)) showReport(report);
   render();
 }
 

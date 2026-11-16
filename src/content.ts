@@ -849,23 +849,80 @@ export function itemName(id: string): string {
 
 /**
  * Last words that take a simple plural when the count is above 1.
- * Names that already end in s, and mass nouns, are not in this set, so
- * "Pine logs" and "Flax fibre" stay as written.
+ * Already-plural names, mass nouns, pair garments, and singular -s words
+ * are not in this set, so they stay as written.
  */
 const COUNTABLE_SINGULAR = new Set(['kit', 'block', 'bar', 'seed', 'cattail', 'tart']);
+
+/** Qty-1 display form when the catalogue name is already plural. Display only. */
+export const SINGULAR_NAMES: Record<string, string> = {
+  'mat.wood.ash': 'Ash log',
+  'mat.shaft.ash_spear': 'Ash spear shaft',
+  'mat.tree.bark_strip': 'Bark strip',
+  'mat.combat.beetle_carapace': 'Beetle carapace fragment',
+  'ammo.arrow.bramble_thorn': 'Bramble-thorn arrow',
+  'mat.head.bronze_arrow': 'Bronze arrowhead',
+  'ammo.arrow.bronze': 'Bronze arrow',
+  'mat.head.bronze_bolt': 'Bronze bolt tip',
+  'ammo.bolt.bronze': 'Bronze bolt',
+  'mat.fitting.bronze_hinge': 'Bronze hinge',
+  'ammo.thrown.bronze_javelin': 'Bronze javelin',
+  'mat.fitting.bronze_nail': 'Bronze nail',
+  'ammo.thrown.bronze_knife': 'Bronze throwing knife',
+  'mat.crop.carrot': 'Carrot',
+  'mat.fruit.crabapple': 'Crabapple',
+  'mat.cutting.emberleaf': 'Emberleaf cutting',
+  'con.mat.roof_tiles': 'Fired roof tile',
+  'mat.seed.garlic': 'Garlic planting clove',
+  'mat.head.iron_arrow': 'Iron arrowhead',
+  'ammo.arrow.iron': 'Iron arrow',
+  'mat.head.iron_bolt': 'Iron bolt tip',
+  'ammo.bolt.iron': 'Iron bolt',
+  'mat.fitting.iron': 'Iron fitting',
+  'mat.band.iron_focus': 'Iron focus band',
+  'ammo.thrown.iron_javelin': 'Iron javelin',
+  'ammo.thrown.iron_knife': 'Iron throwing knife',
+  'mat.wood.maple': 'Maple log',
+  'mat.fruit.berries': 'Meadow berry',
+  'mat.herb.meadow': 'Meadow herb',
+  'mat.fungi.mushroom': 'Meadow mushroom',
+  'mat.cutting.meadow_herb': 'Meadow-herb cutting',
+  'mat.wood.oak': 'Oak log',
+  'mat.seed.onion': 'Onion set',
+  'mat.crop.onion': 'Onion',
+  'mat.combat.bone': 'Ordinary bone',
+  'food.perch_wheat_cakes': 'Perch-and-wheat cake',
+  'mat.shaft.pine_arrow': 'Pine arrow shaft',
+  'mat.wood.pine': 'Pine log',
+  'mat.crop.potato': 'Potato',
+  'mat.fish.eel': 'Raw eel',
+  'mat.fish.minnow': 'Raw minnow',
+  'food.roast_minnows': 'Roast minnow',
+  'mat.seed.potato': 'Seed potato',
+  'ammo.arrow.serpent_fang': 'Serpent-fang arrow',
+  'ammo.arrow.sluice_iron': 'Sluice-iron arrow',
+  'mat.head.steel_arrow': 'Steel arrowhead',
+  'ammo.arrow.steel': 'Steel arrow',
+  'mat.fitting.steel': 'Steel fitting',
+  'mat.crop.turnip': 'Turnip',
+  'ammo.bolt.undercroft': 'Undercroft bolt',
+  'mat.fruit.plum': 'Wild plum',
+  'mat.wood.willow_rods': 'Willow rod',
+};
 
 function pluralizeCounted(name: string): string {
   const last = name.slice(name.lastIndexOf(' ') + 1).toLowerCase();
   return COUNTABLE_SINGULAR.has(last) ? `${name}s` : name;
 }
 
-/** Catalogue name, pluralized when the count is above 1 and the last word is countable. */
+/** Catalogue name, or the qty-1 singular when this id has one. */
 export function countedLabel(qty: number, id: string): string {
   const name = itemName(id);
+  if (qty === 1 && SINGULAR_NAMES[id]) return SINGULAR_NAMES[id];
   return qty === 1 ? name : pluralizeCounted(name);
 }
 
-/** Quantity plus the item name. A count of 1 keeps the catalogue name. */
+/** Quantity plus the display name. Catalogue names and saves are unchanged. */
 export function countedName(qty: number, id: string): string {
   return `${qty} ${countedLabel(qty, id)}`;
 }
