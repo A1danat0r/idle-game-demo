@@ -10,6 +10,7 @@ import {
   isFood,
   countedName,
   itemName,
+  SINGULAR_NAMES,
   nodeCost,
 } from '../src/content';
 import {
@@ -316,12 +317,35 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
       for (const stack of [...recipe.inputs, ...recipe.outputs]) {
         const name = itemName(stack.id);
         const line = countedName(stack.qty, stack.id);
-        if (stack.qty === 1 || name.endsWith('logs') || name.endsWith('fibre')) {
+        if (stack.qty > 1 && (name.endsWith('logs') || name.endsWith('fibre'))) {
           expect(line).toBe(`${stack.qty} ${name}`);
         }
         if (name.endsWith(' kit') && stack.qty > 1) expect(line).toBe(`${stack.qty} ${name}s`);
       }
     }
+  });
+
+  it('uses a singular display name at qty 1 and keeps the catalogue name above 1', () => {
+    const samples = ['mat.wood.pine', 'mat.fitting.iron', 'mat.seed.potato', 'mat.wood.ash'];
+    for (const id of samples) {
+      expect(countedName(1, id)).toBe(`1 ${SINGULAR_NAMES[id]}`);
+      expect(countedName(2, id)).toBe(`2 ${itemName(id)}`);
+      expect(itemName(id)).not.toBe(SINGULAR_NAMES[id]);
+    }
+    expect(countedName(1, 'mat.wood.pine')).toBe('1 Pine log');
+    expect(countedName(5, 'mat.wood.pine')).toBe('5 Pine logs');
+    expect(countedName(1, 'mat.fitting.iron')).toBe('1 Iron fitting');
+    expect(countedName(2, 'mat.fitting.iron')).toBe('2 Iron fittings');
+    expect(countedName(1, 'mat.seed.potato')).toBe('1 Seed potato');
+    expect(countedName(2, 'mat.seed.potato')).toBe('2 Seed potatoes');
+    expect(countedName(1, 'mat.fibre.flax')).toBe('1 Flax fibre');
+    expect(countedName(4, 'mat.fibre.flax')).toBe('4 Flax fibre');
+    expect(countedName(1, 'gear.feet.leather_boots')).toBe('1 Leather boots');
+    expect(countedName(2, 'gear.feet.leather_boots')).toBe('2 Leather boots');
+    expect(countedName(1, 'gear.magic.pine_focus')).toBe('1 Pine focus');
+    expect(countedName(2, 'gear.magic.pine_focus')).toBe('2 Pine focus');
+    const missing = Object.keys(SINGULAR_NAMES).filter((id) => !ITEMS[id]);
+    expect(missing).toEqual([]);
   });
 
   it('charges the rebuild fee and no XP after a dismantle', () => {

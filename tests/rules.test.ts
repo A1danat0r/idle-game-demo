@@ -21,6 +21,7 @@ import {
   playerMaxHp,
 } from '../src/content';
 import { masteryLevel } from '../src/mastery';
+import { showOfflineSummary } from '../src/provisional';
 import { activityDestination, activityHtml, mainHtml, renderKey, reportHtml, type View } from '../src/ui';
 import {
   SAVE_KEY,
@@ -653,6 +654,10 @@ describe('save, offline, shop', () => {
     expect(state.lastCredited).toBe(now);
     expect(report.stopped).toBe('window');
     expect(report.activity).toContain('Pine');
+    const cappedHtml = reportHtml(report);
+    expect(cappedHtml).toContain('<dt>Away</dt><dd>30 h 0 min</dd>');
+    expect(cappedHtml).toContain('<dt>Credited</dt><dd>24 h 0 min (24h cut)</dd>');
+    expect(cappedHtml).toContain('Ran the full credited window. Time past 24h was cut.');
     const again = creditOffline(state, now);
     expect(again.creditedMs).toBe(0);
     expect(again.actions).toBe(0);
@@ -667,6 +672,56 @@ describe('save, offline, shop', () => {
     const after = creditOffline(state, now + 30_000);
     expect(after.creditedMs).toBe(30_000);
     expect(after.actions).toBeLessThan(20);
+  });
+
+  it('credits a 299s absence without the away summary and shows the summary at 300s', () => {
+    const short = newGame(0);
+    startGather(short, 'mat.wood.pine');
+    const shortXp = short.xp.Woodcutting ?? 0;
+    const shortBank = short.bank['mat.wood.pine'] ?? 0;
+    const shortReport = creditOffline(short, 299_000);
+    expect(shortReport.awayMs).toBe(299_000);
+    expect(shortReport.creditedMs).toBe(299_000);
+    expect(shortReport.actions).toBeGreaterThan(0);
+    expect(short.xp.Woodcutting ?? 0).toBeGreaterThan(shortXp);
+    expect(short.bank['mat.wood.pine'] ?? 0).toBeGreaterThan(shortBank);
+    expect(showOfflineSummary(shortReport.awayMs)).toBe(false);
+
+    const full = newGame(0);
+    startGather(full, 'mat.wood.pine');
+    const fullXp = full.xp.Woodcutting ?? 0;
+    const fullReport = creditOffline(full, 300_000);
+    expect(fullReport.awayMs).toBe(300_000);
+    expect(fullReport.creditedMs).toBe(300_000);
+    expect(full.xp.Woodcutting ?? 0).toBeGreaterThan(fullXp);
+    expect(showOfflineSummary(fullReport.awayMs)).toBe(true);
+    expect(reportHtml(fullReport)).toContain('<dt>Away</dt><dd>5 min</dd>');
+  });
+
+  it('writes the away time in whole hours and minutes, rounded down', () => {
+    const html = (awayMs: number) => reportHtml({
+      awayMs,
+      creditedMs: awayMs,
+      capped: false,
+      backwards: false,
+      activity: 'Woodcutting',
+      actions: 0,
+      kills: 0,
+      xpGained: {},
+      levelsBefore: {},
+      levelsAfter: {},
+      itemsGained: {},
+      itemsConsumed: {},
+      coinsGained: 0,
+      foodEaten: 0,
+      stopped: 'window',
+      masteryLevels: [],
+      perksUnlocked: [],
+    });
+    expect(html(300_000)).toContain('<dt>Away</dt><dd>5 min</dd>');
+    expect(html(3_599_000)).toContain('<dt>Away</dt><dd>59 min</dd>');
+    expect(html(3_600_000)).toContain('<dt>Away</dt><dd>1 h 0 min</dd>');
+    expect(html(4_980_000)).toContain('<dt>Away</dt><dd>1 h 23 min</dd>');
   });
 
   it('restocks each shop meat 24h after that meat\'s counter starts', () => {
