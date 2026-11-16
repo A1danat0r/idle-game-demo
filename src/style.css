@@ -242,7 +242,9 @@ body:has(.sheet) #floaters { display: none; }
 .plotgrid .price { flex-direction: column; align-items: flex-end; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
 .yard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.tile { min-height: 52px; display: flex; align-items: center; justify-content: center; text-align: center; padding: 4px; background: #121829; border: 1px solid #353d55; border-radius: 8px; }
+.tile, button.tile { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 4px; background: #121829; border: 1px solid #353d55; border-radius: 8px; color: inherit; font: inherit; cursor: pointer; }
+.tile.on, button.tile.on { border-color: var(--gold); }
+.tile b { font-size: 10px; line-height: 1.2; }
 .tile small { font-size: 10px; }
 h3 .tag.btn { text-transform: none; letter-spacing: 0; font-family: system-ui, sans-serif; }
 
