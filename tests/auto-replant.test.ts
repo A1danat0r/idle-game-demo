@@ -121,6 +121,8 @@ describe('farming auto-replant', () => {
     expect(notes.filter((note) => note.kind === 'toast').map((note) => (note.kind === 'toast' ? note.text : ''))).toEqual([
       'Plot 1 not replanted: no Flax seed',
       'Fields harvested: Flax fibre ×1,800',
+      'Farming reached Lv 30',
+      'Flax fibre mastery 30: +5% XP',
     ]);
     state.bank['mat.seed.flax'] = 1;
     creditOffline(state, state.lastCredited + 13_320_000);
@@ -143,7 +145,7 @@ describe('farming auto-replant', () => {
     expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
     expect(state.plots[0]?.recipeId).toBe(FLAX);
     expect(state.plots[1]).toBeNull();
-    expect(report.plotHarvests).toContain('Plot 2 not replanted: no Flax seed');
+    expect(report.plotHarvests).toContain('Plot 2: Flax fibre ×1,800 · not replanted: no Flax seed');
   });
 
   it('does not replant a plot that was cancelled', () => {
@@ -172,7 +174,7 @@ describe('farming auto-replant', () => {
     expect(state.bank['mat.fungi.mushroom']).toBe(1_800);
     expect(state.plots[0]).toBeNull();
     expect(state.bank['mat.spawn.mushroom']).toBe(1);
-    expect(report.plotHarvests).toContain('Plot 1 not replanted: no Oak log');
+    expect(report.plotHarvests).toContain('Plot 1: Meadow mushrooms ×1,800 · not replanted: no Oak log');
   });
 
   it('replants a full flax field for 24h and still credits the selected activity', () => {
@@ -263,7 +265,15 @@ describe('farming auto-replant', () => {
     for (const plot of state.plots) if (plot) plot.remainingMs = 500;
     const notes: FloatNote[] = [];
     expect(withoutOutputDoubles(() => advanceOpenTab(state, 500, 5_000, notes))).toBeNull();
-    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×14,400 · replanted 8' }]);
+    expect(notes).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×14,400 · replanted 8' },
+      { kind: 'toast', text: 'Farming reached Lv 40' },
+      { kind: 'toast', text: 'Flax fibre mastery 10: sell value +5%' },
+      { kind: 'toast', text: 'Flax fibre mastery 20: actions 5% faster' },
+      { kind: 'toast', text: 'Flax fibre mastery 30: +5% XP' },
+      { kind: 'toast', text: 'Flax fibre mastery 40: 5% chance to double the output' },
+      { kind: 'toast', text: '+3% Farming XP' },
+    ]);
   });
 
   it('omits the replanted clause when auto-replant is not bought', () => {
@@ -273,7 +283,11 @@ describe('farming auto-replant', () => {
     state.plots[0]!.remainingMs = 500;
     const notes: FloatNote[] = [];
     expect(advanceOpenTab(state, 500, 5_000, notes)).toBeNull();
-    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
+    expect(notes).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' },
+      { kind: 'toast', text: 'Farming reached Lv 15' },
+      { kind: 'toast', text: 'Flax fibre mastery 10: sell value +5%' },
+    ]);
     expect(state.plots[0]).toBeNull();
   });
 
@@ -341,7 +355,11 @@ describe('farming auto-replant', () => {
     expect(state.bank['mat.fibre.flax']).toBe(2_250);
     expect(state.plots[0]).toBeNull();
     expect(state.bank['mat.seed.flax']).toBe(2);
-    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250' }]);
+    expect(notes).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250' },
+      { kind: 'toast', text: 'Farming reached Lv 15' },
+      { kind: 'toast', text: 'Flax fibre mastery 10: sell value +5%' },
+    ]);
   });
 
   it('finishes the replant already made after the switch is turned off', () => {
@@ -349,7 +367,11 @@ describe('farming auto-replant', () => {
     creditOffline(state, 13_320_000 - 1_000);
     const first: FloatNote[] = [];
     expect(advanceOpenTab(state, state.lastCredited + 1_000, 5_000, first)).toBeNull();
-    expect(first).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250 · replanted 1' }]);
+    expect(first).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250 · replanted 1' },
+      { kind: 'toast', text: 'Farming reached Lv 15' },
+      { kind: 'toast', text: 'Flax fibre mastery 10: sell value +5%' },
+    ]);
     state.autoReplantOn = false;
     creditOffline(state, 26_640_000 - 1_000);
     const second: FloatNote[] = [];
@@ -357,7 +379,11 @@ describe('farming auto-replant', () => {
     expect(state.bank['mat.fibre.flax']).toBe(4_050);
     expect(state.plots[0]).toBeNull();
     expect(state.bank['mat.seed.flax']).toBe(1);
-    expect(second).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
+    expect(second).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' },
+      { kind: 'toast', text: 'Farming reached Lv 22' },
+      { kind: 'toast', text: 'Flax fibre mastery 20: actions 5% faster' },
+    ]);
   });
 
   it('saves the switch and ignores it when the unlock is absent', () => {
@@ -432,7 +458,11 @@ describe('farming auto-replant', () => {
     const notes: FloatNote[] = [];
     expect(advanceOpenTab(state, 500, 5_000, notes)).toBeNull();
     message = clearedLandStatus();
-    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800 · replanted 1' }]);
+    expect(notes).toEqual([
+      { kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800 · replanted 1' },
+      { kind: 'toast', text: 'Farming reached Lv 15' },
+      { kind: 'toast', text: 'Flax fibre mastery 10: sell value +5%' },
+    ]);
     expect(message).toBe('');
     expect(state.plots[0]?.recipeId).toBe(FLAX);
     expect(message).toBe('');

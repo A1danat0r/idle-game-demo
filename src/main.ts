@@ -360,11 +360,11 @@ app.addEventListener('click', (event) => {
     openSkill(target.dataset.openSkill as SkillId);
     leaveLand();
   }
-  if (target.dataset.buySkill) {
+  if (target.dataset.buySkill && !target.hasAttribute('disabled')) {
     const skill = target.dataset.buySkill as SkillId;
     view.message = buySkill(state, skill) ? `Bought ${skill}.` : 'Not enough coins.';
   }
-  if (target.dataset.buyNode) {
+  if (target.dataset.buyNode && !target.hasAttribute('disabled')) {
     view.message = buyNode(state, target.dataset.buyNode) ? 'Node bought.' : 'That node is not available.';
   }
   if (target.dataset.node && !target.dataset.buyNode) {
@@ -379,7 +379,7 @@ app.addEventListener('click', (event) => {
     if (target.dataset.mark) view.markId = target.dataset.mark;
     view.message = startProduce(state, target.dataset.recipe) ? '' : 'Missing inputs.';
   }
-  if (target.dataset.buyRank) {
+  if (target.dataset.buyRank && !target.hasAttribute('disabled')) {
     view.message = buyMarkRank(state, target.dataset.buyRank) ? 'Rank bought.' : 'That rank cannot be bought.';
   }
   if (target.dataset.cancelPlot != null) cancelPlot(state, Number(target.dataset.cancelPlot));
@@ -511,7 +511,7 @@ app.addEventListener('click', (event) => {
     const qty = target.dataset.sell === 'all' ? state.bank[view.selected] ?? 0 : 1;
     sell(state, view.selected, qty);
   }
-  if (target.dataset.shopBuy) {
+  if (target.dataset.shopBuy && !target.hasAttribute('disabled')) {
     view.message = buyShop(state, target.dataset.shopBuy, gameNow()) ? 'Bought.' : 'Shop limit or not enough coins.';
   }
   if (target.dataset.equip) equip(state, target.dataset.equip);

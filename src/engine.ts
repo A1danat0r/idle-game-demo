@@ -209,6 +209,11 @@ export interface Save {
   /** Switch after purchase. Missing while owned means on. Ignored when the unlock is absent. */
   autoReplantOn?: boolean;
   /**
+   * Style of the last fight that started. Written only when a fight starts.
+   * Missing, unknown, or unowned is not kept, so the chip uses the first owned style.
+   */
+  combatStyle?: CombatStyle;
+  /**
    * The one expedition. Null when none is out.
    * Runs beside the selected activity and the Farming plots. A missing key loads as null.
    */
@@ -777,6 +782,7 @@ export function startCombat(state: Save, enemyId: string, style: CombatStyle): b
     state.activity.enemyId === enemyId &&
     state.activity.style === style &&
     !state.paused;
+  state.combatStyle = style;
   if (same) return true;
   beginActivity(state);
   state.activity = { kind: 'combat', enemyId, style };
@@ -1111,8 +1117,12 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   const removed = Math.min(rolled, combat.enemyHp);
   const styleXp = (STYLE_XP_PER_KILL * removed) / combat.enemyMaxHp;
   const hpXp = (HITPOINTS_XP_PER_KILL * removed) / combat.enemyMaxHp;
+  const styleBefore = skillLevel(state, activity.style);
+  const hpBefore = state.owned.includes('Hitpoints') ? skillLevel(state, 'Hitpoints') : 0;
   addXp(state, activity.style, styleXp);
   if (state.owned.includes('Hitpoints')) addXp(state, 'Hitpoints', hpXp);
+  pushLevelToast(opts.notes, activity.style, styleBefore, skillLevel(state, activity.style));
+  if (state.owned.includes('Hitpoints')) pushLevelToast(opts.notes, 'Hitpoints', hpBefore, skillLevel(state, 'Hitpoints'));
   opts.notes?.push({ kind: 'player-hit', amount: rolled });
   combat.enemyHp -= removed;
   if (combat.enemyHp <= 1e-9) {
@@ -1148,8 +1158,10 @@ function completeForageTick(state: Save, habitatId: string, sink: Sink | undefin
   const track = habitatMasteryId(habitatId);
   const qty = doubledOutput(state, track) ? 2 : 1;
   giveItem(state, itemId, qty, sink);
+  const levelBefore = skillLevel(state, 'Foraging');
   const gained = addXp(state, 'Foraging', pace.xp * actionXpMultiplier(state.mastery, track, 'Foraging'));
   opts.notes?.push({ kind: 'action', skill: 'Foraging', xp: gained, itemId, qty });
+  pushLevelToast(opts.notes, 'Foraging', levelBefore, skillLevel(state, 'Foraging'));
   grantActionMastery(state, track, 'Foraging', pace.seconds, opts);
   state.stats.actions += 1;
   if (sink) sink.actions += 1;
@@ -1167,8 +1179,10 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     const node = NODE_BY_ID[activity.nodeId];
     const qty = doubledOutput(state, node.id) ? 2 : 1;
     giveItem(state, node.id, qty, sink);
+    const levelBefore = skillLevel(state, node.skill);
     const gained = addXp(state, node.skill, node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
     opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty });
+    pushLevelToast(opts.notes, node.skill, levelBefore, skillLevel(state, node.skill));
     grantActionMastery(state, node.id, node.skill, node.seconds, opts);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
@@ -1202,9 +1216,11 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     }
     const skill = recipe?.skill ?? 'Enchanting';
     const xpFactor = recipe && hearthAppliesToRecipe(recipe) ? 1 + 0.01 * markRank(state, 'hearth.xp') : 1;
+    const levelBefore = skillLevel(state, skill);
     const gained = rebuilding
       ? 0
       : addXp(state, skill, active.xp * actionXpMultiplier(state.mastery, active.id, skill) * xpFactor);
+    pushLevelToast(opts.notes, skill, levelBefore, skillLevel(state, skill));
     grantActionMastery(state, active.id, skill, active.seconds, opts);
     const markId = recipe ? markIdFromRecipe(recipe.id) : null;
     if (markId) {
@@ -1357,6 +1373,10 @@ export function stepCompletion(state: Save, opts: SimOptions = {}): { ms: number
   return { ms, type };
 }
 
+function pushLevelToast(notes: FloatNote[] | undefined, skill: string, before: number, after: number): void {
+  if (notes && after > before) notes.push({ kind: 'toast', text: `${skill} reached Lv ${after}` });
+}
+
 function grantActionMastery(state: Save, id: string, skill: SkillId, baseSeconds: number, opts: SimOptions): void {
   const beforeBonus = globalXpBonus(state.mastery, skill);
   const before = masteryLevel(state.mastery[id] ?? 0);
@@ -1478,7 +1498,7 @@ function replantCompost(state: Save): CompostKind {
 }
 
 /** Plant on an empty owned plot. This is not the selected activity, and it does not require Farming to be selected. */
-export function plantOnPlot(state: Save, index: number, recipeId: string, compost: CompostKind): boolean {
+export function plantOnPlot(state: Save, index: number, recipeId: string, compost: CompostKind, sink?: Sink): boolean {
   if (!state.owned.includes('Farming')) return false;
   ensureFarmPlots(state);
   if (!Number.isInteger(index) || index < 0 || index >= state.plots.length) return false;
@@ -1489,8 +1509,8 @@ export function plantOnPlot(state: Save, index: number, recipeId: string, compos
   if (firstMissingRequiredInput(state, recipeId)) return false;
   const compostId = compostItemId(compost);
   if (compostId && (state.bank[compostId] ?? 0) < 1) return false;
-  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
-  if (compostId) takeItem(state, compostId, 1);
+  for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
+  if (compostId) takeItem(state, compostId, 1, sink);
   const speed = masteryPerks(masteryLevel(state.mastery[recipeId] ?? 0)).speed;
   state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost, speed), compost };
   return true;
@@ -1524,9 +1544,8 @@ function harvestPlot(
   state: Save,
   index: number,
   sink?: Sink,
-  lines?: string[],
   notes?: FloatNote[],
-): { itemId: string; qty: number; replanted: boolean } | null {
+): { itemId: string; qty: number; replanted: boolean; missing: string | null } | null {
   const plot = state.plots[index];
   if (!plot) return null;
   const recipe = RECIPE_BY_ID[plot.recipeId];
@@ -1564,25 +1583,28 @@ function harvestPlot(
   state.stats.actions += 1;
   if (sink) sink.actions += 1;
   state.plots[index] = null;
-  if (lines) lines.push(`Plot ${index + 1}: ${itemName(itemId)} ×${qtyTotal.toLocaleString('en-US')}`);
-  const replanted = tryAutoReplant(state, index, plot.recipeId, lines, notes);
-  return { itemId, qty: qtyTotal, replanted };
+  const again = tryAutoReplant(state, index, plot.recipeId, sink, notes);
+  return { itemId, qty: qtyTotal, replanted: again.replanted, missing: again.missing };
 }
 
 function replantWanted(state: Save): boolean {
   return state.autoReplant === true && state.autoReplantOn !== false;
 }
 
-function tryAutoReplant(state: Save, index: number, recipeId: string, lines?: string[], notes?: FloatNote[]): boolean {
-  if (!replantWanted(state)) return false;
+function tryAutoReplant(
+  state: Save,
+  index: number,
+  recipeId: string,
+  sink?: Sink,
+  notes?: FloatNote[],
+): { replanted: boolean; missing: string | null } {
+  if (!replantWanted(state)) return { replanted: false, missing: null };
   const missing = firstMissingRequiredInput(state, recipeId);
   if (missing) {
-    const line = `Plot ${index + 1} not replanted: no ${countedLabel(1, missing)}`;
-    lines?.push(line);
-    notes?.push({ kind: 'toast', text: line });
-    return false;
+    notes?.push({ kind: 'toast', text: `Plot ${index + 1} not replanted: no ${countedLabel(1, missing)}` });
+    return { replanted: false, missing };
   }
-  return plantOnPlot(state, index, recipeId, replantCompost(state));
+  return { replanted: plantOnPlot(state, index, recipeId, replantCompost(state), sink), missing: null };
 }
 
 /** Plots finish in completion order. A tie goes to the lower plot number, and that replant happens before the next harvest. */
@@ -1594,11 +1616,15 @@ function fieldsHarvestToast(totals: Map<string, number>, order: string[], replan
 
 function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes?: FloatNote[]): void {
   ensureFarmPlots(state);
+  const levelBefore = notes ? skillLevel(state, 'Farming') : 0;
+  const bonusBefore = notes ? globalXpBonus(state.mastery, 'Farming') : 0;
+  const masteryBefore = notes ? masteryLevelsOf(state) : null;
   let left = Math.max(0, ms);
   const held = new Set<number>();
   const totals = new Map<string, number>();
   const order: string[] = [];
   let replanted = 0;
+  const plotRows = new Map<number, { itemId: string; qty: number; replanted: number; missing: string | null }>();
   for (let guard = 0; guard < 10_000; guard += 1) {
     let due = -1;
     for (let index = 0; index < state.plots.length; index += 1) {
@@ -1611,11 +1637,21 @@ function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes
     }
     if (due >= 0) {
       const before = state.plots[due];
-      const harvested = harvestPlot(state, due, sink, lines, notes);
-      if (harvested && notes) {
-        if (!totals.has(harvested.itemId)) order.push(harvested.itemId);
-        totals.set(harvested.itemId, (totals.get(harvested.itemId) ?? 0) + harvested.qty);
-        if (harvested.replanted) replanted += 1;
+      const harvested = harvestPlot(state, due, sink, notes);
+      if (harvested) {
+        if (notes) {
+          if (!totals.has(harvested.itemId)) order.push(harvested.itemId);
+          totals.set(harvested.itemId, (totals.get(harvested.itemId) ?? 0) + harvested.qty);
+          if (harvested.replanted) replanted += 1;
+        }
+        if (lines) {
+          const row = plotRows.get(due) ?? { itemId: harvested.itemId, qty: 0, replanted: 0, missing: null };
+          row.itemId = harvested.itemId;
+          row.qty += harvested.qty;
+          if (harvested.replanted) row.replanted += 1;
+          if (harvested.missing) row.missing = harvested.missing;
+          plotRows.set(due, row);
+        }
       }
       if (state.plots[due] === before) held.add(due);
       continue;
@@ -1637,7 +1673,24 @@ function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes
     }
     left -= step;
   }
-  if (notes && order.length > 0) notes.push({ kind: 'toast', text: fieldsHarvestToast(totals, order, replanted) });
+  if (lines) {
+    for (const [index, row] of plotRows) {
+      let text = `Plot ${index + 1}: ${itemName(row.itemId)} ×${row.qty.toLocaleString('en-US')}`;
+      if (row.replanted >= 1) text += ` · replanted ${grouped(row.replanted)}`;
+      if (row.missing) text += ` · not replanted: no ${countedLabel(1, row.missing)}`;
+      lines.push(text);
+    }
+  }
+  if (notes && order.length > 0) {
+    notes.push({ kind: 'toast', text: fieldsHarvestToast(totals, order, replanted) });
+    const levelAfter = skillLevel(state, 'Farming');
+    if (levelAfter > levelBefore) notes.push({ kind: 'toast', text: `Farming reached Lv ${levelAfter}` });
+    if (masteryBefore) {
+      for (const perk of masteryGained(masteryBefore, state).perks) notes.push({ kind: 'toast', text: perk });
+      const bonus = globalBonusLine('Farming', bonusBefore, globalXpBonus(state.mastery, 'Farming'));
+      if (bonus) notes.push({ kind: 'toast', text: bonus });
+    }
+  }
 }
 
 /** 15 min, 1 h, and 8 h. An expedition stores one of these for the whole trip. */
@@ -1781,6 +1834,9 @@ interface ExpeditionGrant {
 
 function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink, notes?: FloatNote[]): ExpeditionGrant {
   const route = explorationRoute(routeId);
+  const levelBefore = skillLevel(state, 'Exploration');
+  const bonusBefore = globalXpBonus(state.mastery, 'Exploration');
+  const masteryBefore = masteryLevel(state.mastery[routeId] ?? 0);
   const ticks = expeditionTicks(state, routeId, elapsedMs);
   const items: Record<string, number> = {};
   const outputs = route?.outputs ?? [];
@@ -1810,7 +1866,16 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
     if (sink) sink.actions += 1;
   }
   const text = haulToast(expeditionRouteName(routeId), items, xp);
-  if (text && notes) notes.push({ kind: 'toast', text });
+  if (notes && ticks > 0) {
+    if (text) notes.push({ kind: 'toast', text });
+    const levelAfter = skillLevel(state, 'Exploration');
+    if (levelAfter > levelBefore) notes.push({ kind: 'toast', text: `Exploration reached Lv ${levelAfter}` });
+    for (const line of levelUpLines(trackName(routeId), masteryBefore, masteryLevel(state.mastery[routeId] ?? 0), 'node')) {
+      notes.push({ kind: 'toast', text: line });
+    }
+    const bonus = globalBonusLine('Exploration', bonusBefore, globalXpBonus(state.mastery, 'Exploration'));
+    if (bonus) notes.push({ kind: 'toast', text: bonus });
+  }
   return { ticks, xp, items };
 }
 
@@ -2237,6 +2302,10 @@ export function deserialize(raw: string): Save | null {
   if (!glimmer || !markRanks) return null;
   loaded.glimmer = glimmer;
   loaded.markRanks = markRanks;
+  if (typeof parsed.combatStyle === 'string' && (COMBAT_STYLES as readonly string[]).includes(parsed.combatStyle)) {
+    const style = parsed.combatStyle as CombatStyle;
+    if (loaded.owned.includes(style)) loaded.combatStyle = style;
+  }
   return loaded;
 }
 
