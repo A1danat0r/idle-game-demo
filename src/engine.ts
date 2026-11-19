@@ -1507,6 +1507,13 @@ export function buyAutoReplant(state: Save): boolean {
   return true;
 }
 
+/** Flip the account-wide switch. Only available after the unlock is owned. */
+export function toggleAutoReplant(state: Save): boolean {
+  if (!state.autoReplant) return false;
+  state.autoReplantOn = state.autoReplantOn === false;
+  return true;
+}
+
 /** Drop the crop. No refund, no XP, no mastery. */
 export function cancelPlot(state: Save, index: number): void {
   if (!state.plots[index]) return;

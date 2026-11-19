@@ -3,6 +3,7 @@ import {
   advanceOpenTab,
   buyAutoReplant,
   buyPlot,
+  toggleAutoReplant,
   cancelPlot,
   creditOffline,
   deserialize,
@@ -274,6 +275,26 @@ describe('farming auto-replant', () => {
     expect(advanceOpenTab(state, 500, 5_000, notes)).toBeNull();
     expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
     expect(state.plots[0]).toBeNull();
+  });
+
+  it('renders the Auto-replant switch and toggles it from the row', () => {
+    const state = farmer();
+    state.coins = 27_822;
+    expect(buyAutoReplant(state)).toBe(true);
+    const onHtml = mainHtml(state, landView(), 0);
+    expect(onHtml).toContain('<button type="button" class="row" role="switch" aria-checked="true" aria-label="Auto-replant" data-auto-replant-toggle>');
+    expect(onHtml).toContain('>Auto-replant</span><span class="tag on" aria-hidden="true">On</span>');
+    state.autoReplantOn = false;
+    const offHtml = mainHtml(state, landView(), 0);
+    expect(offHtml).toContain('aria-checked="false"');
+    expect(offHtml).toContain('aria-label="Auto-replant"');
+    expect(offHtml).toContain('<span class="tag" aria-hidden="true">Off</span>');
+    expect(offHtml).not.toContain('>On</span>');
+    expect(toggleAutoReplant(state)).toBe(true);
+    expect(state.autoReplantOn).toBe(true);
+    expect(mainHtml(state, landView(), 0)).toContain('aria-checked="true"');
+    expect(toggleAutoReplant(state)).toBe(true);
+    expect(state.autoReplantOn).toBe(false);
   });
 
   it('harvests a hand-composted flax grow, then replants without compost', () => {

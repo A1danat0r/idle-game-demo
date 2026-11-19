@@ -20,6 +20,7 @@ import {
   startGather,
   buyMarkRank,
   buyAutoReplant,
+  toggleAutoReplant,
   buyPlot,
   moveBuilding,
   placeBuilding,
@@ -391,9 +392,7 @@ app.addEventListener('click', (event) => {
     view.message = buyPlot(state) ? 'Plot bought.' : 'That plot is not available.';
   }
   if (target.hasAttribute('data-buy-auto-replant') && !target.hasAttribute('disabled')) buyAutoReplant(state);
-  if (target.hasAttribute('data-auto-replant-toggle') && state.autoReplant) {
-    state.autoReplantOn = state.autoReplantOn === false;
-  }
+  if (target.hasAttribute('data-auto-replant-toggle')) toggleAutoReplant(state);
   if (target.dataset.plantCompost != null) {
     const choice = target.dataset.plantCompost;
     view.plantCompost = choice === 'compost' || choice === 'bone' ? choice : null;

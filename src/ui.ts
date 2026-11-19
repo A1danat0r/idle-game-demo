@@ -723,7 +723,7 @@ export function clearedLandStatus(): string {
 function autoReplantRow(state: Save): string {
   if (state.autoReplant) {
     const on = state.autoReplantOn !== false;
-    return `<button type="button" class="tag${on ? ' on' : ''}" data-auto-replant-toggle aria-pressed="${on}">Auto-replant</button>`;
+    return `<button type="button" class="row" role="switch" aria-checked="${on}" aria-label="Auto-replant" data-auto-replant-toggle><span class="grow">Auto-replant</span><span class="tag${on ? ' on' : ''}" aria-hidden="true">${on ? 'On' : 'Off'}</span></button>`;
   }
   const cost = AUTO_REPLANT_COST.toLocaleString('en-US');
   const ready = state.coins + 1e-9 >= AUTO_REPLANT_COST;
@@ -731,11 +731,9 @@ function autoReplantRow(state: Save): string {
 }
 
 function landHtml(state: Save, view: View): string {
-  const owned = state.autoReplant === true;
-  const fieldsHead = owned ? `<h3>Fields ${autoReplantRow(state)}</h3>` : `<h3>Fields</h3>${autoReplantRow(state)}`;
   return `${title('Land')}
     <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
-    <div class="panel" data-land-fields>${fieldsHead}${plotListHtml(state, view, true)}</div>
+    <div class="panel" data-land-fields><h3>Fields</h3>${autoReplantRow(state)}${plotListHtml(state, view, true)}</div>
     <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml(state, view)}</div>`;
 }
 
