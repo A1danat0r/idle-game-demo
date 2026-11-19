@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { XP_CAP, XP_TABLE } from '../src/content';
 import {
   EXPEDITION_MS,
@@ -17,12 +17,13 @@ import {
   startProduce,
   advanceOpenTab,
   haulToast,
+  setExpeditionDoubleRoll,
   sell,
   type FloatNote,
   type Save,
   type StorageLike,
 } from '../src/engine';
-import { masteryThreshold } from '../src/mastery';
+import { masteryLevel, masteryThreshold } from '../src/mastery';
 import { activityHtml, backgroundStripHtml, mainHtml, reportHtml, shellHtml, type View } from '../src/ui';
 
 const QUARTER = EXPEDITION_MS[0];
@@ -34,6 +35,7 @@ const STREAM = 'activity.exploration.stream_survey';
 const RUIN = 'activity.exploration.shallow_ruin';
 const KIT = 'supply.exploration.route_kit';
 const HEMP = 'mat.binding.hemp';
+const ALUM = 'mat.mineral.alum';
 const FITTING = 'activity.exploration.fitting_appraisal';
 const BRIDGE = 'activity.exploration.bridge_approach_survey';
 
@@ -59,9 +61,9 @@ const TABLE: [string, number, string | null, number, number][] = [
   ['activity.exploration.alum_seep_recovery', QUARTER, 'mat.mineral.alum', 360, 10440],
   ['activity.exploration.alum_seep_recovery', HOUR, 'mat.mineral.alum', 1440, 41760],
   ['activity.exploration.alum_seep_recovery', EIGHT, 'mat.mineral.alum', 11520, 334080],
-  [BRIDGE, QUARTER, null, 0, 18093],
-  [BRIDGE, HOUR, null, 0, 72594],
-  [BRIDGE, EIGHT, null, 0, 581196],
+  [BRIDGE, QUARTER, ALUM, 163, 18093],
+  [BRIDGE, HOUR, ALUM, 654, 72594],
+  [BRIDGE, EIGHT, ALUM, 5236, 581196],
 ];
 
 function explorer(level: number): Save {
@@ -75,7 +77,7 @@ function explorer(level: number): Save {
   return state;
 }
 
-function view(skill: View['skill'], routeId?: string): View {
+function view(skill: View['skill'], routeId?: string, routeMs?: number): View {
   return {
     tab: 'skill',
     skill,
@@ -85,7 +87,12 @@ function view(skill: View['skill'], routeId?: string): View {
     style: null,
     message: '',
     routeId,
+    routeMs,
   };
+}
+
+function finishInPlay(state: Save, duration: number, notes?: FloatNote[]): void {
+  advanceOpenTab(state, duration, duration + 1, notes);
 }
 
 function rowHtml(html: string, title: string): string {
@@ -112,6 +119,8 @@ function memory(initial: string | null = null): StorageLike & { writes: number }
 }
 
 describe('exploration expeditions', () => {
+  afterEach(() => setExpeditionDoubleRoll(null));
+
   it('grants a 15 min stream survey the same haul online and offline', () => {
     const offline = explorer(1);
     expect(startExpedition(offline, STREAM, QUARTER, 0)).toBe(true);
@@ -138,19 +147,12 @@ describe('exploration expeditions', () => {
       if (routeId.includes('alum')) return 35;
       return 40;
     };
+    setExpeditionDoubleRoll(() => false);
     for (const [routeId, duration, itemId, qty, xp] of TABLE) {
       const state = explorer(levelFor(routeId));
       const before = state.xp.Exploration ?? 0;
       const preview = expeditionPreview(state, routeId, duration);
       const room = Math.max(0, XP_CAP - before);
-      if (routeId === BRIDGE) {
-        expect(preview.xp, routeId).toBe(0);
-        expect(preview.items.reduce((sum, item) => sum + item.qty, 0), routeId).toBe(0);
-        const hemp = state.bank[HEMP] ?? 0;
-        expect(startExpedition(state, routeId, duration, 0), routeId).toBe(false);
-        expect(state.bank[HEMP] ?? 0).toBe(hemp);
-        continue;
-      }
       expect(preview.xp, routeId).toBeCloseTo(Math.min(xp, room), 4);
       expect(preview.items.reduce((sum, item) => sum + item.qty, 0), routeId).toBe(qty);
       expect(startExpedition(state, routeId, duration, 0), routeId).toBe(true);
@@ -210,6 +212,7 @@ describe('exploration expeditions', () => {
   });
 
   it('credits 24h of pine and finishes an 8h stream in one save write', () => {
+    setExpeditionDoubleRoll(() => false);
     const state = explorer(1);
     startGather(state, 'mat.wood.pine');
     startExpedition(state, STREAM, EIGHT, 0);
@@ -271,15 +274,15 @@ describe('exploration expeditions', () => {
     expect(bridge).toContain('disabled');
     expect(bridge).toContain('Hemp string');
     state.bank[HEMP] = 2;
-    expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(false);
-    expect(state.bank[HEMP]).toBe(2);
     const ready = mainHtml(state, view('Exploration'), 0);
-    const blocked = rowHtml(ready, 'Bridge approach survey');
-    expect(blocked).toContain('Haul no items');
-    expect(blocked).not.toContain('0 XP');
-    expect(blocked).toContain('Exploration is maxed');
-    expect(blocked).toContain('disabled');
-    expect(blocked).not.toContain('data-pack=');
+    const open = rowHtml(ready, 'Bridge approach survey');
+    expect(open).toContain('Haul 163 Alum');
+    expect(open).not.toContain('0 XP');
+    expect(open).not.toContain('Haul no items');
+    expect(open).not.toContain('Exploration is maxed');
+    expect(open).toContain(`data-pack="${BRIDGE}"`);
+    expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(true);
+    expect(state.bank[HEMP] ?? 0).toBe(0);
   });
 
   it('stops an old selected stream survey after the legacy catch-up and keeps its agate', () => {
@@ -532,6 +535,336 @@ describe('exploration expeditions', () => {
     state.bank['mat.mineral.alum'] = 1;
     state.coins = 0;
     expect(sell(state, 'mat.mineral.alum', 1)).toBe(true);
-    expect(state.coins).toBeCloseTo(1.05, 5);
+    expect(state.coins).toBeCloseTo(12 * 1.05, 5);
+  });
+});
+
+describe('bridge approach pays alum', () => {
+  afterEach(() => setExpeditionDoubleRoll(null));
+
+  function capped(): Save {
+    const state = explorer(40);
+    state.bank[HEMP] = 2;
+    state.mastery[BRIDGE] = 0;
+    return state;
+  }
+
+  function sellAlum(state: Save): number {
+    const qty = state.bank[ALUM] ?? 0;
+    state.coins = 0;
+    expect(sell(state, ALUM, qty)).toBe(true);
+    return state.coins;
+  }
+
+  it('A-T1 packs 15 min for 163 alum and no XP', () => {
+    const state = capped();
+    const html = mainHtml(state, view('Exploration', BRIDGE, QUARTER), 0);
+    expect(rowHtml(html, 'Bridge approach survey')).toContain('Haul 163 Alum');
+    for (const seed of [0, 1, 99]) {
+      const trip = capped();
+      trip.rngState = seed;
+      expect(startExpedition(trip, BRIDGE, QUARTER, 0)).toBe(true);
+      expect(trip.bank[HEMP] ?? 0).toBe(0);
+      const notes: FloatNote[] = [];
+      finishInPlay(trip, QUARTER, notes);
+      expect(trip.bank[ALUM]).toBe(163);
+      expect(trip.xp.Exploration).toBe(XP_CAP);
+      expect(trip.mastery[BRIDGE]).toBe(8965);
+      expect(masteryLevel(trip.mastery[BRIDGE])).toBe(11);
+      expect(notes).toContainEqual({ kind: 'toast', text: 'Bridge approach survey is back: Alum ×163' });
+      expect(sellAlum(trip)).toBe(1956);
+    }
+    expect(state.bank[HEMP]).toBe(2);
+  });
+
+  it('A-T2 packs 1 h for 654 alum', () => {
+    const state = capped();
+    const html = mainHtml(state, view('Exploration', BRIDGE, HOUR), 0);
+    expect(rowHtml(html, 'Bridge approach survey')).toContain('Haul 654 Alum');
+    expect(startExpedition(state, BRIDGE, HOUR, 0)).toBe(true);
+    finishInPlay(state, HOUR);
+    expect(state.bank[ALUM]).toBe(654);
+    expect(state.xp.Exploration).toBe(XP_CAP);
+    expect(state.mastery[BRIDGE]).toBe(35970);
+    expect(masteryLevel(state.mastery[BRIDGE])).toBe(22);
+    expect(sellAlum(state)).toBe(7848);
+  });
+
+  it('A-T3 packs 8 h, crosses mastery 40 on tick 2074, and doubles only after that', () => {
+    setExpeditionDoubleRoll(() => false);
+    const state = capped();
+    const html = mainHtml(state, view('Exploration', BRIDGE, EIGHT), 0);
+    expect(rowHtml(html, 'Bridge approach survey')).toContain('Haul 5,236 Alum');
+    expect(startExpedition(state, BRIDGE, EIGHT, 0)).toBe(true);
+    finishInPlay(state, EIGHT);
+    expect(state.bank[ALUM]).toBe(5236);
+    expect(state.xp.Exploration).toBe(XP_CAP);
+    expect(state.mastery[BRIDGE]).toBe(287980);
+    expect(masteryLevel(state.mastery[BRIDGE])).toBe(40);
+    expect(sellAlum(state)).toBe(62832);
+
+    const tick = 5500;
+    const before = capped();
+    expect(startExpedition(before, BRIDGE, EIGHT, 0)).toBe(true);
+    creditOffline(before, 2073 * tick);
+    expect(returnExpedition(before)).toBe(true);
+    expect(masteryLevel(before.mastery[BRIDGE] ?? 0)).toBe(39);
+    expect(before.mastery[BRIDGE]).toBe(114015);
+
+    const crossed = capped();
+    expect(startExpedition(crossed, BRIDGE, EIGHT, 0)).toBe(true);
+    creditOffline(crossed, 2074 * tick);
+    expect(returnExpedition(crossed)).toBe(true);
+    expect(masteryLevel(crossed.mastery[BRIDGE] ?? 0)).toBe(40);
+    expect(crossed.bank[ALUM]).toBe(2074);
+
+    setExpeditionDoubleRoll(() => true);
+    const always = capped();
+    expect(startExpedition(always, BRIDGE, EIGHT, 0)).toBe(true);
+    const alwaysNotes: FloatNote[] = [];
+    finishInPlay(always, EIGHT, alwaysNotes);
+    expect(always.bank[ALUM]).toBe(8398);
+    expect(alwaysNotes).toContainEqual({ kind: 'toast', text: 'Bridge approach survey is back: Alum ×8,398' });
+    const caught = capped();
+    expect(startExpedition(caught, BRIDGE, EIGHT, 0)).toBe(true);
+    expect(creditOffline(caught, EIGHT).expeditionLine).toBe(
+      'Expedition: Bridge approach survey, 5,236 ticks, Alum ×8,398 — finished',
+    );
+
+    setExpeditionDoubleRoll(null);
+    const seeded = capped();
+    seeded.rngState = 1;
+    expect(startExpedition(seeded, BRIDGE, EIGHT, 0)).toBe(true);
+    finishInPlay(seeded, EIGHT);
+    const alum = seeded.bank[ALUM] ?? 0;
+    expect(alum).toBeGreaterThanOrEqual(5236);
+    expect(alum).toBeLessThanOrEqual(8398);
+  });
+
+  it('A-T3b rolls every tick when Bridge mastery is already 40', () => {
+    const state = capped();
+    state.mastery[BRIDGE] = masteryThreshold(40);
+    expect(rowHtml(mainHtml(state, view('Exploration', BRIDGE, QUARTER), 0), 'Bridge approach survey')).toContain('Haul 172 Alum');
+    expect(rowHtml(mainHtml(state, view('Exploration', BRIDGE, HOUR), 0), 'Bridge approach survey')).toContain('Haul 688 Alum');
+    expect(rowHtml(mainHtml(state, view('Exploration', BRIDGE, EIGHT), 0), 'Bridge approach survey')).toContain('Haul 5,511 Alum');
+
+    const base = [172, 688, 5511];
+    const doubled = [344, 1376, 11022];
+    setExpeditionDoubleRoll(() => false);
+    [QUARTER, HOUR, EIGHT].forEach((duration, index) => {
+      const trip = capped();
+      trip.mastery[BRIDGE] = masteryThreshold(40);
+      expect(expeditionPreview(trip, BRIDGE, duration).items[0]).toEqual({ id: ALUM, qty: base[index] });
+      expect(startExpedition(trip, BRIDGE, duration, 0)).toBe(true);
+      finishInPlay(trip, duration);
+      expect(trip.bank[ALUM]).toBe(base[index]);
+      expect(trip.xp.Exploration).toBe(XP_CAP);
+    });
+
+    setExpeditionDoubleRoll(() => true);
+    [QUARTER, HOUR, EIGHT].forEach((duration, index) => {
+      const trip = capped();
+      trip.mastery[BRIDGE] = masteryThreshold(40);
+      expect(startExpedition(trip, BRIDGE, duration, 0)).toBe(true);
+      const notes: FloatNote[] = [];
+      finishInPlay(trip, duration, notes);
+      expect(trip.bank[ALUM]).toBe(doubled[index]);
+      expect(notes).toContainEqual({
+        kind: 'toast',
+        text: `Bridge approach survey is back: Alum ×${doubled[index].toLocaleString('en-US')}`,
+      });
+    });
+
+    setExpeditionDoubleRoll(null);
+    [QUARTER, HOUR, EIGHT].forEach((duration, index) => {
+      const trip = capped();
+      trip.mastery[BRIDGE] = masteryThreshold(40);
+      trip.rngState = 1;
+      expect(startExpedition(trip, BRIDGE, duration, 0)).toBe(true);
+      finishInPlay(trip, duration);
+      const alum = trip.bank[ALUM] ?? 0;
+      expect(alum).toBeGreaterThanOrEqual(base[index]);
+      expect(alum).toBeLessThanOrEqual(doubled[index]);
+    });
+  });
+
+  it('A-T4 shortens the tick when mastery 20 is already reached', () => {
+    setExpeditionDoubleRoll(() => false);
+    const state = capped();
+    state.mastery[BRIDGE] = masteryThreshold(20);
+    expect(expeditionPreview(state, BRIDGE, QUARTER).items[0]).toEqual({ id: ALUM, qty: 172 });
+    expect(expeditionPreview(state, BRIDGE, HOUR).items[0]).toEqual({ id: ALUM, qty: 688 });
+    expect(expeditionPreview(state, BRIDGE, EIGHT).items[0]).toEqual({ id: ALUM, qty: 5511 });
+    expect(startExpedition(state, BRIDGE, EIGHT, 0)).toBe(true);
+    finishInPlay(state, EIGHT);
+    expect(state.bank[ALUM]).toBe(5511);
+  });
+
+  it('A-T5 returns a 10 minute bridge haul without refunding the hemp', () => {
+    setExpeditionDoubleRoll(() => false);
+    const state = capped();
+    expect(startExpedition(state, BRIDGE, HOUR, 0)).toBe(true);
+    creditOffline(state, 10 * 60 * 1000);
+    expect(state.bank[ALUM] ?? 0).toBe(0);
+    expect(state.bank[HEMP] ?? 0).toBe(0);
+    const notes: FloatNote[] = [];
+    expect(returnExpedition(state, notes)).toBe(true);
+    expect(state.bank[ALUM]).toBe(109);
+    expect(state.mastery[BRIDGE]).toBe(5995);
+    expect(state.xp.Exploration).toBe(XP_CAP);
+    expect(state.expedition).toBeNull();
+    expect(state.bank[HEMP] ?? 0).toBe(0);
+    expect(notes).toContainEqual({ kind: 'toast', text: 'Bridge approach survey is back: Alum ×109' });
+    expect(sellAlum(state)).toBe(1308);
+
+    setExpeditionDoubleRoll(() => false);
+    const mastered = capped();
+    mastered.mastery[BRIDGE] = masteryThreshold(40);
+    const before = mastered.mastery[BRIDGE];
+    expect(startExpedition(mastered, BRIDGE, HOUR, 0)).toBe(true);
+    creditOffline(mastered, 10 * 60 * 1000);
+    expect(returnExpedition(mastered)).toBe(true);
+    expect(mastered.bank[ALUM]).toBe(114);
+    expect(mastered.mastery[BRIDGE]! - before).toBe(114 * 55);
+
+    setExpeditionDoubleRoll(() => true);
+    const doubled = capped();
+    doubled.mastery[BRIDGE] = masteryThreshold(40);
+    expect(startExpedition(doubled, BRIDGE, HOUR, 0)).toBe(true);
+    creditOffline(doubled, 10 * 60 * 1000);
+    expect(returnExpedition(doubled)).toBe(true);
+    expect(doubled.bank[ALUM]).toBe(228);
+  });
+
+  it('A-T6 keeps Pack closed without two hemp string or while a trip is out', () => {
+    const short = capped();
+    short.bank[HEMP] = 1;
+    expect(startExpedition(short, BRIDGE, QUARTER, 0)).toBe(false);
+    expect(short.bank[HEMP]).toBe(1);
+    expect(rowHtml(mainHtml(short, view('Exploration'), 0), 'Bridge approach survey')).toContain('disabled');
+
+    const empty = capped();
+    empty.bank[HEMP] = 0;
+    expect(startExpedition(empty, BRIDGE, QUARTER, 0)).toBe(false);
+    expect(empty.bank[HEMP] ?? 0).toBe(0);
+    expect(rowHtml(mainHtml(empty, view('Exploration'), 0), 'Bridge approach survey')).toContain('disabled');
+
+    const busy = capped();
+    expect(startExpedition(busy, STREAM, QUARTER, 0)).toBe(true);
+    const hemp = busy.bank[HEMP] ?? 0;
+    expect(startExpedition(busy, BRIDGE, QUARTER, 0)).toBe(false);
+    expect(busy.bank[HEMP] ?? 0).toBe(hemp);
+    const row = rowHtml(mainHtml(busy, view('Exploration'), 0), 'Bridge approach survey');
+    expect(row).toContain('disabled');
+    expect(row).not.toContain('data-pack=');
+
+    const ready = capped();
+    const open = rowHtml(mainHtml(ready, view('Exploration'), 0), 'Bridge approach survey');
+    expect(open).toContain(`data-pack="${BRIDGE}"`);
+    expect(open).not.toContain('disabled');
+  });
+
+  it('A-T7 reports an 8 h bridge catch-up beside 24 h of pine', () => {
+    setExpeditionDoubleRoll(() => false);
+    const state = capped();
+    startGather(state, 'mat.wood.pine');
+    expect(startExpedition(state, BRIDGE, EIGHT, 0)).toBe(true);
+    const away = 30 * 60 * 60 * 1000;
+    const pine = explorer(40);
+    startGather(pine, 'mat.wood.pine');
+    const pineReport = creditOffline(pine, away);
+    const report = creditOffline(state, away);
+    expect(report.expeditionLine).toBe('Expedition: Bridge approach survey, 5,236 ticks, Alum ×5,236 — finished');
+    const html = reportHtml(report);
+    expect(html).toContain('Bridge approach survey 1 → 40');
+    const levels = html.slice(html.indexOf('<dt>Levels</dt>'), html.indexOf('<dt>Gained</dt>'));
+    expect(levels).toBe('<dt>Levels</dt><dd>Woodcutting 1→40</dd>\n      ');
+    expect(levels).not.toContain('Exploration');
+    expect(report.actions).toBe(pineReport.actions + 1);
+    expect(state.bank[ALUM]).toBe(5236);
+    expect(state.xp.Exploration).toBe(XP_CAP);
+  });
+
+  it('A-T8 keeps Bridge locked below level 40 and leaves Stream survey packable', () => {
+    for (const level of [39, 38]) {
+      const state = explorer(level);
+      const hemp = state.bank[HEMP] ?? 0;
+      const html = mainHtml(state, view('Exploration'), 0);
+      const row = rowHtml(html, 'Bridge approach survey');
+      expect(row).toContain('aria-label="Locked"');
+      expect(row).toContain('Lv 40');
+      expect(row).not.toContain('Pack and go');
+      expect(row).not.toContain('data-pack=');
+      expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(false);
+      expect(state.bank[HEMP] ?? 0).toBe(hemp);
+      expect(startExpedition(state, STREAM, QUARTER, 0)).toBe(true);
+    }
+    const at39 = explorer(39);
+    expect(rowHtml(mainHtml(at39, view('Exploration'), 0), 'Bridge approach survey')).toContain('Haul 163 Alum · 15,788 XP');
+    const at38 = explorer(38);
+    expect(rowHtml(mainHtml(at38, view('Exploration'), 0), 'Bridge approach survey')).toContain('Haul 163 Alum · 18,093 XP');
+  });
+
+  it('A-T9 probes the haul below the cap without opening the route', () => {
+    const cases = [
+      { xp: 204446, pays: [15788, 15788, 15788], lost: [2305, 56806, 565408], uncapped: [18093, 72594, 581196] },
+      { xp: 189713, pays: [18093, 30521, 30521], lost: [0, 42073, 550675], uncapped: [18093, 72594, 581196] },
+    ];
+    for (const row of cases) {
+      const state = explorer(1);
+      state.xp.Exploration = row.xp;
+      const hemp = state.bank[HEMP] ?? 0;
+      expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(false);
+      expect(state.bank[HEMP] ?? 0).toBe(hemp);
+      [QUARTER, HOUR, EIGHT].forEach((duration, index) => {
+        const preview = expeditionPreview(state, BRIDGE, duration);
+        expect(preview.items).toEqual([{ id: ALUM, qty: [163, 654, 5236][index] }]);
+        expect(preview.xp).toBe(row.pays[index]);
+        expect(row.uncapped[index] - preview.xp).toBe(row.lost[index]);
+        expect(row.xp + preview.xp).toBeLessThanOrEqual(XP_CAP);
+      });
+    }
+  });
+
+  it('E-B1 grants alum to a bridge trip that was already out', () => {
+    setExpeditionDoubleRoll(() => false);
+    const state = capped();
+    delete state.bank[HEMP];
+    state.expedition = { routeId: BRIDGE, startedAt: 0, durationMs: QUARTER, creditedMs: 0 };
+    const raw = JSON.parse(serialize(state)) as Record<string, unknown>;
+    expect(raw.saveFormat).toBe(4);
+    expect(raw.autoReplant).toBeUndefined();
+    expect(Object.keys(raw.expedition as object).sort()).toEqual(['creditedMs', 'durationMs', 'routeId', 'startedAt']);
+    const loaded = deserialize(JSON.stringify(raw))!;
+    const report = creditOffline(loaded, QUARTER);
+    expect(report.expeditionLine).toBe('Expedition: Bridge approach survey, 163 ticks, Alum ×163 — finished');
+    expect(loaded.bank[ALUM]).toBe(163);
+    expect(loaded.xp.Exploration).toBe(XP_CAP);
+    expect(loaded.saveFormat).toBe(4);
+
+    const partial = deserialize(JSON.stringify(raw))!;
+    partial.expedition!.creditedMs = 10 * 60 * 1000;
+    const notes: FloatNote[] = [];
+    expect(returnExpedition(partial, notes)).toBe(true);
+    expect(partial.bank[ALUM]).toBe(109);
+    expect(notes).toContainEqual({ kind: 'toast', text: 'Bridge approach survey is back: Alum ×109' });
+
+    setExpeditionDoubleRoll(null);
+    const live = deserialize(JSON.stringify(raw))!;
+    live.rngState = 1;
+    live.expedition = { routeId: BRIDGE, startedAt: 0, durationMs: EIGHT, creditedMs: 0 };
+    creditOffline(live, EIGHT);
+    const alum = live.bank[ALUM] ?? 0;
+    expect(alum).toBeGreaterThanOrEqual(5236);
+    expect(alum).toBeLessThanOrEqual(8398);
+  });
+
+  it('A-T10 still previews a capped stream survey without an XP clause', () => {
+    const state = explorer(1);
+    state.xp.Exploration = XP_CAP;
+    const row = rowHtml(mainHtml(state, view('Exploration'), 0), 'Stream survey');
+    expect(row).toContain('Haul 272 Weathered agate');
+    expect(row).not.toContain('XP');
+    expect(row).toContain(`data-pack="${STREAM}"`);
   });
 });

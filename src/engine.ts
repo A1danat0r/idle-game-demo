@@ -369,6 +369,18 @@ function doubledOutput(state: Save, actionId: string): boolean {
   return nextUnit(state) < 0.05;
 }
 
+/** Test seam for an expedition's Lv 40 roll. Null uses the live 5% roll. */
+let expeditionDoubleRoll: ((state: Save) => boolean) | null = null;
+
+export function setExpeditionDoubleRoll(roll: ((state: Save) => boolean) | null): void {
+  expeditionDoubleRoll = roll;
+}
+
+function expeditionDoubled(state: Save): boolean {
+  if (expeditionDoubleRoll) return expeditionDoubleRoll(state);
+  return nextUnit(state) < 0.05;
+}
+
 function roundXp(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -1433,10 +1445,9 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
   const items: Record<string, number> = {};
   const outputs = route?.outputs ?? [];
   const mxpEach = actionMasteryXp(route?.seconds ?? 0);
-  const canDouble = masteryLevel(state.mastery[routeId] ?? 0) >= 40;
   let xp = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
-    const doubled = canDouble && outputs.length > 0 && doubledOutput(state, routeId);
+    const doubled = outputs.length > 0 && masteryLevel(state.mastery[routeId] ?? 0) >= 40 && expeditionDoubled(state);
     for (const output of outputs) {
       const qty = output.qty * (doubled ? 2 : 1);
       giveItem(state, output.id, qty, sink);
