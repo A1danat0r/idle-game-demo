@@ -18,6 +18,7 @@ import {
   startCombat,
   startForage,
   startGather,
+  buyMarkRank,
   buyPlot,
   moveBuilding,
   placeBuilding,
@@ -296,7 +297,8 @@ function patchLive(): void {
     const index = Number(el.dataset.plotLeft);
     const plot = state.plots[index];
     if (!plot) return;
-    el.textContent = plot.ready || plot.remainingMs <= 0 ? 'Ready' : plotCountdown(plot.remainingMs);
+    const factor = 1 - 0.01 * (state.markRanks?.['road.grow'] ?? 0);
+    el.textContent = plot.ready || plot.remainingMs <= 0 ? 'Ready' : plotCountdown(plot.remainingMs * factor);
   });
 }
 
@@ -324,7 +326,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-buy-rank], [data-mark], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   const openTop = target.dataset.tab === 'skill' || !!target.dataset.openSkill;
   if (target.dataset.tab === 'skill') openActivityTab();
@@ -354,7 +356,11 @@ app.addEventListener('click', (event) => {
     view.message = '';
   }
   if (target.dataset.recipe && !target.hasAttribute('disabled')) {
+    if (target.dataset.mark) view.markId = target.dataset.mark;
     view.message = startProduce(state, target.dataset.recipe) ? '' : 'Missing inputs.';
+  }
+  if (target.dataset.buyRank) {
+    view.message = buyMarkRank(state, target.dataset.buyRank) ? 'Rank bought.' : 'That rank cannot be bought.';
   }
   if (target.dataset.cancelPlot != null) cancelPlot(state, Number(target.dataset.cancelPlot));
   if (target.hasAttribute('data-open-land')) {

@@ -440,7 +440,11 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.ammo.thrown.iron_javelin', 'Smithing', 24, 4.8, 56, [{ id: 'mat.bar.iron', qty: 1 }, { id: 'mat.wood.oak', qty: 1 }], [{ id: 'ammo.thrown.iron_javelin', qty: 5 }]),
   recipe('recipe.farm.compost', 'Farming', 1, 3.9, 63, [{ id: 'mat.herb.meadow', qty: 2 }], [{ id: 'mat.farm.compost', qty: 1 }]),
   recipe('recipe.farm.bone_compost', 'Farming', 10, 4.4, 71, [{ id: 'mat.bone.ordinary', qty: 1 }, { id: 'mat.farm.compost', qty: 1 }], [{ id: 'mat.farm.bone_compost', qty: 1 }]),
-  ...SLICE_RECIPES.map((row): RecipeDef => ({
+  recipe('recipe.mark.grove', 'Enchanting', 1, 2.5, 13, [{ id: 'mat.enchant.agate_dust', qty: 1 }], []),
+  recipe('recipe.mark.hearth', 'Enchanting', 10, 3.0, 16, [{ id: 'reagent.enchant.binding', qty: 1 }], []),
+  recipe('recipe.mark.hunt', 'Enchanting', 20, 3.5, 27, [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.binding.flax', qty: 1 }], []),
+  recipe('recipe.mark.road', 'Enchanting', 30, 3.8, 29, [{ id: 'mat.enchant.agate_dust', qty: 1 }, { id: 'mat.relic.weathered_slate', qty: 1 }], []),
+  ...SLICE_RECIPES.filter((row) => !row.id.startsWith('recipe.seal.enchant.')).map((row): RecipeDef => ({
     id: row.id,
     skill: row.skill as RecipeDef['skill'],
     level: row.level,
@@ -452,7 +456,7 @@ export const RECIPES: RecipeDef[] = [
     rebuildFee: row.rebuildFee,
     locked: row.id === 'activity.exploration.fitting_appraisal' ? 'Needs trout-and-mushroom meal (coming later)' : undefined,
   })),
-  ...CAP40_RECIPES.map((row): RecipeDef => ({
+  ...CAP40_RECIPES.filter((row) => !row.id.startsWith('recipe.seal.enchant.')).map((row): RecipeDef => ({
     id: row.id,
     skill: row.skill as RecipeDef['skill'],
     level: row.level,
@@ -1026,6 +1030,10 @@ const ACTION_NAMES: Record<string, string> = {
   'recipe.tool.fishing.reed_eel_trap.willow_frame_route': 'Reed eel trap (willow frame)',
   'recipe.supply.paste.shellguard.beeswax_route': 'Shellguard paste (beeswax)',
   'recipe.mat.tanning.bark_liquor.alum_route': 'Bark tanning liquor (alum)',
+  'recipe.mark.grove': 'Grove',
+  'recipe.mark.hearth': 'Hearth',
+  'recipe.mark.hunt': 'Hunt',
+  'recipe.mark.road': 'Road',
 };
 
 /** The name shown on a recipe row and in the activity bar. */

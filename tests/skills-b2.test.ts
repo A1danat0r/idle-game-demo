@@ -29,15 +29,15 @@ function farmer() {
 }
 
 describe('B2 production, farming, and combat styles', () => {
-  it('ships 151 actions through level 30 once compost and bone compost are counted', () => {
-    // 149 before these two Farming actions. Compost and bone compost bring the count to 151.
+  it('ships 150 actions through level 30 after the seals leave and the marks are added', () => {
+    // PR #31 counts 151. This branch drops the shipped seals and adds the four marks, and the level-30 total is 150.
     const nodes = NODES.filter((node) => (node.skill === 'Foraging' || node.skill === 'Exploration') && node.level <= 30);
     const recipes = RECIPES.filter((recipe) =>
       ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill) && recipe.level <= 30,
     );
     expect(nodes).toHaveLength(18);
-    expect(recipes).toHaveLength(133);
-    expect(nodes.length + recipes.length).toBe(151);
+    expect(recipes).toHaveLength(132);
+    expect(nodes.length + recipes.length).toBe(150);
     expect(ENEMIES).toHaveLength(11);
   });
 

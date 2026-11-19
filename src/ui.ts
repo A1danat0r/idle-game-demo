@@ -79,6 +79,7 @@ import { icon } from './icons';
 import {
   activityNextLine,
   activityTrack,
+  enchantingNextLine,
   explorationNextLine,
   combatNextLine,
   combatSheetLines,
@@ -98,6 +99,7 @@ import {
   isPlotCrop,
 } from './plots';
 import { YARD_BUILDINGS, YARD_NAMES, YARD_TILES, openYardTiles, yardBonus, yardTileLevel } from './yard';
+import { MARKS, MARK_TEXT, markRecipeId, modifiersFor, rankCost } from './marks';
 import { deriveProfileStats, formatPlayed, formatSavedAt } from './profile';
 import {
   actionXpMultiplier,
@@ -138,6 +140,8 @@ export interface View {
   land?: boolean;
   /** Compost applied to the next planting. Not saved. */
   plantCompost?: 'compost' | 'bone' | null;
+  /** Enchanting mark whose mastery the Next row follows. Not saved. */
+  markId?: string | null;
   /** Selected yard tile. Not saved. */
   yardTile?: number | null;
   /** Stored building waiting for an empty tile. Not saved. */
@@ -448,7 +452,7 @@ function activityDetail(state: Save): string {
 
 function shownHitChance(state: Save, enemyLevel: number): number {
   const gear = equippedGear(state.equipped, state.bank);
-  return playerHitChance(formulaLevel(state, 'Attack'), enemyLevel, gear.acc);
+  return playerHitChance(formulaLevel(state, 'Attack'), enemyLevel, gear.acc + (state.markRanks?.['hunt.acc'] ?? 0));
 }
 
 export function tabsHtml(view: View): string {
@@ -593,12 +597,20 @@ function skillHtml(state: Save, view: View): string {
       ${expeditionCard(state)}
       <div class="list">${explorationRoutes().map((route) => routeRow(state, view, route)).join('')}</div>`;
   }
+  if (skill === 'Enchanting') {
+    const selected = view.markId && MARKS.some((mark) => mark.id === view.markId) ? view.markId : MARKS[0].id;
+    return `${head}
+      ${nextRow(enchantingNextLine(state, markRecipeId(selected)))}
+      ${scene}
+      <div class="list" data-marks>${markCardsHtml(state)}</div>
+      <div class="list">${RECIPES.filter((recipe) => recipe.skill === 'Enchanting' && !recipe.id.startsWith('recipe.mark.')).map((recipe) => recipeRow(state, recipe)).join('')}</div>`;
+  }
   const rows =
     skill === 'Foraging'
       ? habitatCards(state)
       : [
           ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
-          ...RECIPES.filter((recipe) => recipe.skill === skill && !isPlotCrop(recipe.id)).map((recipe) => recipeRow(state, recipe)),
+          ...RECIPES.filter((recipe) => recipe.skill === skill && !isPlotCrop(recipe.id) && !recipe.id.startsWith('recipe.mark.')).map((recipe) => recipeRow(state, recipe)),
         ].join('');
   const landButton =
     skill === 'Farming' || skill === 'Construction'
@@ -757,7 +769,7 @@ function plotCardHtml(state: Save, view: View, index: number, compact: boolean):
   const status =
     plot.ready || plot.remainingMs <= 0
       ? 'Ready'
-      : `Growing · <span data-plot-left="${index}">${plotCountdown(plot.remainingMs)}</span>`;
+      : `Growing · <span data-plot-left="${index}">${plotCountdown(plot.remainingMs * (1 - 0.01 * (state.markRanks?.['road.grow'] ?? 0)))}</span>`;
   const mark = compact ? '' : `<div class="ico wood">${icon(ITEMS[output ?? '']?.icon ?? 'herb', 28)}</div>`;
   return `<div class="row" data-plot-card="${index}">${mark}<div class="grow"><b>Plot ${index + 1} · ${esc(name)}</b><small>${status}</small>${compost ? `<small>${compost}</small>` : ''}</div><button type="button" class="tag btn" data-cancel-plot="${index}">Cancel</button></div>`;
 }
@@ -792,6 +804,31 @@ function compostChips(state: Save, view: View): string {
   const chip = (id: string, label: string) =>
     `<button type="button" class="tag ${selected === (id || null) || (id === '' && selected == null) ? 'on' : ''}" data-plant-compost="${id}">${label}</button>`;
   return `<div class="chips">${chip('', 'None')}${haveCompost ? chip('compost', 'Compost') : ''}${haveBone ? chip('bone', 'Bone compost') : ''}</div>`;
+}
+
+function markCardsHtml(state: Save): string {
+  const level = skillLevel(state, 'Enchanting');
+  return MARKS.map((mark) => {
+    const locked = level < mark.level;
+    const studying = state.activity?.kind === 'produce' && state.activity.recipeId === markRecipeId(mark.id);
+    const glimmer = state.glimmer?.[mark.id] ?? 0;
+    const mods = modifiersFor(mark.id)
+      .map((mod) => {
+        const rank = state.markRanks?.[mod.id] ?? 0;
+        const pips = Array.from({ length: 5 }, (_, index) => `<i class="${index < rank ? 'on' : ''}"></i>`).join('');
+        const buy = locked || rank >= 5
+          ? ''
+          : `<button type="button" class="tag btn" data-buy-rank="${mod.id}">Buy rank ${rank + 1} — ${fmt(rankCost(mod.seconds, rank + 1))}</button>`;
+        return `<div class="mod"><b>${esc(mod.name)}</b><span class="pips">${pips}</span>${buy}</div>`;
+      })
+      .join('');
+    const action = locked
+      ? `<span class="tag">${lock} Lv ${mark.level}</span>`
+      : studying
+        ? `<span class="tag on">Studying</span>`
+        : `<button type="button" class="tag btn" data-recipe="${markRecipeId(mark.id)}" data-mark="${mark.id}">Study</button>`;
+    return `<div class="row" data-mark-card="${mark.id}"><div class="grow"><b>${esc(mark.name)}</b><small>${esc(MARK_TEXT.glimmer)} ${fmt(glimmer)} · ${mark.seconds}s · ${mark.xp} XP</small>${mods}</div>${action}</div>`;
+  }).join('');
 }
 
 function skillScene(skill: SkillId): string {

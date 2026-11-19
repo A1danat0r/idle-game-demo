@@ -245,6 +245,11 @@ body:has(.sheet) #floaters { display: none; }
 .tile, button.tile { min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 4px; background: #121829; border: 1px solid #353d55; border-radius: 8px; color: inherit; font: inherit; cursor: pointer; }
 .tile.on, button.tile.on { border-color: var(--gold); }
 .tile b { font-size: 10px; line-height: 1.2; }
+.pips { display: inline-flex; gap: 3px; margin-left: 6px; }
+.pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--gold-d); display: inline-block; }
+.pips i.on { background: var(--gold); }
+.mod { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.mod > .tag.btn { flex: 1 0 100%; }
 .tile small { font-size: 10px; }
 h3 .tag.btn { text-transform: none; letter-spacing: 0; font-family: system-ui, sans-serif; }
 

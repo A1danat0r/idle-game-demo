@@ -91,6 +91,15 @@ import {
   type CompostKind,
 } from './plots';
 import { YARD_BUILDINGS, YARD_NAMES, isYardBuilding, openYardTiles } from './yard';
+import {
+  MARK_BY_ID,
+  MODIFIER_BY_ID,
+  hearthAppliesToRecipe,
+  isGatheringSkill,
+  markIdFromRecipe,
+  rankCost,
+  retiredSeal,
+} from './marks';
 
 export const SAVE_FORMAT = 4;
 /** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
@@ -203,6 +212,10 @@ export interface Save {
   land: Record<string, string>;
   /** Shown once after a save is migrated onto fewer tiles than it has buildings. */
   yardNote?: string;
+  /** Glimmer held for each mark. Missing keys are zero. */
+  glimmer: Record<string, number>;
+  /** Rank of each mark modifier, 0–5. Missing keys are zero. */
+  markRanks: Record<string, number>;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
   savedAt?: number;
 }
@@ -330,8 +343,16 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     plotsBought: 0,
     expedition: null,
     land: {},
+    glimmer: {},
+    markRanks: {},
   };
   return state;
+}
+
+function markRank(state: Save, modifierId: string): number {
+  const rank = state.markRanks?.[modifierId] ?? 0;
+  if (!Number.isFinite(rank)) return 0;
+  return Math.max(0, Math.min(5, Math.floor(rank)));
 }
 
 export function skillLevel(state: Save, skill: SkillId): number {
@@ -380,11 +401,29 @@ export function actionSeconds(state: Save, id: string): number {
         ? toolTier(state, node.skill)
         : 0;
     const factor = TOOL_TIME_FACTOR ** (tier + buildingSteps(state, node.skill));
-    return node.seconds * factor * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
+    const speed = 1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed;
+    const grove = isGatheringSkill(node.skill) ? 1 - 0.01 * markRank(state, 'grove.time') : 1;
+    return node.seconds * factor * speed * grove;
+  }
+  const retired = retiredSeal(id);
+  if (retired) {
+    const speed = 1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed;
+    return retired.seconds * speed;
   }
   const recipe = RECIPE_BY_ID[id];
   if (!recipe) return 0;
-  return recipe.seconds * TOOL_TIME_FACTOR ** buildingSteps(state, recipe.skill) * (1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed);
+  const speed = 1 - masteryPerks(masteryLevel(state.mastery[id] ?? 0)).speed;
+  const hearth = hearthAppliesToRecipe(recipe) ? 1 - 0.01 * markRank(state, 'hearth.time') : 1;
+  return recipe.seconds * TOOL_TIME_FACTOR ** buildingSteps(state, recipe.skill) * speed * hearth;
+}
+
+export function markedGear(state: Save): { acc: number; pow: number; grd: number } {
+  const gear = equippedGear(state.equipped, state.bank);
+  return {
+    acc: gear.acc + markRank(state, 'hunt.acc'),
+    pow: gear.pow + markRank(state, 'hunt.pow'),
+    grd: gear.grd + markRank(state, 'hunt.grd'),
+  };
 }
 
 function buildingSteps(state: Save, skill: string): number {
@@ -485,7 +524,7 @@ function takeItem(state: Save, id: string, qty: number, sink?: Sink): boolean {
 }
 
 export function hasInputs(state: Save, recipeId: string): boolean {
-  const recipe = RECIPE_BY_ID[recipeId];
+  const recipe = RECIPE_BY_ID[recipeId] ?? retiredSeal(recipeId);
   if (!recipe) return false;
   return recipe.inputs.every((input) => (state.bank[input.id] ?? 0) >= input.qty);
 }
@@ -564,7 +603,9 @@ export function activityLabel(state: Save): string {
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPE_BY_ID[activity.recipeId];
-    return `${recipe.skill} · ${actionTitle(recipe)}`;
+    if (recipe) return `${recipe.skill} · ${actionTitle(recipe)}`;
+    if (retiredSeal(activity.recipeId)) return 'Enchanting · retired seal';
+    return 'Idle';
   }
   const enemy = ENEMY_BY_ID[activity.enemyId];
   return `Combat · ${enemy.name}`;
@@ -734,7 +775,7 @@ function spawnEnemy(state: Save): void {
   if (!activity || activity.kind !== 'combat') return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   const strength = formulaLevel(state, 'Strength');
-  const hits = hitsPerKill(strength, enemy.level, equippedGear(state.equipped, state.bank).pow);
+  const hits = hitsPerKill(strength, enemy.level, markedGear(state).pow);
   state.combat = {
     phase: 'fight',
     hitsPerKill: hits,
@@ -822,7 +863,9 @@ export function sell(state: Save, itemId: string, qty: number): boolean {
   const def = ITEMS[itemId];
   if (!def) return false;
   if (!takeItem(state, itemId, qty)) return false;
-  const price = def.sell * sellMultiplier(state.mastery, itemId) * qty;
+  const gathered = isGatheringSkill(NODE_BY_ID[itemId]?.skill ?? '');
+  const groveSell = gathered ? 1 + 0.01 * markRank(state, 'grove.sell') : 1;
+  const price = def.sell * sellMultiplier(state.mastery, itemId) * groveSell * qty;
   state.coins = roundXp(state.coins + price);
   state.stats.coinsFromSales = roundXp(state.stats.coinsFromSales + price);
   noteEarned(state, price);
@@ -957,7 +1000,7 @@ function enemyAttack(state: Save, sink?: Sink, notes?: FloatNote[]): void {
   if (!activity || activity.kind !== 'combat' || !combat) return;
   const enemy = ENEMY_BY_ID[activity.enemyId];
   combat.enemyAttacks += 1;
-  const chance = hitChance(enemy.level, formulaLevel(state, 'Defence'), equippedGear(state.equipped, state.bank).grd);
+  const chance = hitChance(enemy.level, formulaLevel(state, 'Defence'), markedGear(state).grd);
   if (nextUnit(state) >= chance) {
     notes?.push({ kind: 'miss', side: 'enemy' });
     return;
@@ -1034,7 +1077,7 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   combat.swings += 1;
   state.stats.playerSwings += 1;
   const attackLevel = formulaLevel(state, 'Attack');
-  const chance = playerHitChance(attackLevel, enemy.level, equippedGear(state.equipped, state.bank).acc);
+  const chance = playerHitChance(attackLevel, enemy.level, markedGear(state).acc);
   if (nextUnit(state) >= chance) {
     state.stats.playerMisses += 1;
     opts.notes?.push({ kind: 'miss', side: 'player' });
@@ -1113,33 +1156,49 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     return;
   }
   if (activity.kind === 'produce') {
+    const retired = retiredSeal(activity.recipeId);
     const recipe = RECIPE_BY_ID[activity.recipeId];
-    if (!hasInputs(state, recipe.id)) {
+    const active = recipe ?? retired;
+    if (!active || !hasInputs(state, active.id)) {
       state.activity = null;
       state.progressMs = 0;
       if (sink) sink.stopped = 'inputs';
       return;
     }
-    for (const input of recipe.inputs) takeItem(state, input.id, input.qty, sink);
-    const doubled = doubledOutput(state, recipe.id);
-    for (const made of recipe.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
-    const rebuilding = recipe.oneTime && structureKnown(state, recipe.id);
-    if (recipe.oneTime) {
+    const keepInputs =
+      !!recipe &&
+      hearthAppliesToRecipe(recipe) &&
+      markRank(state, 'hearth.free') > 0 &&
+      nextUnit(state) < markRank(state, 'hearth.free') / 100;
+    if (!keepInputs) {
+      for (const input of active.inputs) takeItem(state, input.id, input.qty, sink);
+    }
+    const doubled = doubledOutput(state, active.id);
+    for (const made of active.outputs) giveItem(state, made.id, made.qty * (doubled ? 2 : 1), sink);
+    const rebuilding = !!recipe?.oneTime && structureKnown(state, recipe.id);
+    if (recipe?.oneTime) {
       state.buildingsEver[recipe.id] = true;
       state.buildings[recipe.id] = true;
     }
+    const skill = recipe?.skill ?? 'Enchanting';
+    const xpFactor = recipe && hearthAppliesToRecipe(recipe) ? 1 + 0.01 * markRank(state, 'hearth.xp') : 1;
     const gained = rebuilding
       ? 0
-      : addXp(state, recipe.skill, recipe.xp * actionXpMultiplier(state.mastery, recipe.id, recipe.skill));
-    grantActionMastery(state, recipe.id, recipe.skill, recipe.seconds, opts);
-    const made = recipe.outputs[0];
-    if (made) {
+      : addXp(state, skill, active.xp * actionXpMultiplier(state.mastery, active.id, skill) * xpFactor);
+    grantActionMastery(state, active.id, skill, active.seconds, opts);
+    const markId = recipe ? markIdFromRecipe(recipe.id) : null;
+    if (markId) {
+      if (!state.glimmer) state.glimmer = {};
+      state.glimmer[markId] = (state.glimmer[markId] ?? 0) + 1;
+    }
+    const made = active.outputs[0];
+    if (made && recipe) {
       opts.notes?.push({ kind: 'action', skill: recipe.skill, xp: gained, itemId: made.id, qty: made.qty * (doubled ? 2 : 1) });
     }
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
     state.progressMs = 0;
-    if (recipe.oneTime) state.activity = null;
+    if (recipe?.oneTime) state.activity = null;
     return;
   }
   const combat = state.combat;
@@ -1427,7 +1486,7 @@ function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[]):
   } else {
     const doubled = doubledOutput(state, recipe.id);
     for (const made of recipe.outputs) {
-      const qty = harvestProduce(made.qty, plot.compost) * (doubled ? 2 : 1);
+      const qty = Math.round(harvestProduce(made.qty, plot.compost) * (1 + 0.01 * markRank(state, 'road.yield'))) * (doubled ? 2 : 1);
       giveItem(state, made.id, qty, sink);
       qtyTotal += qty;
       itemId = made.id;
@@ -1447,7 +1506,10 @@ function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[]): void
   for (let index = 0; index < state.plots.length; index += 1) {
     const plot = state.plots[index];
     if (!plot) continue;
-    if (!plot.ready && ms > 0) plot.remainingMs -= ms;
+    if (!plot.ready && ms > 0) {
+      const factor = 1 - 0.01 * markRank(state, 'road.grow');
+      plot.remainingMs -= factor > 0 ? ms / factor : ms;
+    }
     if (plot.remainingMs <= 0 || plot.ready) harvestPlot(state, index, sink, lines);
   }
 }
@@ -1608,6 +1670,15 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
     xp = roundXp(xp + addXp(state, 'Exploration', expeditionTickXp(state.mastery, routeId, route?.xp ?? 0)));
     if (route) state.mastery[routeId] = (state.mastery[routeId] ?? 0) + mxpEach;
   }
+  const haul = 1 + 0.01 * markRank(state, 'road.haul');
+  if (haul !== 1) {
+    for (const id of Object.keys(items)) {
+      const floored = Math.floor(items[id] * haul);
+      const delta = floored - items[id];
+      items[id] = floored;
+      if (delta !== 0) giveItem(state, id, delta, sink);
+    }
+  }
   if (route && ticks > 0) {
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
@@ -1745,6 +1816,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     report.stopped = 'backwards';
     state.lastCredited = now;
     stopLegacyExploration(state);
+    stopRetiredSeal(state);
     report.expeditionLine = describeExpedition(expBefore, null, state.expedition);
     report.levelsAfter = levelsOf(state);
     mergeLegacyItemCounts(report.itemsGained);
@@ -1793,8 +1865,36 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   if (sink.stopped) report.stopped = sink.stopped;
   else if (wasPaused || state.paused) report.stopped = 'paused';
   else report.stopped = 'window';
+  stopRetiredSeal(state);
   state.lastCredited = now;
   return report;
+}
+
+/** A retired seal finishes this catch-up, including a backwards clock, and then stops. */
+function stopRetiredSeal(state: Save): void {
+  if (state.activity?.kind === 'produce' && retiredSeal(state.activity.recipeId)) {
+    state.activity = null;
+    state.progressMs = 0;
+  }
+}
+
+/** Buy the next rank of one modifier with that mark's glimmer. Never spends another mark's glimmer. */
+export function buyMarkRank(state: Save, modifierId: string, requested?: number): boolean {
+  const mod = MODIFIER_BY_ID[modifierId];
+  const mark = mod ? MARK_BY_ID[mod.markId] : null;
+  if (!mod || !mark) return false;
+  if (!state.glimmer) state.glimmer = {};
+  if (!state.markRanks) state.markRanks = {};
+  const current = markRank(state, modifierId);
+  if (current >= 5) return false;
+  const next = current + 1;
+  if (requested != null && requested !== next) return false;
+  const cost = rankCost(mod.seconds, next);
+  if ((state.glimmer[mark.id] ?? 0) < cost) return false;
+  state.glimmer[mark.id] -= cost;
+  if (state.glimmer[mark.id] === 0) delete state.glimmer[mark.id];
+  state.markRanks[modifierId] = next;
+  return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1986,6 +2086,8 @@ export function deserialize(raw: string): Save | null {
     plotsBought: 0,
     expedition: null,
     land: {},
+    glimmer: {},
+    markRanks: {},
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
@@ -1996,7 +2098,34 @@ export function deserialize(raw: string): Save | null {
   loaded.expedition = readExpedition(parsed.expedition);
   migrateForaging(loaded);
   if (!installLand(loaded, parsed)) return null;
+  const glimmer = readCountMap(parsed.glimmer);
+  const markRanks = readRankMap(parsed.markRanks);
+  if (!glimmer || !markRanks) return null;
+  loaded.glimmer = glimmer;
+  loaded.markRanks = markRanks;
   return loaded;
+}
+
+function readCountMap(value: unknown): Record<string, number> | null {
+  if (value == null) return {};
+  if (!isRecord(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, amount] of Object.entries(value)) {
+    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return null;
+    if (amount > 0) out[key] = amount;
+  }
+  return out;
+}
+
+function readRankMap(value: unknown): Record<string, number> | null {
+  if (value == null) return {};
+  if (!isRecord(value)) return null;
+  const out: Record<string, number> = {};
+  for (const [key, amount] of Object.entries(value)) {
+    if (typeof amount !== 'number' || !Number.isInteger(amount) || amount < 0 || amount > 5) return null;
+    if (amount > 0) out[key] = amount;
+  }
+  return out;
 }
 
 function readExpedition(value: unknown): Save['expedition'] {
