@@ -34,11 +34,13 @@ export function isPlotCrop(recipeId: string): boolean {
 
 /**
  * Wall-clock grow for one planting.
- * Mastery speed is not applied: the approved grow is the shipped seconds × 3,600,
- * then ×0.937 when bone compost was applied at planting.
+ * Base is the shipped seconds × 3,600. The mastery speed step (0.05 once that
+ * recipe is mastery 20+) is snapshotted at planting. Bone compost then ×0.937.
+ * MXP does not use this shorter time.
  */
-export function plotGrowMs(actionSeconds: number, compost: CompostKind): number {
-  const seconds = actionSeconds * GROW_SCALE * (compost === 'bone' ? BONE_GROW_FACTOR : 1);
+export function plotGrowMs(actionSeconds: number, compost: CompostKind, speed = 0): number {
+  let seconds = actionSeconds * GROW_SCALE * (1 - speed);
+  if (compost === 'bone') seconds *= BONE_GROW_FACTOR;
   return (Math.round(seconds * 100) / 100) * 1000;
 }
 

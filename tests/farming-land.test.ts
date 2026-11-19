@@ -314,8 +314,25 @@ describe('farming plots and the land screen', () => {
     expect(line).toContain('harvests');
   });
 
+  it('snapshots the mastery speed perk when a crop is planted', () => {
+    const state = farmer();
+    state.bank['mat.seed.flax'] = 2;
+    state.bank['mat.farm.bone_compost'] = 1;
+    state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
+    expect(state.plots[0]?.remainingMs).toBe(12_654_000);
+    expect(plotGrowMs(3.7, null, 0.05) / 1000).toBe(12654);
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', 'bone')).toBe(false);
+    state.plots[0] = null;
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', 'bone')).toBe(true);
+    const boned = state.plots[0] as { remainingMs: number } | null;
+    expect(boned?.remainingMs).toBe(11_856_800);
+    expect(plotGrowMs(3.7, 'bone', 0.05) / 1000).toBe(11856.8);
+  });
+
   it('leaves the official routes and their 37,002 coin need where the repo has them', () => {
-    // The spec's 36.4116h / 34.4283h figures are not this repo's route clock.
+    // Lv-30 waypoint: sheet 20.4536 h / 18.4703 h, repo autoplay 20.42 h / 18.76 h.
+    // Rough Lv-40 sheet times are 36.4116 h / 34.4283 h. Needed coins stay 37,002.
     const route = runReferenceRoute({ seed: 1, expectedLoot: true });
     expect(route.purchases.map((event) => event.skill)).not.toContain('Farming');
     expect(route.elapsedHours).toBe(20.42);

@@ -257,7 +257,11 @@ export interface CatchupReport {
   plotHarvests?: string[];
 }
 
-/** One planted or empty-owned Farming plot. `legacy` finishes with the old per-action output. */
+/**
+ * One planted or empty-owned Farming plot.
+ * `ready` and `legacy` are optional. `legacy` is written only for a crop migrated
+ * from the old single plot, and the plot entry is removed when that harvest completes.
+ */
 export interface PlotState {
   recipeId: string;
   remainingMs: number;
@@ -1326,7 +1330,8 @@ export function plantOnPlot(state: Save, index: number, recipeId: string, compos
   if (compostId && (state.bank[compostId] ?? 0) < 1) return false;
   for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
   if (compostId) takeItem(state, compostId, 1);
-  state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost), compost };
+  const speed = masteryPerks(masteryLevel(state.mastery[recipeId] ?? 0)).speed;
+  state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost, speed), compost };
   return true;
 }
 
