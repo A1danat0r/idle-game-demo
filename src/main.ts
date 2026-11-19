@@ -386,11 +386,22 @@ app.addEventListener('click', (event) => {
       view.yardTile = tile;
       view.placeId = null;
     } else if (view.placeId) {
-      view.message = placeBuilding(state, view.placeId, tile) ? 'Placed.' : 'That tile is not open.';
+      const busy = state.activity?.kind === 'produce' && state.activity.recipeId === view.placeId;
+      view.message = placeBuilding(state, view.placeId, tile)
+        ? 'Placed.'
+        : busy
+          ? 'That building is being rebuilt.'
+          : 'That tile is not open.';
       if (state.land[String(tile)] === view.placeId) view.placeId = null;
     } else if (view.yardTile != null && state.land[String(view.yardTile)]) {
       const from = view.yardTile;
-      view.message = moveBuilding(state, from, tile) ? 'Moved.' : 'That tile is not open.';
+      const moving = state.land[String(from)];
+      const busy = state.activity?.kind === 'produce' && state.activity.recipeId === moving;
+      view.message = moveBuilding(state, from, tile)
+        ? 'Moved.'
+        : busy
+          ? 'That building is being rebuilt.'
+          : 'That tile is not open.';
       if (state.land[String(tile)]) view.yardTile = tile;
     }
   }

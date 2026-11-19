@@ -10,6 +10,7 @@ import {
   serialize,
   setSkillLevel,
   startProduce,
+  stopActivity,
   stepCompletion,
   storeBuilding,
   type Save,
@@ -46,9 +47,14 @@ function landScreen(state: Save): string {
 }
 
 function withoutLand(state: Save): Save {
+  return loadLand(state, undefined);
+}
+
+function loadLand(state: Save, land: unknown): Save {
   const raw = JSON.parse(serialize(state)) as Record<string, unknown>;
-  delete raw.land;
   delete raw.yardNote;
+  if (land === undefined) delete raw.land;
+  else raw.land = land;
   const loaded = deserialize(JSON.stringify(raw));
   if (!loaded) throw new Error('save did not load');
   return loaded;
@@ -182,6 +188,58 @@ describe('construction yard', () => {
     expect(moveBuilding(state, 0, 1)).toBe(false);
     expect(storeBuilding(state, 0)).toBe(false);
     expect(dismantleBuilding(state, PINE)).toBe(false);
+  });
+
+  it('labels later tiles with their gate and keeps Coming later on the five that never open', () => {
+    const closed = (level: number) => landScreen(builder(level));
+    for (const level of [35, 40]) {
+      const land = closed(level);
+      expect(land.match(/Coming later/g)).toHaveLength(5);
+      expect(land).not.toContain('Construction 15');
+      expect(land).not.toContain('Construction 25');
+      expect(land).not.toContain('Construction 35');
+    }
+    const early = closed(14);
+    expect(early).toContain('data-yard-tile="1"><small>Construction 15</small>');
+    expect(early).toContain('data-yard-tile="2"><small>Construction 25</small>');
+    expect(early).toContain('data-yard-tile="3"><small>Construction 35</small>');
+  });
+
+  it('refuses to place the building that is being rebuilt and still places the others', () => {
+    const state = builder(15);
+    state.buildings[PINE] = true;
+    state.buildings[FOUNDATION] = true;
+    state.activity = { kind: 'produce', recipeId: PINE };
+    const before = { ...state.land };
+    expect(placeBuilding(state, PINE, 0)).toBe(false);
+    expect(state.land).toEqual(before);
+    expect(placeBuilding(state, FOUNDATION, 1)).toBe(true);
+    stopActivity(state);
+    expect(placeBuilding(state, PINE, 0)).toBe(true);
+  });
+
+  it('keeps an explicit empty yard empty and migrates land null like a missing key', () => {
+    const state = builder(40);
+    for (const id of [PINE, FOUNDATION, OAK, RACKS, FORGE]) {
+      state.buildings[id] = true;
+      state.buildingsEver[id] = true;
+    }
+    const empty = loadLand(state, {});
+    expect(empty.land).toEqual({});
+    expect(empty.yardNote).toBeUndefined();
+    expect(actionSeconds(empty, BOW)).toBeCloseTo(4.1);
+    const again = deserialize(serialize(empty));
+    if (!again) throw new Error('save did not load');
+    expect(again.land).toEqual({});
+    expect(again.yardNote).toBeUndefined();
+    expect(actionSeconds(again, BOW)).toBeCloseTo(4.1);
+
+    const migrated = loadLand(state, null);
+    expect(migrated.land['0']).toBe(PINE);
+    expect(migrated.land['1']).toBe(FOUNDATION);
+    expect(migrated.land['2']).toBe(OAK);
+    expect(migrated.land['3']).toBe(RACKS);
+    expect(migrated.yardNote).toBe('Your yard has 4 tiles; Steel forge extension is in the store.');
   });
 
   it('shows open tiles, locked tiles, the store, and Placed or In store', () => {
