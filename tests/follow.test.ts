@@ -230,6 +230,8 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     const fitting = rowHtml(exploration, 'Fitting appraisal');
     expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
     expect(fitting).toContain('aria-label="Locked"');
+    expect(fitting).not.toContain('Haul');
+    expect(fitting).not.toContain('XP');
     expect(fitting).not.toContain('Pack and go');
   });
 

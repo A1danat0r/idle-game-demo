@@ -525,6 +525,8 @@ describe('exploration expeditions', () => {
     const row = rowHtml(html, 'Riverbank branch — agate');
     expect(row).toContain('aria-label="Locked"');
     expect(row).toContain('Lv 20');
+    expect(row).not.toContain('Haul');
+    expect(row).not.toContain('XP');
     expect(row).not.toContain('Pack and go');
   });
 
@@ -793,16 +795,21 @@ describe('bridge approach pays alum', () => {
       const row = rowHtml(html, 'Bridge approach survey');
       expect(row).toContain('aria-label="Locked"');
       expect(row).toContain('Lv 40');
+      expect(row).not.toContain('Haul');
+      expect(row).not.toContain('XP');
       expect(row).not.toContain('Pack and go');
       expect(row).not.toContain('data-pack=');
       expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(false);
       expect(state.bank[HEMP] ?? 0).toBe(hemp);
       expect(startExpedition(state, STREAM, QUARTER, 0)).toBe(true);
     }
-    const at39 = explorer(39);
-    expect(rowHtml(mainHtml(at39, view('Exploration'), 0), 'Bridge approach survey')).toContain('Haul 163 Alum · 15,788 XP');
-    const at38 = explorer(38);
-    expect(rowHtml(mainHtml(at38, view('Exploration'), 0), 'Bridge approach survey')).toContain('Haul 163 Alum · 18,093 XP');
+    const fitting = rowHtml(mainHtml(explorer(19), view('Exploration'), 0), 'Fitting appraisal');
+    expect(fitting).toContain('aria-label="Locked"');
+    expect(fitting).toContain('Lv 30');
+    expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(fitting).not.toContain('Haul');
+    expect(fitting).not.toContain('XP');
+    expect(fitting).not.toContain('Pack and go');
   });
 
   it('A-T9 probes the haul below the cap without opening the route', () => {
