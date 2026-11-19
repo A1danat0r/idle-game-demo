@@ -1326,20 +1326,22 @@ function awayTime(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (hours <= 0) return `${rest} min`;
-  return `${hours} h ${rest} min`;
+  if (hours <= 0) return `${fmt(rest)} min`;
+  return `${fmt(hours)} h ${fmt(rest)} min`;
 }
 
 export function reportHtml(report: CatchupReport): string {
   const xp = Object.entries(report.xpGained)
     .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
-  const levels = Object.entries(report.levelsAfter)
-    .flatMap(([skill, level]) => {
-      const before = report.levelsBefore[skill as SkillId];
-      return before != null && before !== level ? [`${skill} ${before}→${level}`] : [];
-    })
-    .join(', ');
+  const levels =
+    Object.entries(report.levelsAfter)
+      .flatMap(([skill, level]) => {
+        const before = report.levelsBefore[skill as SkillId];
+        if (before == null || level <= before) return [];
+        return [`${skill} ${fmt(before)}→${fmt(level)}`];
+      })
+      .join(', ') || 'none';
   const gained = stackText(report.itemsGained);
   const consumed = stackText(report.itemsConsumed);
   const why =
@@ -1379,7 +1381,7 @@ export function reportHtml(report: CatchupReport): string {
 function masteryText(report: CatchupReport): string {
   const rows = report.masteryLevels ?? [];
   if (rows.length === 0) return 'none';
-  return rows.map((row) => `${row.name} ${row.before} → ${row.after}`).join(', ');
+  return rows.map((row) => `${row.name} ${fmt(row.before)} → ${fmt(row.after)}`).join(', ');
 }
 
 function stackText(stacks: Record<string, number>): string {

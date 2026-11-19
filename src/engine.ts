@@ -1513,18 +1513,24 @@ export function cancelPlot(state: Save, index: number): void {
   state.plots[index] = null;
 }
 
-function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[], notes?: FloatNote[]): void {
+function harvestPlot(
+  state: Save,
+  index: number,
+  sink?: Sink,
+  lines?: string[],
+  notes?: FloatNote[],
+): { itemId: string; qty: number; replanted: boolean } | null {
   const plot = state.plots[index];
-  if (!plot) return;
+  if (!plot) return null;
   const recipe = RECIPE_BY_ID[plot.recipeId];
   if (!recipe) {
     state.plots[index] = null;
-    return;
+    return null;
   }
   if (!bankHasSpace(state)) {
     plot.ready = true;
     plot.remainingMs = 0;
-    return;
+    return null;
   }
   const legacy = plot.legacy === true;
   let qtyTotal = 0;
@@ -1552,26 +1558,36 @@ function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[], 
   if (sink) sink.actions += 1;
   state.plots[index] = null;
   if (lines) lines.push(`Plot ${index + 1}: ${itemName(itemId)} ×${qtyTotal.toLocaleString('en-US')}`);
-  tryAutoReplant(state, index, plot.recipeId, lines, notes);
+  const replanted = tryAutoReplant(state, index, plot.recipeId, lines, notes);
+  return { itemId, qty: qtyTotal, replanted };
 }
 
-function tryAutoReplant(state: Save, index: number, recipeId: string, lines?: string[], notes?: FloatNote[]): void {
-  if (!state.autoReplant) return;
+function tryAutoReplant(state: Save, index: number, recipeId: string, lines?: string[], notes?: FloatNote[]): boolean {
+  if (!state.autoReplant) return false;
   const missing = firstMissingPlantInput(state, recipeId, AUTO_REPLANT_COMPOST);
   if (missing) {
     const line = `Plot ${index + 1} not replanted: no ${countedLabel(1, missing)}`;
     lines?.push(line);
     notes?.push({ kind: 'toast', text: line });
-    return;
+    return false;
   }
-  plantOnPlot(state, index, recipeId, AUTO_REPLANT_COMPOST);
+  return plantOnPlot(state, index, recipeId, AUTO_REPLANT_COMPOST);
 }
 
 /** Plots finish in completion order. A tie goes to the lower plot number, and that replant happens before the next harvest. */
+function fieldsHarvestToast(totals: Map<string, number>, order: string[], replanted: number): string {
+  const items = order.map((id) => `${itemName(id)} ×${grouped(totals.get(id) ?? 0)}`).join(' · ');
+  const text = `Fields harvested: ${items}`;
+  return replanted > 0 ? `${text} · replanted ${grouped(replanted)}` : text;
+}
+
 function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes?: FloatNote[]): void {
   ensureFarmPlots(state);
   let left = Math.max(0, ms);
   const held = new Set<number>();
+  const totals = new Map<string, number>();
+  const order: string[] = [];
+  let replanted = 0;
   for (let guard = 0; guard < 10_000; guard += 1) {
     let due = -1;
     for (let index = 0; index < state.plots.length; index += 1) {
@@ -1584,7 +1600,12 @@ function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes
     }
     if (due >= 0) {
       const before = state.plots[due];
-      harvestPlot(state, due, sink, lines, notes);
+      const harvested = harvestPlot(state, due, sink, lines, notes);
+      if (harvested && notes) {
+        if (!totals.has(harvested.itemId)) order.push(harvested.itemId);
+        totals.set(harvested.itemId, (totals.get(harvested.itemId) ?? 0) + harvested.qty);
+        if (harvested.replanted) replanted += 1;
+      }
       if (state.plots[due] === before) held.add(due);
       continue;
     }
@@ -1605,6 +1626,7 @@ function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes
     }
     left -= step;
   }
+  if (notes && order.length > 0) notes.push({ kind: 'toast', text: fieldsHarvestToast(totals, order, replanted) });
 }
 
 /** 15 min, 1 h, and 8 h. An expedition stores one of these for the whole trip. */
@@ -1813,6 +1835,10 @@ function stopLegacyExploration(state: Save): void {
   if (!isLegacyExploration(state.activity)) return;
   state.activity = null;
   state.progressMs = 0;
+}
+
+function grouped(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
 }
 
 function groupCount(value: number): string {

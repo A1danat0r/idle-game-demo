@@ -12,10 +12,11 @@ import {
   serialize,
   setSkillLevel,
   startGather,
+  type CatchupReport,
   type FloatNote,
   type Save,
 } from '../src/engine';
-import { mainHtml, type View } from '../src/ui';
+import { mainHtml, reportHtml, type View } from '../src/ui';
 
 const FLAX = 'recipe.mat.fibre.flax';
 const LOG = 'recipe.farm.mushroom.log_route';
@@ -114,6 +115,7 @@ describe('farming auto-replant', () => {
     expect(state.plots[0]).toBeNull();
     expect(notes.filter((note) => note.kind === 'toast').map((note) => (note.kind === 'toast' ? note.text : ''))).toEqual([
       'Plot 1 not replanted: no Flax seed',
+      'Fields harvested: Flax fibre ×1,800',
     ]);
     state.bank['mat.seed.flax'] = 1;
     creditOffline(state, state.lastCredited + 13_320_000);
@@ -214,7 +216,85 @@ describe('farming auto-replant', () => {
     expect(state.bank['mat.fibre.flax']).toBe(10_800);
     expect(report.actions).toBe(alone.actions + 6);
   });
+
+  it('lists only skills whose level rose on the catch-up Levels line', () => {
+    const state = farmer();
+    state.bank['mat.seed.flax'] = 1;
+    expect(plantOnPlot(state, 0, FLAX, null)).toBe(true);
+    const html = reportHtml(creditOffline(state, 13_320_000));
+    expect(html).toContain('<dt>Levels</dt><dd>Farming 1→15</dd>');
+    expect(html).not.toContain('Woodcutting');
+  });
+
+  it('renders every catch-up amount of 1,000 or more with a thousands separator', () => {
+    const html = reportHtml(reportWith({
+      awayMs: 1_000 * 3_600_000,
+      creditedMs: 1_000 * 3_600_000,
+      actions: 1_000,
+      kills: 2_000,
+      xpGained: { Farming: 3_000 },
+      levelsBefore: { Farming: 1_000, Woodcutting: 5 },
+      levelsAfter: { Farming: 1_001, Woodcutting: 5 },
+      itemsGained: { 'mat.fibre.flax': 1_800 },
+      itemsConsumed: { 'mat.seed.flax': 4_000 },
+      coinsGained: 5_000,
+      foodEaten: 6_000,
+      masteryLevels: [{ id: FLAX, name: 'Flax fibre', before: 7_000, after: 8_000 }],
+      plotHarvests: ['Plot 1: Flax fibre ×1,800'],
+      expeditionLine: 'Expedition: Stream survey, 5,236, Weathered agate ×8,727, 220,234 XP — finished',
+    }));
+    const text = html.replace(/<[^>]+>/g, ' ');
+    expect(text.match(/\d{4,}/g) ?? []).toEqual([]);
+    expect(html).toContain('Flax fibre ×1,800');
+    expect(html).not.toContain('Woodcutting');
+  });
+
+  it('shows one fields toast when eight plots finish on the same tick', () => {
+    const state = farmer(35);
+    ownEight(state);
+    state.bank['mat.seed.flax'] = 16;
+    for (let index = 0; index < 8; index += 1) expect(plantOnPlot(state, index, FLAX, null)).toBe(true);
+    state.autoReplant = true;
+    for (const plot of state.plots) if (plot) plot.remainingMs = 500;
+    const notes: FloatNote[] = [];
+    expect(withoutOutputDoubles(() => advanceOpenTab(state, 500, 5_000, notes))).toBeNull();
+    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×14,400 · replanted 8' }]);
+  });
+
+  it('omits the replanted clause when auto-replant is not bought', () => {
+    const state = farmer();
+    state.bank['mat.seed.flax'] = 1;
+    expect(plantOnPlot(state, 0, FLAX, null)).toBe(true);
+    state.plots[0]!.remainingMs = 500;
+    const notes: FloatNote[] = [];
+    expect(advanceOpenTab(state, 500, 5_000, notes)).toBeNull();
+    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
+    expect(state.plots[0]).toBeNull();
+  });
 });
+
+function reportWith(over: Partial<CatchupReport>): CatchupReport {
+  return {
+    awayMs: 0,
+    creditedMs: 0,
+    capped: false,
+    backwards: false,
+    activity: 'Idle',
+    actions: 0,
+    kills: 0,
+    xpGained: {},
+    levelsBefore: {},
+    levelsAfter: {},
+    itemsGained: {},
+    itemsConsumed: {},
+    coinsGained: 0,
+    foodEaten: 0,
+    stopped: 'window',
+    masteryLevels: [],
+    perksUnlocked: [],
+    ...over,
+  };
+}
 
 function planted(seeds: number): Save {
   const state = farmer();
