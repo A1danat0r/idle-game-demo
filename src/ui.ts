@@ -557,7 +557,7 @@ function skillHtml(state: Save, view: View): string {
     skill === 'Foraging'
       ? habitatCards(state)
       : [
-          ...NODES.filter((node) => node.skill === skill && node.skill !== 'Exploration').map((node) => nodeRow(state, node)),
+          ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
           ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
         ].join('');
   const plot = skill === 'Farming' && state.plot
