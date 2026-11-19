@@ -402,6 +402,8 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     shop: state.shop,
     purchaseCount: state.purchaseCount,
     plotsBought: state.plotsBought,
+    autoReplant: state.autoReplant === true,
+    autoReplantOn: state.autoReplant === true && state.autoReplantOn !== false,
     plots: state.plots.map((plot) => (plot ? `${plot.recipeId}:${plot.compost ?? ''}:${plot.ready ? 1 : 0}` : '')).join('|'),
     expedition: state.expedition?.routeId ?? '',
   });
@@ -708,17 +710,32 @@ export function plotCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
+/** Hand-plant status. A failed plant keeps its own sentence. */
+export function plantedLine(ok: boolean): string {
+  return ok ? 'Planted.' : 'That crop cannot be planted.';
+}
+
+/** Harvest, leaving Land, and a catch-up harvest blank the status. The toast carries the news. */
+export function clearedLandStatus(): string {
+  return '';
+}
+
 function autoReplantRow(state: Save): string {
-  if (state.autoReplant) return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant on</b></div></div>`;
+  if (state.autoReplant) {
+    const on = state.autoReplantOn !== false;
+    return `<button type="button" class="tag${on ? ' on' : ''}" data-auto-replant-toggle aria-pressed="${on}">Auto-replant</button>`;
+  }
   const cost = AUTO_REPLANT_COST.toLocaleString('en-US');
   const ready = state.coins + 1e-9 >= AUTO_REPLANT_COST;
   return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant — ${cost} coins</b></div><button type="button" class="tag btn" data-buy-auto-replant${ready ? '' : ' disabled'}>Buy</button></div>`;
 }
 
 function landHtml(state: Save, view: View): string {
+  const owned = state.autoReplant === true;
+  const fieldsHead = owned ? `<h3>Fields ${autoReplantRow(state)}</h3>` : `<h3>Fields</h3>${autoReplantRow(state)}`;
   return `${title('Land')}
     <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
-    <div class="panel" data-land-fields><h3>Fields</h3>${autoReplantRow(state)}${plotListHtml(state, view, true)}</div>
+    <div class="panel" data-land-fields>${fieldsHead}${plotListHtml(state, view, true)}</div>
     <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml(state, view)}</div>`;
 }
 

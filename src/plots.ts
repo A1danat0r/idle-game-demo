@@ -14,9 +14,6 @@ export const COMPOST_RECIPES = ['recipe.farm.compost', 'recipe.farm.bone_compost
 
 export type CompostKind = 'compost' | 'bone' | null;
 
-/** Interim until compost-on-replant is answered. Replant passes this and nothing else. */
-export const AUTO_REPLANT_COMPOST = false;
-
 /** Skill-slot 9 price. No Farming level gate. */
 export const AUTO_REPLANT_COST = 27_822;
 

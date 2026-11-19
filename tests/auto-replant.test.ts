@@ -16,7 +16,7 @@ import {
   type FloatNote,
   type Save,
 } from '../src/engine';
-import { mainHtml, reportHtml, type View } from '../src/ui';
+import { clearedLandStatus, mainHtml, plantedLine, reportHtml, type View } from '../src/ui';
 
 const FLAX = 'recipe.mat.fibre.flax';
 const LOG = 'recipe.farm.mushroom.log_route';
@@ -62,7 +62,11 @@ describe('farming auto-replant', () => {
     expect(buyAutoReplant(state)).toBe(false);
     const loaded = deserialize(serialize(state));
     expect(loaded?.autoReplant).toBe(true);
-    expect(mainHtml(loaded!, landView(), 0)).toContain('Auto-replant on');
+    expect(loaded?.autoReplantOn).toBe(true);
+    const bought = mainHtml(loaded!, landView(), 0);
+    expect(bought).toContain('data-auto-replant-toggle');
+    expect(bought).toContain('>Auto-replant<');
+    expect(bought).not.toContain('Auto-replant on');
     const raw = JSON.parse(serialize(loaded!)) as Record<string, unknown>;
     delete raw.autoReplant;
     const missing = deserialize(JSON.stringify(raw));
@@ -271,6 +275,147 @@ describe('farming auto-replant', () => {
     expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
     expect(state.plots[0]).toBeNull();
   });
+
+  it('harvests a hand-composted flax grow, then replants without compost', () => {
+    const state = composted(2);
+    creditOffline(state, 13_320_000);
+    expect(state.bank['mat.fibre.flax']).toBe(2_250);
+    creditOffline(state, 26_640_000);
+    expect(state.bank['mat.fibre.flax']).toBe(4_050);
+    creditOffline(state, 39_294_000);
+    expect(state.bank['mat.fibre.flax']).toBe(5_850);
+  });
+
+  it('uses one banked compost on the first replant only', () => {
+    const state = composted(2, { 'mat.farm.compost': 1 });
+    creditOffline(state, 13_320_000);
+    expect(state.plots[0]?.compost).toBe('compost');
+    creditOffline(state, 26_640_000);
+    expect(state.bank['mat.fibre.flax']).toBe(4_500);
+    creditOffline(state, 39_294_000);
+    expect(state.bank['mat.fibre.flax']).toBe(6_300);
+    expect(state.bank['mat.farm.compost'] ?? 0).toBe(0);
+  });
+
+  it('uses bone compost before compost, and compost does not shorten the later grow', () => {
+    const state = composted(2, { 'mat.farm.bone_compost': 1, 'mat.farm.compost': 1 });
+    creditOffline(state, 13_320_000);
+    expect(state.bank['mat.fibre.flax']).toBe(2_250);
+    expect(state.plots[0]?.compost).toBe('bone');
+    creditOffline(state, 25_800_840);
+    expect(state.bank['mat.fibre.flax']).toBe(4_500);
+    expect(state.plots[0]?.compost).toBe('compost');
+    creditOffline(state, 38_454_840);
+    expect(state.bank['mat.fibre.flax']).toBe(6_750);
+    expect(state.bank['mat.farm.bone_compost'] ?? 0).toBe(0);
+    expect(state.bank['mat.farm.compost'] ?? 0).toBe(0);
+  });
+
+  it('does not replant when the switch is off before the first harvest', () => {
+    const state = composted(2);
+    state.autoReplantOn = false;
+    creditOffline(state, 13_320_000 - 1_000);
+    const notes: FloatNote[] = [];
+    expect(advanceOpenTab(state, state.lastCredited + 1_000, 5_000, notes)).toBeNull();
+    expect(state.bank['mat.fibre.flax']).toBe(2_250);
+    expect(state.plots[0]).toBeNull();
+    expect(state.bank['mat.seed.flax']).toBe(2);
+    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250' }]);
+  });
+
+  it('finishes the replant already made after the switch is turned off', () => {
+    const state = composted(2);
+    creditOffline(state, 13_320_000 - 1_000);
+    const first: FloatNote[] = [];
+    expect(advanceOpenTab(state, state.lastCredited + 1_000, 5_000, first)).toBeNull();
+    expect(first).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×2,250 · replanted 1' }]);
+    state.autoReplantOn = false;
+    creditOffline(state, 26_640_000 - 1_000);
+    const second: FloatNote[] = [];
+    expect(advanceOpenTab(state, state.lastCredited + 1_000, 5_000, second)).toBeNull();
+    expect(state.bank['mat.fibre.flax']).toBe(4_050);
+    expect(state.plots[0]).toBeNull();
+    expect(state.bank['mat.seed.flax']).toBe(1);
+    expect(second).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800' }]);
+  });
+
+  it('saves the switch and ignores it when the unlock is absent', () => {
+    const off = farmer();
+    off.coins = 27_822;
+    expect(buyAutoReplant(off)).toBe(true);
+    off.autoReplantOn = false;
+    const loadedOff = deserialize(serialize(off));
+    expect(loadedOff?.autoReplantOn).toBe(false);
+    loadedOff!.bank['mat.seed.flax'] = 2;
+    expect(plantOnPlot(loadedOff!, 0, FLAX, null)).toBe(true);
+    creditOffline(loadedOff!, 13_320_000);
+    expect(loadedOff!.plots[0]).toBeNull();
+    expect(loadedOff!.bank['mat.seed.flax']).toBe(1);
+
+    loadedOff!.autoReplantOn = true;
+    const loadedOn = deserialize(serialize(loadedOff!));
+    expect(loadedOn?.autoReplantOn).toBe(true);
+    loadedOn!.bank['mat.seed.flax'] = 1;
+    expect(plantOnPlot(loadedOn!, 0, FLAX, null)).toBe(true);
+    creditOffline(loadedOn!, 13_320_000);
+    expect(loadedOn!.plots[0]?.recipeId).toBe(FLAX);
+
+    const raw = JSON.parse(serialize(farmer())) as Record<string, unknown>;
+    raw.autoReplant = true;
+    delete raw.autoReplantOn;
+    const legacy = deserialize(JSON.stringify(raw));
+    expect(legacy?.autoReplantOn).toBe(true);
+    expect(mainHtml(legacy!, landView(), 0)).toContain('data-auto-replant-toggle');
+
+    const bare = JSON.parse(serialize(farmer())) as Record<string, unknown>;
+    delete bare.autoReplant;
+    bare.autoReplantOn = true;
+    const unlocked = deserialize(JSON.stringify(bare));
+    expect(unlocked?.autoReplant).toBeUndefined();
+    expect(unlocked?.autoReplantOn).toBeUndefined();
+    expect(mainHtml(unlocked!, landView(), 0)).not.toContain('data-auto-replant-toggle');
+    unlocked!.bank['mat.seed.flax'] = 2;
+    expect(plantOnPlot(unlocked!, 0, FLAX, null)).toBe(true);
+    creditOffline(unlocked!, 13_320_000);
+    expect(unlocked!.plots[0]).toBeNull();
+    expect(unlocked!.bank['mat.seed.flax']).toBe(1);
+  });
+
+  it('gives the one compost to plot 1 when two plots finish together', () => {
+    const state = farmer(5);
+    state.coins = 188;
+    expect(buyPlot(state)).toBe(true);
+    state.bank['mat.seed.flax'] = 4;
+    state.bank['mat.farm.compost'] = 1;
+    expect(plantOnPlot(state, 0, FLAX, null)).toBe(true);
+    expect(plantOnPlot(state, 1, FLAX, null)).toBe(true);
+    state.coins = 27_822;
+    expect(buyAutoReplant(state)).toBe(true);
+    const report = creditOffline(state, 13_320_000);
+    expect(state.plots[0]?.compost).toBe('compost');
+    expect(state.plots[1]?.compost).toBeNull();
+    expect(state.bank['mat.farm.compost'] ?? 0).toBe(0);
+    expect(report.plotHarvests?.some((line) => line.includes('not replanted'))).toBe(false);
+    expect(report.plotHarvests?.join(' ')).not.toContain('compost');
+  });
+
+  it('clears Planted. when the open screen harvests, and stays clear after a replant', () => {
+    const state = farmer();
+    state.bank['mat.seed.flax'] = 2;
+    const planted = plantOnPlot(state, 0, FLAX, null);
+    let message = plantedLine(planted);
+    expect(message).toBe('Planted.');
+    state.coins = 27_822;
+    expect(buyAutoReplant(state)).toBe(true);
+    state.plots[0]!.remainingMs = 500;
+    const notes: FloatNote[] = [];
+    expect(advanceOpenTab(state, 500, 5_000, notes)).toBeNull();
+    message = clearedLandStatus();
+    expect(notes).toEqual([{ kind: 'toast', text: 'Fields harvested: Flax fibre ×1,800 · replanted 1' }]);
+    expect(message).toBe('');
+    expect(state.plots[0]?.recipeId).toBe(FLAX);
+    expect(message).toBe('');
+  });
 });
 
 function reportWith(over: Partial<CatchupReport>): CatchupReport {
@@ -294,6 +439,19 @@ function reportWith(over: Partial<CatchupReport>): CatchupReport {
     perksUnlocked: [],
     ...over,
   };
+}
+
+function composted(seeds: number, stock: Record<string, number> = {}): Save {
+  const state = farmer();
+  state.bank['mat.seed.flax'] = 1;
+  state.bank['mat.farm.compost'] = 1;
+  expect(plantOnPlot(state, 0, FLAX, 'compost')).toBe(true);
+  state.bank['mat.seed.flax'] = seeds;
+  state.bank['mat.farm.compost'] = stock['mat.farm.compost'] ?? 0;
+  state.bank['mat.farm.bone_compost'] = stock['mat.farm.bone_compost'] ?? 0;
+  state.coins = 27_822;
+  expect(buyAutoReplant(state)).toBe(true);
+  return state;
 }
 
 function planted(seeds: number): Save {

@@ -80,7 +80,6 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 import {
-  AUTO_REPLANT_COMPOST,
   AUTO_REPLANT_COST,
   BONE_COMPOST_ITEM_ID,
   COMPOST_ITEM_ID,
@@ -207,6 +206,8 @@ export interface Save {
   plotsBought: number;
   /** Account-wide auto-replant. Missing means not bought. */
   autoReplant?: boolean;
+  /** Switch after purchase. Missing while owned means on. Ignored when the unlock is absent. */
+  autoReplantOn?: boolean;
   /**
    * The one expedition. Null when none is out.
    * Runs beside the selected activity and the Farming plots. A missing key loads as null.
@@ -1453,33 +1454,31 @@ export function buyPlot(state: Save): boolean {
   return true;
 }
 
-/** Compost argument shared by a hand plant and auto-replant. False means no compost. */
-type PlantCompost = CompostKind | false;
-
-function compostItemId(compost: PlantCompost): string | null {
+function compostItemId(compost: CompostKind): string | null {
   if (compost === 'bone') return BONE_COMPOST_ITEM_ID;
   if (compost === 'compost') return COMPOST_ITEM_ID;
   return null;
 }
 
-function appliedCompost(compost: PlantCompost): CompostKind {
-  return compost === 'compost' || compost === 'bone' ? compost : null;
-}
-
-/** First missing plant input, in recipe order, then compost when one was asked for. */
-function firstMissingPlantInput(state: Save, recipeId: string, compost: PlantCompost): string | null {
+/** Required plant inputs, in recipe order. Compost is not required. */
+function firstMissingRequiredInput(state: Save, recipeId: string): string | null {
   const recipe = RECIPE_BY_ID[recipeId];
   if (!recipe) return null;
   for (const input of recipe.inputs) {
     if ((state.bank[input.id] ?? 0) < input.qty) return input.id;
   }
-  const compostId = compostItemId(compost);
-  if (compostId && (state.bank[compostId] ?? 0) < 1) return compostId;
+  return null;
+}
+
+/** Bone compost, then compost, otherwise none. One item, and only when it is in stock. */
+function replantCompost(state: Save): CompostKind {
+  if ((state.bank[BONE_COMPOST_ITEM_ID] ?? 0) >= 1) return 'bone';
+  if ((state.bank[COMPOST_ITEM_ID] ?? 0) >= 1) return 'compost';
   return null;
 }
 
 /** Plant on an empty owned plot. This is not the selected activity, and it does not require Farming to be selected. */
-export function plantOnPlot(state: Save, index: number, recipeId: string, compost: PlantCompost): boolean {
+export function plantOnPlot(state: Save, index: number, recipeId: string, compost: CompostKind): boolean {
   if (!state.owned.includes('Farming')) return false;
   ensureFarmPlots(state);
   if (!Number.isInteger(index) || index < 0 || index >= state.plots.length) return false;
@@ -1487,13 +1486,13 @@ export function plantOnPlot(state: Save, index: number, recipeId: string, compos
   const recipe = RECIPE_BY_ID[recipeId];
   if (!recipe || !isPlotCrop(recipeId)) return false;
   if (skillLevel(state, 'Farming') < recipe.level) return false;
-  if (firstMissingPlantInput(state, recipeId, compost)) return false;
-  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
+  if (firstMissingRequiredInput(state, recipeId)) return false;
   const compostId = compostItemId(compost);
+  if (compostId && (state.bank[compostId] ?? 0) < 1) return false;
+  for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
   if (compostId) takeItem(state, compostId, 1);
-  const stored = appliedCompost(compost);
   const speed = masteryPerks(masteryLevel(state.mastery[recipeId] ?? 0)).speed;
-  state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, stored, speed), compost: stored };
+  state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost, speed), compost };
   return true;
 }
 
@@ -1504,6 +1503,7 @@ export function buyAutoReplant(state: Save): boolean {
   state.coins = roundXp(state.coins - AUTO_REPLANT_COST);
   noteSpent(state, AUTO_REPLANT_COST);
   state.autoReplant = true;
+  state.autoReplantOn = true;
   return true;
 }
 
@@ -1562,16 +1562,20 @@ function harvestPlot(
   return { itemId, qty: qtyTotal, replanted };
 }
 
+function replantWanted(state: Save): boolean {
+  return state.autoReplant === true && state.autoReplantOn !== false;
+}
+
 function tryAutoReplant(state: Save, index: number, recipeId: string, lines?: string[], notes?: FloatNote[]): boolean {
-  if (!state.autoReplant) return false;
-  const missing = firstMissingPlantInput(state, recipeId, AUTO_REPLANT_COMPOST);
+  if (!replantWanted(state)) return false;
+  const missing = firstMissingRequiredInput(state, recipeId);
   if (missing) {
     const line = `Plot ${index + 1} not replanted: no ${countedLabel(1, missing)}`;
     lines?.push(line);
     notes?.push({ kind: 'toast', text: line });
     return false;
   }
-  return plantOnPlot(state, index, recipeId, AUTO_REPLANT_COMPOST);
+  return plantOnPlot(state, index, recipeId, replantCompost(state));
 }
 
 /** Plots finish in completion order. A tie goes to the lower plot number, and that replant happens before the next harvest. */
@@ -2213,7 +2217,10 @@ export function deserialize(raw: string): Save | null {
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
-  if (parsed.autoReplant === true) loaded.autoReplant = true;
+  if (parsed.autoReplant === true) {
+    loaded.autoReplant = true;
+    loaded.autoReplantOn = parsed.autoReplantOn === false ? false : true;
+  }
   if (!installPlots(loaded, parsed)) return null;
   loaded.expedition = readExpedition(parsed.expedition);
   migrateForaging(loaded);
