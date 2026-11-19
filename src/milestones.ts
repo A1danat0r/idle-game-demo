@@ -1,18 +1,21 @@
 import {
   ENEMY_BY_ID,
+  HABITATS,
   NODE_BY_ID,
   NODES,
   RECIPE_BY_ID,
   RECIPES,
   XP_TABLE,
   actionTitle,
+  habitatByMasteryId,
+  habitatMasteryId,
   itemName,
   teaserOpen,
   woodlandOpen,
   type SkillId,
 } from './content';
 import type { Save } from './engine';
-import { skillLevel } from './engine';
+import { habitatPace, skillLevel } from './engine';
 import { actionMasteryXp, masteryLevel, masteryThreshold } from './mastery';
 
 const PERK_LEVELS = [10, 20, 30, 40] as const;
@@ -54,6 +57,8 @@ function fmt(n: number): string {
 }
 
 function masteryLabel(id: string): string {
+  const habitat = habitatByMasteryId(id);
+  if (habitat) return habitat.name;
   const enemy = ENEMY_BY_ID[id];
   if (enemy) return enemy.name;
   const raw = NODE_BY_ID[id] ? itemName(id) : actionTitle(RECIPE_BY_ID[id] ?? { id, outputs: [] });
@@ -137,6 +142,11 @@ export function usedBy(skill: SkillId): UsedBy[] {
 export function activityTrack(state: Save): { id: string; skill: SkillId; seconds: number } | null {
   const activity = state.activity;
   if (!activity || activity.kind === 'combat') return null;
+  if (activity.kind === 'forage') {
+    const pace = habitatPace(state, activity.habitatId);
+    if (!pace || !state.owned.includes('Foraging')) return null;
+    return { id: habitatMasteryId(activity.habitatId), skill: 'Foraging', seconds: pace.seconds };
+  }
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     if (!node || !state.owned.includes(node.skill)) return null;
@@ -147,8 +157,47 @@ export function activityTrack(state: Save): { id: string; skill: SkillId; second
   return { id: recipe.id, skill: recipe.skill, seconds: recipe.seconds };
 }
 
+/** Next Foraging level that adds an entry. Null at the cap. */
+function nextForagingLevel(now: number): number | null {
+  let next: number | null = null;
+  for (const habitat of HABITATS) {
+    for (const entry of habitat.entries) {
+      const level = NODE_BY_ID[entry.nodeId].level;
+      if (level > now && (next == null || level < next)) next = level;
+    }
+  }
+  return next;
+}
+
+/**
+ * A level that opens a habitat is named as that habitat.
+ * Other entries at the same level keep their item names.
+ */
+function foragingNextLabels(level: number): string[] {
+  const labels: string[] = [];
+  for (const habitat of HABITATS) {
+    const opensHere = NODE_BY_ID[habitat.entries[0].nodeId].level === level;
+    if (opensHere) {
+      labels.push(habitat.name);
+      continue;
+    }
+    for (const entry of habitat.entries) {
+      const node = NODE_BY_ID[entry.nodeId];
+      if (node.level === level) labels.push(itemName(node.id));
+    }
+  }
+  return labels;
+}
+
 function skillHalf(state: Save, skill: SkillId): string {
   const now = skillLevel(state, skill);
+  if (skill === 'Foraging') {
+    const next = nextForagingLevel(now);
+    if (next == null) return `${skill} 40 (max)`;
+    const names = joinNames(foragingNextLabels(next));
+    const xpLeft = Math.max(0, (XP_TABLE[next] ?? 0) - (state.xp[skill] ?? 0));
+    return `${names} at ${skill} ${next} (${fmt(xpLeft)} XP)`;
+  }
   const groups = unlockGroups(state, skill);
   const next = groups.find((group) => group.level > now);
   if (!next) return `${skill} 40 (max)`;
@@ -204,6 +253,9 @@ export function enemyPerkKills(): readonly number[] {
 }
 
 export function trackChoices(skill: SkillId): { id: string; title: string }[] {
+  if (skill === 'Foraging') {
+    return HABITATS.map((habitat) => ({ id: habitatMasteryId(habitat.id), title: habitat.name }));
+  }
   const rows: { id: string; title: string }[] = [];
   for (const node of NODES) {
     if (node.skill === skill) rows.push({ id: node.id, title: itemName(node.id) });
@@ -215,6 +267,8 @@ export function trackChoices(skill: SkillId): { id: string; title: string }[] {
 }
 
 export function trackSeconds(id: string): number {
+  const habitat = habitatByMasteryId(id);
+  if (habitat) return NODE_BY_ID[habitat.entries[0].nodeId]?.seconds ?? 0;
   return NODE_BY_ID[id]?.seconds ?? RECIPE_BY_ID[id]?.seconds ?? 0;
 }
 

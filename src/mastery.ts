@@ -1,4 +1,16 @@
-import { ENEMY_BY_ID, NODE_BY_ID, NODES, RECIPE_BY_ID, RECIPES, itemName, type SkillId } from './content';
+import {
+  ENEMY_BY_ID,
+  HABITATS,
+  NODE_BY_ID,
+  NODES,
+  RECIPE_BY_ID,
+  RECIPES,
+  habitatByMasteryId,
+  habitatForNode,
+  habitatMasteryId,
+  itemName,
+  type SkillId,
+} from './content';
 
 /** Shown mastery stops at 40. Stored MXP may continue past 114,027. */
 export const MASTERY_CAP = 40;
@@ -46,6 +58,13 @@ export function masteryPerks(level: number): { sell: number; speed: number; xp: 
 }
 
 export function countMaxed(mastery: Record<string, number>, skill: SkillId): number {
+  if (skill === 'Foraging') {
+    let habitats = 0;
+    for (const habitat of HABITATS) {
+      if (masteryLevel(mastery[habitatMasteryId(habitat.id)] ?? 0) >= MASTERY_CAP) habitats += 1;
+    }
+    return habitats;
+  }
   let count = 0;
   for (const node of NODES) {
     if (node.skill === skill && masteryLevel(mastery[node.id] ?? 0) >= MASTERY_CAP) count += 1;
@@ -74,6 +93,8 @@ for (const recipe of RECIPES) {
 
 /** The mastery track whose sell perk applies to this item, if it has one. */
 export function masteryTrackForItem(itemId: string): string | null {
+  const habitat = habitatForNode(itemId);
+  if (habitat) return habitatMasteryId(habitat.id);
   if (NODE_BY_ID[itemId]) return itemId;
   return OUTPUT_RECIPE[itemId] ?? null;
 }
@@ -89,6 +110,8 @@ export function enemyLootFactor(enemyMastery: Record<string, number>, enemyId: s
 }
 
 export function trackName(id: string): string {
+  const habitat = habitatByMasteryId(id);
+  if (habitat) return habitat.name;
   if (NODE_BY_ID[id]) return itemName(id);
   const recipe = RECIPE_BY_ID[id];
   if (recipe?.outputs[0]) return itemName(recipe.outputs[0].id);

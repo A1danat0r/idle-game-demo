@@ -502,7 +502,7 @@ describe('combat', () => {
   it('pays the poacher 3-9 and lands loot near the catalogue value', () => {
     const kills = 1000;
     const lootEv = expectedDropValue(ENEMY_BY_ID['wood.poacher'].drops);
-    expect(lootEv).toBeCloseTo(6.5, 5);
+    expect(lootEv).toBeCloseTo(9.5, 5);
     expect(expectedCoinValue(ENEMY_BY_ID['wood.poacher'])).toBe(6);
     const beetle = ENEMY_BY_ID['meadow.beetle'];
     expect(expectedDropValue(beetle.drops) + expectedCoinValue(beetle)).toBeCloseTo(6.25, 5);

@@ -1,4 +1,4 @@
-import { ENEMIES, ENEMY_BY_ID, LEVEL_CAP, MEADOW_LADDER, NODES, SKILL_IDS, enemyUnlocked } from './content';
+import { ENEMIES, ENEMY_BY_ID, HABITATS, LEVEL_CAP, MEADOW_LADDER, NODES, SKILL_IDS, enemyUnlocked, habitatMasteryId } from './content';
 import { skillLevel, type Save } from './engine';
 import { MASTERY_CAP, masteryLevel } from './mastery';
 
@@ -48,7 +48,11 @@ export function deriveProfileStats(state: Save): ProfileStats {
   }
   let nodesMastered = 0;
   for (const node of NODES) {
+    if (node.skill === 'Foraging') continue;
     if (masteryLevel(state.mastery[node.id] ?? 0) >= MASTERY_CAP) nodesMastered += 1;
+  }
+  for (const habitat of HABITATS) {
+    if (masteryLevel(state.mastery[habitatMasteryId(habitat.id)] ?? 0) >= MASTERY_CAP) nodesMastered += 1;
   }
   return {
     totalLevel,

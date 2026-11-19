@@ -14,6 +14,11 @@ import {
   LEVEL_CAP,
   NODE_BY_ID,
   NODES,
+  HABITATS,
+  HABITAT_BY_ID,
+  habitatForNode,
+  habitatMasteryId,
+  type HabitatEntry,
   OFFLINE_CAP_MS,
   RECIPE_BY_ID,
   RECIPES,
@@ -91,6 +96,7 @@ export interface StorageLike {
 
 export type Activity =
   | { kind: 'gather'; nodeId: string }
+  | { kind: 'forage'; habitatId: string }
   | { kind: 'produce'; recipeId: string }
   | { kind: 'combat'; enemyId: string; style: CombatStyle };
 
@@ -436,6 +442,53 @@ export function nodeUsable(state: Save, nodeId: string): boolean {
   return state.nodes.includes(nodeId);
 }
 
+/** Level reached and, for a paid node, bought. Free Foraging nodes count as bought. */
+export function forageEntryReady(state: Save, nodeId: string): boolean {
+  const node = NODE_BY_ID[nodeId];
+  if (!node || node.skill !== 'Foraging') return false;
+  if (!state.owned.includes('Foraging')) return false;
+  if (skillLevel(state, 'Foraging') < node.level) return false;
+  return node.cost <= 0 || state.nodes.includes(nodeId);
+}
+
+/** Entries that can roll: Foraging level met and the node bought. */
+export function habitatTable(state: Save, habitatId: string): HabitatEntry[] {
+  const habitat = HABITAT_BY_ID[habitatId];
+  if (!habitat) return [];
+  return habitat.entries.filter((entry) => forageEntryReady(state, entry.nodeId));
+}
+
+/**
+ * Highest-level entry currently in the table.
+ * A level tie keeps the first entry in the habitat list.
+ */
+export function habitatPace(state: Save, habitatId: string): (typeof NODE_BY_ID)[string] | null {
+  const table = habitatTable(state, habitatId);
+  if (table.length === 0) return null;
+  let pace = NODE_BY_ID[table[0].nodeId];
+  for (const entry of table) {
+    const node = NODE_BY_ID[entry.nodeId];
+    if (node.level > pace.level) pace = node;
+  }
+  return pace;
+}
+
+/** Sickle steps, then the habitat mastery speed perk. Base seconds come from the pace node. */
+export function habitatSeconds(state: Save, habitatId: string): number {
+  const pace = habitatPace(state, habitatId);
+  if (!pace) return 0;
+  const factor = TOOL_TIME_FACTOR ** (toolTier(state, 'Foraging') + buildingSteps(state, 'Foraging'));
+  const speed = masteryPerks(masteryLevel(state.mastery[habitatMasteryId(habitatId)] ?? 0)).speed;
+  return pace.seconds * factor * (1 - speed);
+}
+
+/** XP granted by one habitat tick, including the mastery and global bonuses. */
+export function habitatTickXp(state: Save, habitatId: string): number {
+  const pace = habitatPace(state, habitatId);
+  if (!pace) return 0;
+  return pace.xp * actionXpMultiplier(state.mastery, habitatMasteryId(habitatId), 'Foraging');
+}
+
 export function activityLabel(state: Save): string {
   const activity = state.activity;
   if (!activity) return 'Idle';
@@ -448,6 +501,9 @@ export function activityLabel(state: Save): string {
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     return `${node.skill} · ${itemName(activity.nodeId)}`;
+  }
+  if (activity.kind === 'forage') {
+    return `Foraging · ${HABITAT_BY_ID[activity.habitatId]?.name ?? activity.habitatId}`;
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPE_BY_ID[activity.recipeId];
@@ -464,12 +520,25 @@ function beginActivity(state: Save): void {
 }
 
 export function startGather(state: Save, nodeId: string): boolean {
-  if (NODE_BY_ID[nodeId]?.skill === 'Exploration') return false;
+  const skill = NODE_BY_ID[nodeId]?.skill;
+  if (skill === 'Exploration' || skill === 'Foraging') return false;
   if (!nodeUsable(state, nodeId)) return false;
   const same = state.activity?.kind === 'gather' && state.activity.nodeId === nodeId;
   if (same) return true;
   beginActivity(state);
   state.activity = { kind: 'gather', nodeId };
+  return true;
+}
+
+/** A habitat with at least one table entry. Selecting it starts the roll, the way a node used to. */
+export function startForage(state: Save, habitatId: string): boolean {
+  if (!HABITAT_BY_ID[habitatId]) return false;
+  if (!state.owned.includes('Foraging')) return false;
+  if (habitatTable(state, habitatId).length === 0) return false;
+  const same = state.activity?.kind === 'forage' && state.activity.habitatId === habitatId;
+  if (same) return true;
+  beginActivity(state);
+  state.activity = { kind: 'forage', habitatId };
   return true;
 }
 
@@ -887,9 +956,44 @@ function playerAttack(state: Save, sink: Sink | undefined, opts: SimOptions): vo
   arrowsSpent(state, sink);
 }
 
+function rollWeighted(state: Save, entries: readonly HabitatEntry[]): string {
+  const total = entries.reduce((sum, entry) => sum + entry.weight, 0);
+  let mark = nextUnit(state) * total;
+  for (const entry of entries) {
+    mark -= entry.weight;
+    if (mark < 0) return entry.nodeId;
+  }
+  return entries[entries.length - 1].nodeId;
+}
+
+/** One habitat tick: roll one table item, grant its XP, and add habitat mastery. */
+function completeForageTick(state: Save, habitatId: string, sink: Sink | undefined, opts: SimOptions): void {
+  const table = habitatTable(state, habitatId);
+  const pace = habitatPace(state, habitatId);
+  if (!pace || table.length === 0) {
+    state.activity = null;
+    state.progressMs = 0;
+    return;
+  }
+  const itemId = rollWeighted(state, table);
+  const track = habitatMasteryId(habitatId);
+  const qty = doubledOutput(state, track) ? 2 : 1;
+  giveItem(state, itemId, qty, sink);
+  const gained = addXp(state, 'Foraging', pace.xp * actionXpMultiplier(state.mastery, track, 'Foraging'));
+  opts.notes?.push({ kind: 'action', skill: 'Foraging', xp: gained, itemId, qty });
+  grantActionMastery(state, track, 'Foraging', pace.seconds, opts);
+  state.stats.actions += 1;
+  if (sink) sink.actions += 1;
+  state.progressMs = 0;
+}
+
 function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void {
   const activity = state.activity;
   if (!activity || state.paused) return;
+  if (activity.kind === 'forage') {
+    completeForageTick(state, activity.habitatId, sink, opts);
+    return;
+  }
   if (activity.kind === 'gather') {
     const node = NODE_BY_ID[activity.nodeId];
     const qty = doubledOutput(state, node.id) ? 2 : 1;
@@ -959,6 +1063,15 @@ function nextActionIn(state: Save, sink?: Sink): number | null {
   }
   if (activity.kind === 'gather') {
     return Math.max(0, actionDurationMs(state, activity.nodeId) - state.progressMs);
+  }
+  if (activity.kind === 'forage') {
+    const duration = habitatSeconds(state, activity.habitatId) * 1000;
+    if (duration <= 0) {
+      state.activity = null;
+      state.progressMs = 0;
+      return null;
+    }
+    return Math.max(0, duration - state.progressMs);
   }
   if (activity.kind === 'produce') {
     return Math.max(0, actionDurationMs(state, activity.recipeId) - state.progressMs);
@@ -1046,6 +1159,8 @@ export function stepCompletion(state: Save, opts: SimOptions = {}): { ms: number
     return { ms, type };
   } else if (state.activity.kind === 'gather') {
     ms = actionDurationMs(state, state.activity.nodeId) - state.progressMs;
+  } else if (state.activity.kind === 'forage') {
+    ms = habitatSeconds(state, state.activity.habitatId) * 1000 - state.progressMs;
   } else if (state.activity.kind === 'produce') {
     ms = actionDurationMs(state, state.activity.recipeId) - state.progressMs;
   }
@@ -1408,6 +1523,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     stopLegacyExploration(state);
     report.expeditionLine = describeExpedition(expBefore, null, state.expedition);
     report.levelsAfter = levelsOf(state);
+    mergeLegacyItemCounts(report.itemsGained);
+    mergeLegacyItemCounts(report.itemsConsumed);
     return report;
   }
   const credited = Math.min(away, OFFLINE_CAP_MS);
@@ -1435,6 +1552,8 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   report.kills = sink.kills;
   report.foodEaten = sink.foodEaten;
   report.coinsGained = sink.coins;
+  mergeLegacyItemCounts(sink.gained);
+  mergeLegacyItemCounts(sink.consumed);
   report.itemsGained = sink.gained;
   report.itemsConsumed = sink.consumed;
   for (const skill of Object.keys({ ...xpBefore, ...state.xp }) as SkillId[]) {
@@ -1454,6 +1573,28 @@ export function creditOffline(state: Save, now: number): CatchupReport {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Catalogue id kept, demo-only id removed. Counts add onto the survivor.
+ * A missing old key is left alone. A zero total is omitted. Mastery is not touched.
+ */
+const LEGACY_ITEM_IDS: Record<string, string> = {
+  'mat.berry.meadow': 'mat.fruit.berries',
+  'mat.herb.meadow_cuttings': 'mat.cutting.meadow_herb',
+  'mat.moss.spell': 'mat.reagent.spell_moss',
+  'mat.part.beetle_carapace': 'mat.combat.beetle_carapace',
+  'mat.wax.grub': 'mat.combat.grub_wax',
+};
+
+export function mergeLegacyItemCounts(map: Record<string, number>): void {
+  for (const [oldId, nextId] of Object.entries(LEGACY_ITEM_IDS)) {
+    if (!Object.prototype.hasOwnProperty.call(map, oldId)) continue;
+    const total = (map[nextId] ?? 0) + (map[oldId] ?? 0);
+    delete map[oldId];
+    if (total > 0) map[nextId] = total;
+    else delete map[nextId];
+  }
 }
 
 export function deserialize(raw: string): Save | null {
@@ -1491,6 +1632,7 @@ export function deserialize(raw: string): Save | null {
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
     if (value > 0) bank[key] = value;
   }
+  mergeLegacyItemCounts(bank);
   const statsIn = isRecord(parsed.stats) ? parsed.stats : {};
   const stats = emptyStats();
   if (typeof statsIn.actions === 'number') stats.actions = statsIn.actions;
@@ -1537,6 +1679,8 @@ export function deserialize(raw: string): Save | null {
     if (!isRecord(parsed.activity) || typeof parsed.activity.kind !== 'string') return null;
     if (parsed.activity.kind === 'gather' && typeof parsed.activity.nodeId === 'string') {
       activity = { kind: 'gather', nodeId: parsed.activity.nodeId };
+    } else if (parsed.activity.kind === 'forage' && typeof parsed.activity.habitatId === 'string') {
+      activity = { kind: 'forage', habitatId: parsed.activity.habitatId };
     } else if (parsed.activity.kind === 'produce' && typeof parsed.activity.recipeId === 'string') {
       activity = { kind: 'produce', recipeId: parsed.activity.recipeId };
     } else if (
@@ -1622,6 +1766,7 @@ export function deserialize(raw: string): Save | null {
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
   loaded.plot = readPlot(parsed.plot);
   loaded.expedition = readExpedition(parsed.expedition);
+  migrateForaging(loaded);
   return loaded;
 }
 
@@ -1637,6 +1782,32 @@ function readExpedition(value: unknown): Save['expedition'] {
   if (typeof durationMs !== 'number' || !Number.isFinite(durationMs) || durationMs <= 0) return null;
   if (typeof creditedMs !== 'number' || !Number.isFinite(creditedMs) || creditedMs < 0) return null;
   return { routeId, startedAt, durationMs, creditedMs: Math.min(creditedMs, durationMs) };
+}
+
+/**
+ * Old Foraging saves keep their bought nodes and per-node mastery.
+ * A missing habitat key starts at the highest old MXP among that habitat's nodes.
+ * A gather action on a Foraging node becomes that habitat. A partial node tick
+ * finishes as one habitat tick; time already credited up to lastCredited is left as saved.
+ */
+function migrateForaging(state: Save): void {
+  for (const habitat of HABITATS) {
+    const key = habitatMasteryId(habitat.id);
+    if (state.mastery[key] != null) continue;
+    let best = 0;
+    for (const entry of habitat.entries) best = Math.max(best, state.mastery[entry.nodeId] ?? 0);
+    if (best > 0) state.mastery[key] = best;
+  }
+  const activity = state.activity;
+  if (!activity || activity.kind !== 'gather') return;
+  const habitat = habitatForNode(activity.nodeId);
+  if (!habitat) return;
+  const partial = state.progressMs > 0;
+  state.activity = { kind: 'forage', habitatId: habitat.id };
+  state.progressMs = 0;
+  if (partial && habitatTable(state, habitat.id).length > 0) {
+    completeForageTick(state, habitat.id, undefined, {});
+  }
 }
 
 function readPlot(value: unknown): Save['plot'] {

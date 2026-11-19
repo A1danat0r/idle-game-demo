@@ -287,6 +287,81 @@ export const NODES: NodeDef[] = [
 
 export const NODE_BY_ID: Record<string, NodeDef> = Object.fromEntries(NODES.map((n) => [n.id, n]));
 
+export interface HabitatEntry {
+  nodeId: string;
+  weight: number;
+}
+
+export interface HabitatDef {
+  id: string;
+  name: string;
+  entries: readonly HabitatEntry[];
+}
+
+/** One roll table per habitat. Weights are the spec odds. Node ids, costs, and levels stay on the nodes. */
+export const HABITATS: readonly HabitatDef[] = [
+  {
+    id: 'meadow',
+    name: 'Meadow verge',
+    entries: [
+      { nodeId: 'mat.herb.meadow', weight: 5 },
+      { nodeId: 'mat.seed.flax', weight: 3 },
+      { nodeId: 'mat.reagent.spell_moss', weight: 2 },
+      { nodeId: 'mat.seed.potato', weight: 2 },
+      { nodeId: 'mat.seed.carrot', weight: 2 },
+      { nodeId: 'mat.fruit.crabapple', weight: 2 },
+      { nodeId: 'mat.herb.bitterroot', weight: 2 },
+    ],
+  },
+  {
+    id: 'woodland',
+    name: 'Woodland edge',
+    entries: [
+      { nodeId: 'mat.cutting.meadow_herb', weight: 2 },
+      { nodeId: 'mat.fruit.berries', weight: 2 },
+      { nodeId: 'mat.forage.wild_wax_comb', weight: 2 },
+      { nodeId: 'mat.fungi.mushroom', weight: 2 },
+      { nodeId: 'mat.spawn.mushroom', weight: 2 },
+      { nodeId: 'mat.fruit.plum', weight: 2 },
+      { nodeId: 'mat.cutting.emberleaf', weight: 2 },
+      { nodeId: 'mat.herb.emberleaf', weight: 2 },
+    ],
+  },
+  {
+    id: 'riverbank',
+    name: 'Riverbank',
+    entries: [
+      { nodeId: 'mat.seed.cotton', weight: 2 },
+      { nodeId: 'mat.plant.cattail', weight: 2 },
+      { nodeId: 'mat.seed.onion', weight: 2 },
+      { nodeId: 'mat.seed.wheat', weight: 2 },
+      { nodeId: 'mat.seed.garlic', weight: 2 },
+      { nodeId: 'mat.seed.turnip', weight: 2 },
+      { nodeId: 'mat.seed.hemp', weight: 2 },
+    ],
+  },
+];
+
+export const HABITAT_BY_ID: Record<string, HabitatDef> = Object.fromEntries(HABITATS.map((habitat) => [habitat.id, habitat]));
+
+const HABITAT_BY_NODE: Record<string, HabitatDef> = {};
+for (const habitat of HABITATS) {
+  for (const entry of habitat.entries) HABITAT_BY_NODE[entry.nodeId] = habitat;
+}
+
+export function habitatForNode(nodeId: string): HabitatDef | undefined {
+  return HABITAT_BY_NODE[nodeId];
+}
+
+export function habitatMasteryId(habitatId: string): string {
+  return `forage.${habitatId}`;
+}
+
+export function habitatByMasteryId(id: string): HabitatDef | undefined {
+  if (!id.startsWith('forage.')) return undefined;
+  return HABITAT_BY_ID[id.slice('forage.'.length)];
+}
+
 function recipe(
   id: string,
   skill: RecipeDef['skill'],
@@ -305,7 +380,7 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.food.roast_minnows', 'Cooking', 1, 2.4, 38, [{ id: 'mat.fish.minnow', qty: 2 }], [{ id: 'food.roast_minnows', qty: 1 }]),
   recipe('recipe.mat.fuel.charcoal', 'Cooking', 1, 2.3, 37, [{ id: 'mat.wood.pine', qty: 1 }], [{ id: 'mat.fuel.charcoal', qty: 2 }]),
   recipe('recipe.food.cooked_shrimp', 'Cooking', 10, 2.5, 40, [{ id: 'mat.fish.river_shrimp', qty: 1 }], [{ id: 'food.cooked_shrimp', qty: 1 }]),
-  recipe('recipe.food.shrimp_berry_bowl', 'Cooking', 10, 2.7, 43, [{ id: 'mat.fish.river_shrimp', qty: 2 }, { id: 'mat.berry.meadow', qty: 1 }], [{ id: 'food.shrimp_berry_bowl', qty: 1 }]),
+  recipe('recipe.food.shrimp_berry_bowl', 'Cooking', 10, 2.7, 43, [{ id: 'mat.fish.river_shrimp', qty: 2 }, { id: 'mat.fruit.berries', qty: 1 }], [{ id: 'food.shrimp_berry_bowl', qty: 1 }]),
   recipe('recipe.food.mutton_herb_stew', 'Cooking', 15, 2.9, 46, [{ id: 'mat.meat.mutton', qty: 2 }, { id: 'mat.herb.meadow', qty: 1 }], [{ id: 'food.mutton_herb_stew', qty: 2 }]),
   recipe('recipe.food.roast_perch', 'Cooking', 15, 2.7, 43, [{ id: 'mat.fish.perch', qty: 1 }], [{ id: 'food.roast_perch', qty: 1 }]),
   recipe('recipe.food.tortoise_herb_soup', 'Cooking', 18, 2.9, 46, [{ id: 'mat.meat.tortoise', qty: 1 }, { id: 'mat.herb.meadow', qty: 1 }], [{ id: 'food.tortoise_herb_soup', qty: 2 }]),
@@ -568,16 +643,16 @@ export const ENEMIES: EnemyDef[] = [
     { itemId: 'mat.bone.ordinary', num: 1, den: 4, qty: 1 },
   ], null),
   enemy('meadow.moss', 'Moss crawler', 'Meadow verge', 3, [
-    { itemId: 'mat.moss.spell', num: 1, den: 4, qty: 24 },
+    { itemId: 'mat.reagent.spell_moss', num: 1, den: 4, qty: 24 },
   ], null),
   enemy('meadow.beetle', 'Thorn beetle', 'Meadow verge', 5, [
     { itemId: 'mat.ore.copper', num: 1, den: 4, qty: 5 },
     { itemId: 'mat.ore.tin', num: 1, den: 4, qty: 5 },
-    { itemId: 'mat.part.beetle_carapace', num: 1, den: 8, qty: 1 },
+    { itemId: 'mat.combat.beetle_carapace', num: 1, den: 8, qty: 1 },
   ], { min: 2, max: 3 }),
   enemy('wood.jay', 'Berry jay', 'Woodland edge', 9, [
     { itemId: 'mat.seed.flax', num: 1, den: 4, qty: 12 },
-    { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 12 },
+    { itemId: 'mat.fruit.berries', num: 1, den: 4, qty: 12 },
   ], null),
   enemy('wood.fox', 'Forest fox', 'Woodland edge', 8, [
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 3 },
@@ -585,16 +660,16 @@ export const ENEMIES: EnemyDef[] = [
   ], null),
   enemy('wood.grub', 'Resin grub', 'Woodland edge', 11, [
     { itemId: 'mat.tree.resin', num: 1, den: 4, qty: 8 },
-    { itemId: 'mat.moss.spell', num: 1, den: 4, qty: 8 },
-    { itemId: 'mat.wax.grub', num: 1, den: 8, qty: 1 },
+    { itemId: 'mat.reagent.spell_moss', num: 1, den: 4, qty: 8 },
+    { itemId: 'mat.combat.grub_wax', num: 1, den: 8, qty: 1 },
   ], null),
   enemy('wood.tortoise', 'Root tortoise', 'Woodland edge', 10, [
     { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 8 },
-    { itemId: 'mat.herb.meadow_cuttings', num: 1, den: 4, qty: 8 },
+    { itemId: 'mat.cutting.meadow_herb', num: 1, den: 4, qty: 8 },
     { itemId: 'mat.meat.tortoise', num: 1, den: 2, qty: 1 },
   ], null),
   enemy('wood.boar', 'Wild boar', 'Woodland edge', 12, [
-    { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 6 },
+    { itemId: 'mat.fruit.berries', num: 1, den: 4, qty: 6 },
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
     { itemId: 'mat.meat.boar', num: 1, den: 2, qty: 1 },
     { itemId: 'mat.hide.thick', num: 1, den: 3, qty: 1 },
@@ -602,7 +677,7 @@ export const ENEMIES: EnemyDef[] = [
   ], null),
   enemy('wood.poacher', 'Hedge poacher', 'Woodland edge', 14, [
     { itemId: 'mat.herb.meadow', num: 1, den: 4, qty: 6 },
-    { itemId: 'mat.berry.meadow', num: 1, den: 4, qty: 6 },
+    { itemId: 'mat.fruit.berries', num: 1, den: 4, qty: 6 },
     { itemId: 'mat.hide.basic', num: 1, den: 3, qty: 1 },
     { itemId: 'mat.meat.boar', num: 1, den: 2, qty: 1 },
   ], { min: 3, max: 9 }),
@@ -687,7 +762,7 @@ const FOODS: { id: string; name: string; sell: number; heal: number }[] = [
   { id: 'food.roast_hare', name: 'Roast hare', sell: 6, heal: 50 },
   { id: 'food.roast_minnows', name: 'Roast minnows', sell: 3, heal: 50 },
   { id: 'food.cooked_shrimp', name: 'Cooked river shrimp', sell: 5, heal: 100 },
-  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 11, heal: 100 },
+  { id: 'food.shrimp_berry_bowl', name: 'Shrimp-and-berry bowl', sell: 14, heal: 100 },
   { id: 'food.mutton_herb_stew', name: 'Mutton-and-herb stew', sell: 7, heal: 120 },
   { id: 'food.roast_perch', name: 'Roast perch', sell: 8, heal: 120 },
   { id: 'food.tortoise_herb_soup', name: 'Tortoise-and-herb soup', sell: 4, heal: 140 },
@@ -734,11 +809,6 @@ function addItems(): void {
     { id: 'mat.hide.basic', name: 'Basic hide', sell: 6, icon: 'hide' },
     { id: 'mat.hide.thick', name: 'Thick hide', sell: 4, icon: 'hide' },
     { id: 'mat.herb.meadow', name: 'Meadow herbs', sell: 1, icon: 'herb' },
-    { id: 'mat.herb.meadow_cuttings', name: 'Meadow-herb cuttings', sell: 1, icon: 'herb' },
-    { id: 'mat.berry.meadow', name: 'Meadow berries', sell: 1, icon: 'berry' },
-    { id: 'mat.moss.spell', name: 'Spell moss', sell: 1, icon: 'moss' },
-    { id: 'mat.part.beetle_carapace', name: 'Beetle carapace fragments', sell: 10, icon: 'part' },
-    { id: 'mat.wax.grub', name: 'Grub wax', sell: 16, icon: 'part' },
     { id: 'mat.bone.ordinary', name: 'Ordinary bones', sell: 1, icon: 'part' },
     { id: 'mat.reagent.spell_moss', name: 'Spell moss', sell: 1, icon: 'moss' },
     { id: 'mat.seed.potato', name: 'Seed potatoes', sell: 2, icon: 'herb' },

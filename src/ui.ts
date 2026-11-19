@@ -17,6 +17,7 @@ import {
   ENEMIES,
   ENEMY_BY_ID,
   ITEMS,
+  HABITATS,
   NODE_BY_ID,
   NODES,
   RECIPE_BY_ID,
@@ -33,6 +34,7 @@ import {
   isFood,
   countedLabel,
   countedName,
+  habitatMasteryId,
   itemName,
   lockLine,
   type IconName,
@@ -54,6 +56,11 @@ import {
   expeditionRemainingMs,
   expeditionRouteName,
   explorationRoutes,
+  forageEntryReady,
+  habitatPace,
+  habitatSeconds,
+  habitatTable,
+  habitatTickXp,
   formulaLevel,
   maxHp,
   nodeUsable,
@@ -171,9 +178,11 @@ function activityMastery(state: Save): { pct: number } | null {
   const mxp =
     activity.kind === 'gather'
       ? state.mastery[activity.nodeId] ?? 0
-      : activity.kind === 'produce'
-        ? state.mastery[activity.recipeId] ?? 0
-        : state.enemyMastery[activity.enemyId] ?? 0;
+      : activity.kind === 'forage'
+        ? state.mastery[habitatMasteryId(activity.habitatId)] ?? 0
+        : activity.kind === 'produce'
+          ? state.mastery[activity.recipeId] ?? 0
+          : state.enemyMastery[activity.enemyId] ?? 0;
   return { pct: masteryProgress(mxp) };
 }
 
@@ -185,10 +194,19 @@ function xpView(xp: number): { level: number; pct: number; text: string } {
   return { level, pct: ((xp - prev) / (next - prev)) * 100, text: `${fmtXp(xp)} / ${fmt(next)} XP` };
 }
 
-function timeLabel(state: Save, id: string): string {
-  const seconds = actionSeconds(state, id);
+function secondsText(seconds: number): string {
   const text = (Math.round(seconds * 1000) / 1000).toFixed(3).replace(/\.?0+$/, '');
   return `${text}s`;
+}
+
+function timeLabel(state: Save, id: string): string {
+  return secondsText(actionSeconds(state, id));
+}
+
+function oddsText(weight: number, total: number): string {
+  const pct = (weight / total) * 100;
+  const rounded = Math.round(pct * 10) / 10;
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(1)}%`;
 }
 
 /** Header, then the scrolling page, then the activity bar in the bottom bar, directly above the tabs. */
@@ -264,6 +282,7 @@ export function activityIcon(state: Save): IconName {
   if (activity.kind === 'gather') {
     return ITEMS[activity.nodeId]?.icon ?? SKILL_ICON[NODE_BY_ID[activity.nodeId]?.skill ?? 'Woodcutting'];
   }
+  if (activity.kind === 'forage') return 'herb';
   const recipe = RECIPE_BY_ID[activity.recipeId];
   const output = recipe?.outputs[0]?.id;
   if (output && ITEMS[output]?.icon) return ITEMS[output].icon;
@@ -297,6 +316,7 @@ export function activityDestination(state: Save, lastSkill: SkillId | null): Act
   }
   let skill: SkillId | null = null;
   if (activity?.kind === 'gather') skill = NODE_BY_ID[activity.nodeId]?.skill ?? null;
+  if (activity?.kind === 'forage') skill = 'Foraging';
   if (activity?.kind === 'produce') skill = RECIPE_BY_ID[activity.recipeId]?.skill ?? null;
   if (!skill) {
     skill = lastSkill && !isCombatStyle(lastSkill) && lastSkill !== 'Hitpoints' ? lastSkill : 'Woodcutting';
@@ -314,9 +334,11 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     ? ''
     : activity.kind === 'gather'
       ? `g:${activity.nodeId}`
-      : activity.kind === 'produce'
-        ? `p:${activity.recipeId}`
-        : `c:${activity.enemyId}:${activity.style}`;
+      : activity.kind === 'forage'
+        ? `f:${activity.habitatId}`
+        : activity.kind === 'produce'
+          ? `p:${activity.recipeId}`
+          : `c:${activity.enemyId}:${activity.style}`;
   return JSON.stringify({
     extra,
     view,
@@ -346,6 +368,7 @@ function activityPct(state: Save): number {
   const activity = state.activity;
   if (!activity) return 0;
   if (activity.kind === 'gather') return pct(state.progressMs, actionSeconds(state, activity.nodeId) * 1000);
+  if (activity.kind === 'forage') return pct(state.progressMs, habitatSeconds(state, activity.habitatId) * 1000);
   if (activity.kind === 'produce') return pct(state.progressMs, actionSeconds(state, activity.recipeId) * 1000);
   const combat = state.combat;
   if (!combat) return 0;
@@ -371,6 +394,11 @@ function activityDetail(state: Save): string {
     const unit = (ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id);
     const perHour = Math.round((3600 * unit) / seconds);
     return `${timeLabel(state, node.id)} · ${node.xp} XP · ${fmt(perHour)} coins/h if sold`;
+  }
+  if (activity.kind === 'forage') {
+    const pace = habitatPace(state, activity.habitatId);
+    if (!pace) return 'Nothing in the table';
+    return `${secondsText(habitatSeconds(state, activity.habitatId))} · ${fmtAmount(habitatTickXp(state, activity.habitatId))} XP`;
   }
   if (activity.kind === 'produce') {
     const recipe = RECIPES.find((row) => row.id === activity.recipeId)!;
@@ -525,10 +553,13 @@ function skillHtml(state: Save, view: View): string {
       ${expeditionCard(state)}
       <div class="list">${explorationRoutes().map((route) => routeRow(state, view, route)).join('')}</div>`;
   }
-  const rows = [
-    ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
-    ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
-  ].join('');
+  const rows =
+    skill === 'Foraging'
+      ? habitatCards(state)
+      : [
+          ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
+          ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
+        ].join('');
   const plot = skill === 'Farming' && state.plot
     ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
     : '';
@@ -611,6 +642,40 @@ function skillScene(skill: SkillId): string {
             ? '<rect x="46" y="62" width="34" height="12" fill="#444"/>'
             : '<rect x="62" y="50" width="12" height="38" fill="#5a3b22"/><path d="M68 8 L96 56 H40 Z" fill="#2f5a3a"/>';
   return `<div class="scene wc">${playerFigure(70)}<svg width="110" height="90" viewBox="0 0 110 90">${prop}</svg></div>`;
+}
+
+function habitatCards(state: Save): string {
+  return HABITATS.map((habitat) => {
+    const table = habitatTable(state, habitat.id);
+    const open = table.length > 0;
+    const active = state.activity?.kind === 'forage' && state.activity.habitatId === habitat.id;
+    const total = table.reduce((sum, entry) => sum + entry.weight, 0);
+    const pace = habitatPace(state, habitat.id);
+    const time = pace
+      ? `${secondsText(habitatSeconds(state, habitat.id))} · ${fmtAmount(habitatTickXp(state, habitat.id))} XP`
+      : `Foraging ${NODE_BY_ID[habitat.entries[0].nodeId].level}`;
+    const entries = habitat.entries
+      .map((entry) => {
+        const node = NODE_BY_ID[entry.nodeId];
+        const ready = forageEntryReady(state, entry.nodeId);
+        const reached = skillLevel(state, 'Foraging') >= node.level;
+        let status = '';
+        if (ready) status = `<b class="odds">${oddsText(entry.weight, total)}</b>`;
+        else if (!reached || node.cost <= 0) status = `<span class="tag">${lock} Lv ${node.level}</span>`;
+        else status = `<button type="button" class="tag btn" data-buy-node="${node.id}">Buy ${fmt(node.cost)}</button>`;
+        return `<div class="drop ${ready ? '' : 'dim'}"><span>${esc(itemName(node.id))}</span>${status}</div>`;
+      })
+      .join('');
+    const select = open ? `data-habitat="${habitat.id}"` : '';
+    return `<section class="panel habitat ${active ? 'on' : ''}" ${select}>
+      <div class="habitat-head">
+        <div class="ico wood">${icon('herb', 34)}</div>
+        <div class="grow"><b>${esc(habitat.name)}</b><small>${time}</small>${masteryLine(state.mastery[habitatMasteryId(habitat.id)] ?? 0)}</div>
+        ${active ? '<span class="tag on">Active</span>' : open ? '<span class="tag">Start</span>' : `<span class="tag">${lock}</span>`}
+      </div>
+      <div class="drops">${entries}</div>
+    </section>`;
+  }).join('');
 }
 
 function nodeRow(state: Save, node: (typeof NODES)[number]): string {
