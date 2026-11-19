@@ -19,6 +19,7 @@ import {
   startForage,
   startGather,
   buyMarkRank,
+  buyAutoReplant,
   buyPlot,
   moveBuilding,
   placeBuilding,
@@ -326,7 +327,7 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-buy-rank], [data-mark], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-buy-auto-replant], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-buy-rank], [data-mark], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   const openTop = target.dataset.tab === 'skill' || !!target.dataset.openSkill;
   if (target.dataset.tab === 'skill') openActivityTab();
@@ -371,6 +372,7 @@ app.addEventListener('click', (event) => {
   if (target.hasAttribute('data-buy-plot') && !target.hasAttribute('disabled')) {
     view.message = buyPlot(state) ? 'Plot bought.' : 'That plot is not available.';
   }
+  if (target.hasAttribute('data-buy-auto-replant') && !target.hasAttribute('disabled')) buyAutoReplant(state);
   if (target.dataset.plantCompost != null) {
     const choice = target.dataset.plantCompost;
     view.plantCompost = choice === 'compost' || choice === 'bone' ? choice : null;

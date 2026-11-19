@@ -14,6 +14,12 @@ export const COMPOST_RECIPES = ['recipe.farm.compost', 'recipe.farm.bone_compost
 
 export type CompostKind = 'compost' | 'bone' | null;
 
+/** Interim until compost-on-replant is answered. Replant passes this and nothing else. */
+export const AUTO_REPLANT_COMPOST = false;
+
+/** Skill-slot 9 price. No Farming level gate. */
+export const AUTO_REPLANT_COST = 27_822;
+
 /** Paid plots 2–8. round(750 × (level / 10)²). Plot 1 is free with Farming. */
 export const PLOT_GATES: readonly { plot: number; level: number; cost: number }[] = [
   { plot: 2, level: 5, cost: 188 },

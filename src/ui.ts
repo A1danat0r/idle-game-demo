@@ -92,6 +92,7 @@ import {
 } from './milestones';
 import { enemyFigure, playerFigure } from './sprites';
 import {
+  AUTO_REPLANT_COST,
   BONE_COMPOST_ITEM_ID,
   COMPOST_ITEM_ID,
   PLOT_COUNT,
@@ -707,10 +708,17 @@ export function plotCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
+function autoReplantRow(state: Save): string {
+  if (state.autoReplant) return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant on</b></div></div>`;
+  const cost = AUTO_REPLANT_COST.toLocaleString('en-US');
+  const ready = state.coins + 1e-9 >= AUTO_REPLANT_COST;
+  return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant — ${cost} coins</b></div><button type="button" class="tag btn" data-buy-auto-replant${ready ? '' : ' disabled'}>Buy</button></div>`;
+}
+
 function landHtml(state: Save, view: View): string {
   return `${title('Land')}
     <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
-    <div class="panel" data-land-fields><h3>Fields</h3>${plotListHtml(state, view, true)}</div>
+    <div class="panel" data-land-fields><h3>Fields</h3>${autoReplantRow(state)}${plotListHtml(state, view, true)}</div>
     <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml(state, view)}</div>`;
 }
 
