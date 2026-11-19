@@ -23,7 +23,7 @@ import {
   type Save,
   type StorageLike,
 } from '../src/engine';
-import { masteryLevel, masteryThreshold } from '../src/mastery';
+import { actionMasteryXp, actionXpMultiplier, masteryLevel, masteryThreshold } from '../src/mastery';
 import { activityHtml, backgroundStripHtml, mainHtml, reportHtml, shellHtml, type View } from '../src/ui';
 
 const QUARTER = EXPEDITION_MS[0];
@@ -461,7 +461,17 @@ describe('exploration expeditions', () => {
     const eightPreview = expeditionPreview(eight, STREAM, EIGHT);
     expect(eightPreview.ticks).toBe(9186);
     expect(eightPreview.items[0]?.qty).toBe(9186);
-    expect(9186 * 26 * 1.05).toBeCloseTo(250777.8, 4);
+    let mxp = masteryThreshold(30);
+    let uncapped = 0;
+    let maxedAt = 0;
+    for (let tick = 1; tick <= 9186; tick += 1) {
+      uncapped = Math.round((uncapped + 26 * actionXpMultiplier({ [STREAM]: mxp }, STREAM, 'Exploration')) * 10000) / 10000;
+      mxp += actionMasteryXp(3.3);
+      if (!maxedAt && masteryLevel(mxp) >= 40) maxedAt = tick;
+    }
+    expect(maxedAt).toBe(1545);
+    expect(26 * (1545 * 1.05 + 7641 * 1.08)).toBeCloseTo(256737.78, 4);
+    expect(uncapped).toBeCloseTo(256737.78, 4);
     startExpedition(eight, STREAM, EIGHT, 0);
     creditOffline(eight, EIGHT);
     expect(eight.bank[AGATE]).toBe(9186);
@@ -878,7 +888,12 @@ describe('bridge approach pays alum', () => {
     const levels = html.slice(html.indexOf('<dt>Levels</dt>'), html.indexOf('<dt>Gained</dt>'));
     expect(levels).toContain('Woodcutting 1→40');
     expect(levels).not.toContain('Exploration');
-    expect(report.actions).toBe(pineReport.actions + 1);
+    expect(1040 * actionMasteryXp(2.6)).toBeLessThan(masteryThreshold(20));
+    expect(1041 * actionMasteryXp(2.6)).toBeGreaterThanOrEqual(masteryThreshold(20));
+    expect(1041 * 2.6).toBeCloseTo(2706.6, 4);
+    expect(1041 + Math.floor((24 * 60 * 60 - 2706.6) / (2.6 * 0.95))).toBe(34924);
+    expect(pineReport.actions).toBe(34924);
+    expect(report.actions).toBe(34925);
     expect(state.bank[ALUM]).toBe(5236);
     expect(state.xp.Exploration).toBe(XP_CAP);
   });
