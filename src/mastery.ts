@@ -5,6 +5,7 @@ import {
   NODES,
   RECIPE_BY_ID,
   RECIPES,
+  actionTitle,
   habitatByMasteryId,
   habitatForNode,
   habitatMasteryId,
@@ -112,8 +113,9 @@ export function enemyLootFactor(enemyMastery: Record<string, number>, enemyId: s
 export function trackName(id: string): string {
   const habitat = habitatByMasteryId(id);
   if (habitat) return habitat.name;
-  if (NODE_BY_ID[id]) return itemName(id);
   const recipe = RECIPE_BY_ID[id];
+  if (recipe?.skill === 'Exploration') return actionTitle(recipe);
+  if (NODE_BY_ID[id]) return itemName(id);
   if (recipe?.outputs[0]) return itemName(recipe.outputs[0].id);
   return ENEMY_BY_ID[id]?.name ?? id;
 }

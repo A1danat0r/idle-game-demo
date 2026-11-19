@@ -54,6 +54,11 @@ export function notesWhileSheetOpen(notes: FloatNote[], sheetOpen: boolean): Flo
   return sheetOpen ? [] : notes;
 }
 
+/** Combat numbers are drawn only while the Fight screen is open. Toasts stay on the bar. */
+export function notesForScreen(notes: FloatNote[], fightScreen: boolean): FloaterView[] {
+  return presentNotes(notes).filter((item) => item.place === 'bar' || fightScreen);
+}
+
 /** Merge a burst of notes into at most FLOAT_CAP texts. Extra hits keep the latest ones. */
 export function presentNotes(notes: FloatNote[]): FloaterView[] {
   const actions = notes.filter((note): note is Extract<FloatNote, { kind: 'action' }> => note.kind === 'action');

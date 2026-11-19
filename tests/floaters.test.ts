@@ -3,7 +3,7 @@ import { chromium } from 'playwright';
 import { describe, expect, it } from 'vitest';
 import { ITEMS, XP_TABLE } from '../src/content';
 import { advanceOpenTab, newGame, setFood, startCombat, startGather, type FloatNote } from '../src/engine';
-import { FLOAT_CAP, combatAnchor, formatActionNotes, formatCombatAmount, notesWhileSheetOpen, presentNotes } from '../src/floaters';
+import { FLOAT_CAP, combatAnchor, formatActionNotes, formatCombatAmount, notesForScreen, notesWhileSheetOpen, presentNotes } from '../src/floaters';
 
 describe('action and combat floaters', () => {
   it('records the real XP and item for a completed gather', () => {
@@ -18,6 +18,18 @@ describe('action and combat floaters', () => {
       .toBe('+46 XP\n+1 Copper ore');
     expect(formatActionNotes([{ kind: 'action', skill: 'Construction', xp: 1, itemId: 'con.kit.pine_frame', qty: 4 }]))
       .toBe('+1 XP\n+4 Pine frame kits');
+  });
+
+  it('draws combat floaters only on the Fight screen', () => {
+    const notes: FloatNote[] = [
+      { kind: 'miss', side: 'player' },
+      { kind: 'toast', text: 'Stream survey is back: Weathered agate ×272' },
+    ];
+    expect(notesForScreen(notes, false).map((item) => item.place)).toEqual(['bar']);
+    expect(notesForScreen(notes, true).map((item) => item.text)).toEqual([
+      'Miss',
+      'Stream survey is back: Weathered agate ×272',
+    ]);
   });
 
   it('merges a short burst into one popup and caps the screen', () => {

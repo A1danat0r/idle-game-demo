@@ -229,7 +229,10 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     const exploration = mainHtml(state, view('Exploration'), 0);
     const fitting = rowHtml(exploration, 'Fitting appraisal');
     expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
-    expect(fitting).toContain('disabled');
+    expect(fitting).toContain('aria-label="Locked"');
+    expect(fitting).not.toContain('Haul');
+    expect(fitting).not.toContain('XP');
+    expect(fitting).not.toContain('Pack and go');
   });
 
   it('dismantles a built structure for half its kits, rounded down, and drops the step', () => {

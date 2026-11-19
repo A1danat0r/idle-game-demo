@@ -369,6 +369,18 @@ function doubledOutput(state: Save, actionId: string): boolean {
   return nextUnit(state) < 0.05;
 }
 
+/** Test seam for an expedition's Lv 40 roll. Null uses the live 5% roll. */
+let expeditionDoubleRoll: ((state: Save) => boolean) | null = null;
+
+export function setExpeditionDoubleRoll(roll: ((state: Save) => boolean) | null): void {
+  expeditionDoubleRoll = roll;
+}
+
+function expeditionDoubled(state: Save): boolean {
+  if (expeditionDoubleRoll) return expeditionDoubleRoll(state);
+  return nextUnit(state) < 0.05;
+}
+
 function roundXp(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -1364,17 +1376,46 @@ export interface ExpeditionPreview {
   mxp: number;
 }
 
-/** Base haul for a duration. Double-output rolls are not included. */
+/** Stored XP for one tick, using the mastery and global bonus before this tick's MXP is added. */
+function expeditionTickXp(mastery: Record<string, number>, routeId: string, baseXp: number): number {
+  return baseXp * actionXpMultiplier(mastery, routeId, 'Exploration');
+}
+
+/** How much of `amount` the live add-XP path would keep, and the XP total after it. */
+function creditSkillXp(current: number, amount: number): { next: number; gained: number } {
+  if (current >= XP_CAP - 1e-9) return { next: current, gained: 0 };
+  const next = Math.min(XP_CAP, roundXp(current + amount));
+  return { next, gained: roundXp(next - current) };
+}
+
+/**
+ * Haul for a duration. Tick time uses mastery at the call, which is the start of the trip.
+ * XP follows §2.7 on each tick, including a mastery-30 or global-bonus change after a tick's MXP.
+ * Double-output rolls are not included.
+ */
 export function expeditionPreview(state: Save, routeId: string, durationMs: number): ExpeditionPreview {
   const route = explorationRoute(routeId);
   const ticks = expeditionTicks(state, routeId, durationMs);
-  const xp = ticks * (route?.xp ?? 0);
+  const mxpEach = actionMasteryXp(route?.seconds ?? 0);
+  const mastery = { ...state.mastery };
+  let skillXp = state.xp.Exploration ?? 0;
+  let xp = 0;
+  for (let tick = 0; tick < ticks; tick += 1) {
+    const step = creditSkillXp(skillXp, expeditionTickXp(mastery, routeId, route?.xp ?? 0));
+    skillXp = step.next;
+    xp = roundXp(xp + step.gained);
+    mastery[routeId] = (mastery[routeId] ?? 0) + mxpEach;
+  }
   return {
     ticks,
     items: (route?.outputs ?? []).map((output) => ({ id: output.id, qty: output.qty * ticks })),
     xp,
-    mxp: ticks * actionMasteryXp(route?.seconds ?? 0),
+    mxp: ticks * mxpEach,
   };
+}
+
+function haulIsEmpty(preview: ExpeditionPreview): boolean {
+  return preview.xp <= 1e-9 && preview.items.every((item) => item.qty <= 0);
 }
 
 export function startExpedition(state: Save, routeId: string, durationMs: number, now: number): boolean {
@@ -1385,6 +1426,7 @@ export function startExpedition(state: Save, routeId: string, durationMs: number
   if (!state.owned.includes('Exploration')) return false;
   if (skillLevel(state, 'Exploration') < route.level) return false;
   if (route.cost > 0 && !state.nodes.includes(routeId)) return false;
+  if (haulIsEmpty(expeditionPreview(state, routeId, durationMs))) return false;
   if (route.inputs.some((input) => (state.bank[input.id] ?? 0) < input.qty)) return false;
   for (const input of route.inputs) takeItem(state, input.id, input.qty);
   state.expedition = { routeId, startedAt: now, durationMs, creditedMs: 0 };
@@ -1397,45 +1439,49 @@ interface ExpeditionGrant {
   items: Record<string, number>;
 }
 
-function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink): ExpeditionGrant {
+function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink, notes?: FloatNote[]): ExpeditionGrant {
   const route = explorationRoute(routeId);
   const ticks = expeditionTicks(state, routeId, elapsedMs);
   const items: Record<string, number> = {};
   const outputs = route?.outputs ?? [];
+  const mxpEach = actionMasteryXp(route?.seconds ?? 0);
+  let xp = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
-    const doubled = outputs.length > 0 && doubledOutput(state, routeId);
+    const doubled = outputs.length > 0 && masteryLevel(state.mastery[routeId] ?? 0) >= 40 && expeditionDoubled(state);
     for (const output of outputs) {
       const qty = output.qty * (doubled ? 2 : 1);
       giveItem(state, output.id, qty, sink);
       items[output.id] = (items[output.id] ?? 0) + qty;
     }
+    xp = roundXp(xp + addXp(state, 'Exploration', expeditionTickXp(state.mastery, routeId, route?.xp ?? 0)));
+    if (route) state.mastery[routeId] = (state.mastery[routeId] ?? 0) + mxpEach;
   }
-  const xp = addXp(state, 'Exploration', ticks * (route?.xp ?? 0));
   if (route && ticks > 0) {
-    state.mastery[routeId] = (state.mastery[routeId] ?? 0) + ticks * actionMasteryXp(route.seconds);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
   }
+  const text = haulToast(expeditionRouteName(routeId), items, xp);
+  if (text && notes) notes.push({ kind: 'toast', text });
   return { ticks, xp, items };
 }
 
 /** Credit time toward the trip. The haul is paid only when the stored duration is reached. */
-function advanceExpedition(state: Save, ms: number, sink?: Sink): ExpeditionGrant | null {
+function advanceExpedition(state: Save, ms: number, sink?: Sink, notes?: FloatNote[]): ExpeditionGrant | null {
   const trip = state.expedition;
   if (!trip || ms <= 0) return null;
   const room = Math.max(0, trip.durationMs - trip.creditedMs);
   trip.creditedMs += Math.min(ms, room);
   if (trip.creditedMs + 1e-9 < trip.durationMs) return null;
-  const grant = grantExpedition(state, trip.routeId, trip.durationMs, sink);
+  const grant = grantExpedition(state, trip.routeId, trip.durationMs, sink, notes);
   state.expedition = null;
   return grant;
 }
 
 /** Pay the ticks already credited and end the trip. Inputs are not returned. */
-export function returnExpedition(state: Save): boolean {
+export function returnExpedition(state: Save, notes?: FloatNote[]): boolean {
   const trip = state.expedition;
   if (!trip) return false;
-  grantExpedition(state, trip.routeId, trip.creditedMs);
+  grantExpedition(state, trip.routeId, trip.creditedMs, undefined, notes);
   state.expedition = null;
   return true;
 }
@@ -1453,23 +1499,42 @@ function stopLegacyExploration(state: Save): void {
   state.progressMs = 0;
 }
 
-function expeditionItemText(items: Record<string, number>): string {
-  const parts = Object.entries(items).filter(([, qty]) => qty > 0);
-  if (parts.length === 0) return 'none';
-  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${qty}`).join(', ');
+function groupCount(value: number): string {
+  return Math.floor(value).toLocaleString('en-US');
 }
 
-function expeditionLine(name: string, ticks: number, items: Record<string, number>, xp: number, tail: string): string {
-  return `Expedition: ${name}, ${ticks}, ${expeditionItemText(items)}, ${Math.floor(xp)} XP — ${tail}`;
+function expeditionItemText(items: Record<string, number>): string {
+  const parts = Object.entries(items).filter(([, qty]) => qty > 0);
+  if (parts.length === 0) return '';
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${groupCount(qty)}`).join(', ');
+}
+
+/** Finished haul, or a trip that is still out. Nothing is listed for a trip that granted nothing yet. */
+export function expeditionReportLine(name: string, grant: { ticks: number; items: Record<string, number>; xp: number } | null, leftMs = 0): string {
+  if (!grant) return `Expedition: ${name} — out, ${expeditionClock(leftMs)} left`;
+  const parts = [`Expedition: ${name}`, `${groupCount(grant.ticks)} ticks`];
+  const items = expeditionItemText(grant.items);
+  if (items) parts.push(items);
+  if (grant.xp > 1e-9) parts.push(`${groupCount(grant.xp)} XP`);
+  return `${parts.join(', ')} — finished`;
+}
+
+/** Toast for a haul granted while the app is open. Empty when nothing was paid. */
+export function haulToast(name: string, items: Record<string, number>, xp: number): string | null {
+  const gained = expeditionItemText(items);
+  const xpText = xp > 1e-9 ? `${groupCount(xp)} XP` : '';
+  const body = [gained, xpText].filter(Boolean).join(' · ');
+  if (!body) return null;
+  return `${name} is back: ${body}`;
 }
 
 function describeExpedition(before: Save['expedition'], grant: ExpeditionGrant | null, after: Save['expedition']): string | null {
   if (!before) return null;
   const name = expeditionRouteName(before.routeId);
-  if (grant) return expeditionLine(name, grant.ticks, grant.items, grant.xp, 'finished');
+  if (grant) return expeditionReportLine(name, grant);
   const duration = after?.durationMs ?? before.durationMs;
   const credited = after?.creditedMs ?? before.creditedMs;
-  return expeditionLine(name, 0, {}, 0, `out, ${expeditionClock(Math.max(0, duration - credited))} left`);
+  return expeditionReportLine(name, null, Math.max(0, duration - credited));
 }
 
 export function advanceOpenTab(
@@ -1484,7 +1549,7 @@ export function advanceOpenTab(
     stopLegacyExploration(state);
     simulate(state, gap, undefined, notes ? { notes } : undefined);
     growPlot(state, gap);
-    advanceExpedition(state, gap);
+    advanceExpedition(state, gap, undefined, notes);
     noteTime(state, gap);
     state.lastCredited = now;
   }
