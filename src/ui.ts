@@ -638,7 +638,7 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
   } else {
     right = `<button type="button" class="tag btn" data-pack="${route.id}">Pack and go</button>`;
   }
-  const note = [route.locked, missing ? needLine(missing.id) : '', !route.locked && empty ? 'Exploration is maxed' : ''].filter(Boolean).join(' · ');
+  const note = [route.locked, !route.locked && missing ? needLine(missing.id) : '', !route.locked && empty ? 'Exploration is maxed' : ''].filter(Boolean).join(' · ');
   const outputId = route.outputs[0]?.id;
   const iconName = (outputId && ITEMS[outputId]?.icon) || 'gem';
   return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small><small>Haul ${esc(haul)}</small>${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;

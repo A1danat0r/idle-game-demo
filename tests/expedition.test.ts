@@ -261,6 +261,7 @@ describe('exploration expeditions', () => {
     const html = mainHtml(state, view('Exploration'), 0);
     const fitting = rowHtml(html, 'Fitting appraisal');
     expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(fitting.match(/Needs trout-and-mushroom meal/g)).toHaveLength(1);
     expect(fitting).toContain('disabled');
     expect(fitting).not.toContain('data-pack=');
     const bridge = rowHtml(html, 'Bridge approach survey');
