@@ -326,7 +326,8 @@ describe('farming plots and the land screen', () => {
     state.plots[0] = null;
     state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
     expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
-    expect(state.plots[0]?.remainingMs).toBe(12_654_000);
+    const sped = state.plots[0] as { remainingMs: number } | null;
+    expect(sped?.remainingMs).toBe(12_654_000);
     expect(plotGrowMs(3.7, null, 0.05) / 1000).toBe(12654);
     const saved = JSON.parse(serialize(state)) as { plots: Record<string, unknown>[] };
     expect(Object.keys(saved.plots[0]).sort()).toEqual(['compost', 'recipeId', 'remainingMs']);
