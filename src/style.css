@@ -249,6 +249,7 @@ body:has(.sheet) #floaters { display: none; }
 .pips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--gold-d); display: inline-block; }
 .pips i.on { background: var(--gold); }
 .mod { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+.mod > .tag.btn { flex: 1 0 100%; }
 .tile small { font-size: 10px; }
 h3 .tag.btn { text-transform: none; letter-spacing: 0; font-family: system-ui, sans-serif; }
 

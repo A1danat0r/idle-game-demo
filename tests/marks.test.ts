@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RECIPES, playerHitChance, hitChance } from '../src/content';
+import { RECIPE_BY_ID, RECIPES, playerHitChance, hitChance } from '../src/content';
 import {
   EXPEDITION_MS,
   actionSeconds,
+  advanceOpenTab,
   buyMarkRank,
   creditOffline,
   deserialize,
@@ -18,9 +19,9 @@ import {
   stepCompletion,
   type Save,
 } from '../src/engine';
-import { MARKS, MODIFIERS, rankCost } from '../src/marks';
-import { actionMasteryXp } from '../src/mastery';
-import { mainHtml, type View } from '../src/ui';
+import { MARKS, MODIFIERS, hearthAppliesToRecipe, rankCost } from '../src/marks';
+import { actionMasteryXp, masteryThreshold } from '../src/mastery';
+import { mainHtml, plotCountdown, type View } from '../src/ui';
 
 const GROVE = 'recipe.mark.grove';
 const BOW = 'recipe.gear.ranged.pine_shortbow';
@@ -190,4 +191,134 @@ describe('enchanting marks', () => {
     expect(screen).toContain('Buy rank 1 — 120');
     expect(screen).not.toContain('Accuracy seal');
   });
+
+  it('stops a selected seal when the clock goes backwards, and still finishes 60s under the old numbers', () => {
+    const state = enchanter();
+    state.activity = { kind: 'produce', recipeId: 'recipe.seal.enchant.accuracy' };
+    state.progressMs = 1000;
+    state.bank['reagent.enchant.binding'] = 30;
+    state.bank['mat.binding.flax'] = 30;
+    const bank = { ...state.bank };
+    const report = creditOffline(state, state.lastCredited - 5000);
+    expect(report.stopped).toBe('backwards');
+    expect(state.activity).toBeNull();
+    expect(state.progressMs).toBe(0);
+    expect(state.bank).toEqual(bank);
+    advanceOpenTab(state, state.lastCredited + 20_000, 60_000);
+    expect(state.bank['seal.enchant.accuracy'] ?? 0).toBe(0);
+    expect(state.bank['reagent.enchant.binding']).toBe(30);
+    expect(state.bank['mat.binding.flax']).toBe(30);
+
+    const forward = enchanter();
+    forward.activity = { kind: 'produce', recipeId: 'recipe.seal.enchant.accuracy' };
+    forward.bank['reagent.enchant.binding'] = 30;
+    forward.bank['mat.binding.flax'] = 30;
+    creditOffline(forward, forward.lastCredited + 60_000);
+    expect(forward.bank['seal.enchant.accuracy']).toBe(22);
+    expect(forward.activity).toBeNull();
+  });
+
+  it('applies Hearth only to production and the three construction kits', () => {
+    const recipe = (id: string) => {
+      const found = RECIPE_BY_ID[id];
+      if (!found) throw new Error(id);
+      return found;
+    };
+    expect(hearthAppliesToRecipe(recipe('recipe.con.kit.pine_frame'))).toBe(true);
+    expect(hearthAppliesToRecipe(recipe('recipe.con.kit.oak_bench'))).toBe(true);
+    expect(hearthAppliesToRecipe(recipe('recipe.con.kit.hearth_block'))).toBe(true);
+    for (const id of [
+      'recipe.con.mat.dressed_limestone',
+      'recipe.con.mat.roof_tiles',
+      'recipe.con.mat.clay_mortar',
+      'activity.construction.practice_workshop_assembly',
+      'activity.construction.pine_work_area',
+      'activity.construction.stone_foundation',
+      'activity.construction.oak_workshop',
+      'activity.construction.supply_racks',
+      'activity.construction.forge_extension',
+    ]) {
+      expect(hearthAppliesToRecipe(recipe(id))).toBe(false);
+    }
+
+    const state = newGame(0);
+    setSkillLevel(state, 'Construction', 1);
+    state.markRanks['hearth.xp'] = 5;
+    state.markRanks['hearth.free'] = 5;
+    state.bank['mat.wood.pine'] = 5;
+    expect(startProduce(state, 'activity.construction.pine_work_area')).toBe(true);
+    stepCompletion(state);
+    expect(state.xp.Construction).toBe(7212);
+    expect(state.bank['mat.wood.pine'] ?? 0).toBe(0);
+  });
+
+  it('rounds Road yield half up once, after compost', () => {
+    expect(flaxYield(1, true)).toBe(2273);
+    expect(flaxYield(3, true)).toBe(2318);
+    expect(flaxYield(5, true)).toBe(2363);
+    expect(flaxYield(1, false)).toBe(1818);
+    expect(flaxYield(5, false)).toBe(1890);
+    expect(flaxYield(1, true, 7)).toBe(4546);
+  });
+
+  it('keeps Road grow as a live rate on the stored remaining time', () => {
+    const mastered = newGame(0);
+    setSkillLevel(mastered, 'Farming', 1);
+    mastered.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
+    mastered.markRanks['road.grow'] = 5;
+    mastered.bank['mat.seed.flax'] = 1;
+    expect(plantOnPlot(mastered, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
+    expect(mastered.plots[0]?.remainingMs).toBe(12_654_000);
+    creditOffline(mastered, 12_021_300 - 1);
+    expect(mastered.plots[0]).not.toBeNull();
+    creditOffline(mastered, mastered.lastCredited + 1);
+    expect(mastered.bank['mat.fibre.flax']).toBe(1800);
+
+    const boned = newGame(0);
+    setSkillLevel(boned, 'Farming', 1);
+    boned.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
+    boned.markRanks['road.grow'] = 5;
+    boned.bank['mat.seed.flax'] = 1;
+    boned.bank['mat.farm.bone_compost'] = 1;
+    expect(plantOnPlot(boned, 0, 'recipe.mat.fibre.flax', 'bone')).toBe(true);
+    expect(boned.plots[0]?.remainingMs).toBe(11_856_800);
+    creditOffline(boned, 11_263_960);
+    expect(boned.bank['mat.fibre.flax']).toBe(2250);
+    expect(boned.plots[0]).toBeNull();
+
+    const growing = newGame(0);
+    setSkillLevel(growing, 'Farming', 1);
+    growing.bank['mat.seed.flax'] = 1;
+    growing.glimmer.road = 2000;
+    expect(plantOnPlot(growing, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
+    creditOffline(growing, 3_600_000);
+    for (let rank = 0; rank < 5; rank += 1) expect(buyMarkRank(growing, 'road.grow')).toBe(true);
+    expect(growing.plots[0]?.remainingMs).toBe(9_720_000);
+    const view: View = {
+      tab: 'skill',
+      skill: 'Farming',
+      filter: 'all',
+      selected: null,
+      area: 'Meadow verge',
+      style: null,
+      message: '',
+    };
+    expect(mainHtml(growing, view, 0)).toContain(plotCountdown(9_234_000));
+    creditOffline(growing, growing.lastCredited + 9_234_000);
+    expect(growing.bank['mat.fibre.flax']).toBe(1800);
+    expect(growing.plots[0]).toBeNull();
+  });
 });
+
+function flaxYield(rank: number, compost: boolean, rngState?: number): number {
+  const state = newGame(0);
+  setSkillLevel(state, 'Farming', 1);
+  if (rngState != null) state.rngState = rngState;
+  if (rngState != null) state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(40);
+  state.markRanks['road.yield'] = rank;
+  state.bank['mat.seed.flax'] = 1;
+  if (compost) state.bank['mat.farm.compost'] = 1;
+  expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', compost ? 'compost' : null)).toBe(true);
+  creditOffline(state, 13_320_000);
+  return state.bank['mat.fibre.flax'] ?? 0;
+}

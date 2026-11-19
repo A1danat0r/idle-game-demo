@@ -1816,6 +1816,7 @@ export function creditOffline(state: Save, now: number): CatchupReport {
     report.stopped = 'backwards';
     state.lastCredited = now;
     stopLegacyExploration(state);
+    stopRetiredSeal(state);
     report.expeditionLine = describeExpedition(expBefore, null, state.expedition);
     report.levelsAfter = levelsOf(state);
     mergeLegacyItemCounts(report.itemsGained);
@@ -1864,12 +1865,17 @@ export function creditOffline(state: Save, now: number): CatchupReport {
   if (sink.stopped) report.stopped = sink.stopped;
   else if (wasPaused || state.paused) report.stopped = 'paused';
   else report.stopped = 'window';
+  stopRetiredSeal(state);
+  state.lastCredited = now;
+  return report;
+}
+
+/** A retired seal finishes this catch-up, including a backwards clock, and then stops. */
+function stopRetiredSeal(state: Save): void {
   if (state.activity?.kind === 'produce' && retiredSeal(state.activity.recipeId)) {
     state.activity = null;
     state.progressMs = 0;
   }
-  state.lastCredited = now;
-  return report;
 }
 
 /** Buy the next rank of one modifier with that mark's glimmer. Never spends another mark's glimmer. */
