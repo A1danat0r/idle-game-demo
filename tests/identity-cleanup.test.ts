@@ -9,7 +9,7 @@ import {
   expectedDropValue,
   itemName,
 } from '../src/content';
-import { deserialize, mergeLegacyItemCounts, newGame, sell, startProduce } from '../src/engine';
+import { deserialize, mergeLegacyItemCounts, newGame, plantOnPlot, sell, startProduce } from '../src/engine';
 
 const REMOVED = [
   'mat.berry.meadow',
@@ -157,7 +157,12 @@ describe('identity cleanup', () => {
     });
     expect(expectedDropValue(ENEMY_BY_ID['wood.tortoise'].drops)).toBeCloseTo(10, 5);
     expect(expectedDropValue(ENEMY_BY_ID['wood.tortoise'].drops) * 0.1).toBeCloseTo(1, 5);
-    canCraft('recipe.farm.meadow_herb');
+    const state = newGame(0);
+    state.owned.push('Farming');
+    state.xp.Farming = XP_TABLE[10];
+    state.bank['mat.cutting.meadow_herb'] = 1;
+    expect(startProduce(state, 'recipe.farm.meadow_herb')).toBe(false);
+    expect(plantOnPlot(state, 0, 'recipe.farm.meadow_herb', null)).toBe(true);
   });
 
   it('uses spell moss from the crawler and the grub in every moss recipe', () => {
