@@ -887,9 +887,8 @@ function foodPanel(state: Save): string {
 
 function teaserHtml(state: Save): string {
   const copy = teaserOpen(state.enemyKills) ? '??? — coming later' : TEASER_COPY;
-  const stop = state.activity?.kind === 'combat' ? `<button type="button" class="tag btn" data-stop>Stop</button>` : '';
   return `${combatHead('Areas', '???')}
-    <div class="panel"><p class="note">${esc(copy)}</p><div class="fightrow">${fightButton(null, false)}${stop}</div>${loadoutLine(state)}</div>
+    <div class="panel"><p class="note">${esc(copy)}</p><div class="fightrow">${fightButton(null, false)}</div>${loadoutLine(state)}</div>
     ${foodPanel(state)}`;
 }
 
@@ -1182,7 +1181,7 @@ export function reportHtml(report: CatchupReport): string {
 function masteryText(report: CatchupReport): string {
   const rows = report.masteryLevels ?? [];
   if (rows.length === 0) return 'none';
-  return rows.map((row) => `${row.name} ${row.before}→${row.after}`).join(', ');
+  return rows.map((row) => `${row.name} ${row.before} → ${row.after}`).join(', ');
 }
 
 function stackText(stacks: Record<string, number>): string {

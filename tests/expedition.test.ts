@@ -420,8 +420,8 @@ describe('exploration expeditions', () => {
     expect(report.perksUnlocked.join(' ')).not.toContain('Weathered agate mastery');
     expect(report.actions).toBe(346 + 1);
     const html = reportHtml(report);
-    expect(html).toContain('Stream survey 1→11');
-    expect(html).not.toContain('Weathered agate 1→11');
+    expect(html).toContain('Stream survey 1 → 11');
+    expect(html).not.toContain('Weathered agate 1 → 11');
   });
 
   it('titles the alum route Alum seep recovery', () => {

@@ -211,7 +211,13 @@ describe('combat screens', () => {
     expect(teaser).not.toContain('data-stop');
     startCombat(state, 'meadow.hare', 'Strength');
     const during = mainHtml(state, view('teaser', '???'), 0);
-    expect(during).toContain('data-stop');
+    expect(during).not.toContain('data-stop');
+    expect(during).not.toContain('data-milestone-open');
+    expect(during).not.toContain('data-enemy');
+    expect(during).not.toContain('Style:');
+    expect(during).toContain('‹ Areas');
+    expect(during).toContain('??? — coming later');
+    expect(during).toContain('disabled>Fight</button>');
     expect(state.activity).toMatchObject({ enemyId: 'meadow.hare', style: 'Strength' });
   });
 
