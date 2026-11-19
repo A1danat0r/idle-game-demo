@@ -27,6 +27,7 @@ import {
   SHOP_ITEMS,
   SHOP_PRICE,
   LEVEL_CAP,
+  XP_CAP,
   XP_TABLE,
   equippedGear,
   gearStatText,
@@ -164,7 +165,11 @@ const coin = (n: number) => `<span class="coin">${icon('coin', 16)}${fmtCoins(n)
 const bar = (pct: number, cls = '', live = '') =>
   `<div class="bar ${cls}"><i${live ? ` data-live="${live}"` : ''} style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
 const title = (text: string) => `<h2 class="title"><span>◆</span>${esc(text)}<span>◆</span></h2>`;
-const lock = `<svg width="14" height="14" viewBox="0 0 20 20"><rect x="3" y="9" width="14" height="10" rx="2" fill="#8a8f9c"/><path d="M6 9V6a4 4 0 0 1 8 0v3" fill="none" stroke="#8a8f9c" stroke-width="2"/></svg>`;
+const lock = `<svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="9" width="14" height="10" rx="2" fill="#8a8f9c"/><path d="M6 9V6a4 4 0 0 1 8 0v3" fill="none" stroke="#8a8f9c" stroke-width="2"/></svg>`;
+/** Padlock in the same small pill as a locked route's "Lv 20" badge. */
+function lockBadge(extra = ''): string {
+  return `<span class="tag" aria-label="Locked">${lock}${extra}</span>`;
+}
 
 function fmtAmount(value: number): string {
   const rounded = Math.round(value * 100) / 100;
@@ -621,16 +626,16 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
     .filter((item) => item.qty > 0)
     .map((item) => `${fmt(item.qty)} ${countedLabel(item.qty, item.id)}`)
     .join(', ');
+  const atCap = (state.xp.Exploration ?? 0) >= XP_CAP - 1e-9;
   const empty = preview.xp <= 1e-9 && preview.items.every((item) => item.qty <= 0);
-  const haul = empty ? 'no items · 0 XP' : haulItems ? `${haulItems} · ${fmtXpAmount(preview.xp)} XP` : `${fmtXpAmount(preview.xp)} XP`;
+  const xpClause = atCap ? '' : ` · ${fmtXpAmount(preview.xp)} XP`;
+  const haul = empty ? 'no items' : haulItems ? `${haulItems}${xpClause}` : `${fmtXpAmount(preview.xp)} XP`;
   const missing = route.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
   const busy = state.expedition != null;
   const chips = EXPEDITION_MS.map((ms) => `<button type="button" class="tag ${duration === ms ? 'on' : ''}" data-duration="${ms}" data-route="${route.id}">${DURATION_LABEL[ms]}</button>`).join('');
   let right = '';
-  if (route.locked) {
-    right = `<button type="button" class="tag btn" disabled>Pack and go</button>`;
-  } else if (!reached) {
-    right = `<span class="tag">${lock} Lv ${route.level}</span>`;
+  if (route.locked || !reached) {
+    right = lockBadge(!reached ? ` Lv ${route.level}` : '');
   } else if (!owned) {
     right = `<small>Unlock</small>${coin(route.cost)}<button type="button" class="tag btn" data-buy-node="${route.id}">Buy</button>`;
   } else if (busy || missing || empty) {
@@ -831,11 +836,11 @@ function areasHtml(state: Save): string {
   const cards = (['Meadow verge', 'Woodland edge'] as const).map((area) => {
     const lines = areaProgress(state, area).map((line) => `<small>${esc(line)}</small>`).join('');
     const badge = fight && fight.area === area ? `<small>In fight: ${esc(fight.name)}</small>` : '';
-    const lock = area === 'Woodland edge' && woodLocked ? ' <span class="tag">[lock]</span>' : '';
+    const lock = area === 'Woodland edge' && woodLocked ? ` ${lockBadge()}` : '';
     return `<button type="button" class="row areacard" data-open-area="${area}"><div class="grow"><b>${esc(area)}${lock}</b><small>${levelSpan(area)}</small>${lines}${badge}</div></button>`;
   }).join('');
   const opened = teaserOpen(state.enemyKills);
-  const teaserName = '<b>??? <span class="tag">[lock]</span></b>';
+  const teaserName = `<b>??? ${lockBadge()}</b>`;
   const teaser = opened
     ? `<button type="button" class="row areacard" data-open-area="${TEASER_AREA}"><div class="grow">${teaserName}<small>??? — coming later</small></div></button>`
     : `<div class="row locked"><div class="grow">${teaserName}<small>${esc(TEASER_COPY)}</small></div></div>`;
@@ -852,7 +857,7 @@ function ladderHtml(state: Save, view: View): string {
     const gate = lockLine(state.enemyKills, id);
     const last = id === ids[ids.length - 1];
     const boss = last ? ' <span class="tag">BOSS</span>' : '';
-    const lock = gate ? ' <span class="tag">[lock]</span>' : '';
+    const lock = gate ? ` ${lockBadge()}` : '';
     const openStats = gate
       ? `<small>Lv ${enemy.level}</small>`
       : `<small>Lv ${enemy.level} · ${enemy.hp} HP · max hit ${enemy.maxHit}</small>${masteryLine(state.enemyMastery[id] ?? 0)}`;
@@ -1134,9 +1139,9 @@ export function reportHtml(report: CatchupReport): string {
     .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
   const levels = Object.entries(report.levelsAfter)
-    .map(([skill, level]) => {
+    .flatMap(([skill, level]) => {
       const before = report.levelsBefore[skill as SkillId];
-      return before != null && before !== level ? `${skill} ${before}→${level}` : `${skill} ${level}`;
+      return before != null && before !== level ? [`${skill} ${before}→${level}`] : [];
     })
     .join(', ');
   const gained = stackText(report.itemsGained);
@@ -1157,14 +1162,14 @@ export function reportHtml(report: CatchupReport): string {
       <dt>Away</dt><dd>${awayTime(report.awayMs)}</dd>
       <dt>Credited</dt><dd>${awayTime(report.creditedMs)}${report.capped ? ' (24h cut)' : ''}</dd>
       <dt>Activity</dt><dd>${esc(report.activity)}</dd>
-      <dt>Actions</dt><dd>${report.actions}</dd>
-      <dt>Kills</dt><dd>${report.kills}</dd>
+      <dt>Actions</dt><dd>${fmt(report.actions)}</dd>
+      <dt>Kills</dt><dd>${fmt(report.kills)}</dd>
       <dt>XP</dt><dd>${esc(xp)}</dd>
       <dt>Levels</dt><dd>${esc(levels || 'none')}</dd>
       <dt>Gained</dt><dd>${esc(gained)}</dd>
       <dt>Consumed</dt><dd>${esc(consumed)}</dd>
       <dt>Coins</dt><dd>${fmtCoins(report.coinsGained)}</dd>
-      <dt>Food eaten</dt><dd>${report.foodEaten}</dd>
+      <dt>Food eaten</dt><dd>${fmt(report.foodEaten)}</dd>
       <dt>Mastery</dt><dd>${esc(masteryText(report))}</dd>
       <dt>Perks</dt><dd>${esc((report.perksUnlocked ?? []).join('; ') || 'none')}</dd>
       ${report.expeditionLine ? `<dt>Expedition</dt><dd>${esc(report.expeditionLine)}</dd>` : ''}
@@ -1183,7 +1188,7 @@ function masteryText(report: CatchupReport): string {
 function stackText(stacks: Record<string, number>): string {
   const parts = Object.entries(stacks).filter(([, qty]) => qty > 0);
   if (parts.length === 0) return 'none';
-  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${qty}`).join(', ');
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${fmt(qty)}`).join(', ');
 }
 
 export function devHtml(): string {

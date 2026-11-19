@@ -1427,7 +1427,7 @@ interface ExpeditionGrant {
   items: Record<string, number>;
 }
 
-function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink): ExpeditionGrant {
+function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?: Sink, notes?: FloatNote[]): ExpeditionGrant {
   const route = explorationRoute(routeId);
   const ticks = expeditionTicks(state, routeId, elapsedMs);
   const items: Record<string, number> = {};
@@ -1449,26 +1449,28 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
   }
+  const text = haulToast(expeditionRouteName(routeId), items, xp);
+  if (text && notes) notes.push({ kind: 'toast', text });
   return { ticks, xp, items };
 }
 
 /** Credit time toward the trip. The haul is paid only when the stored duration is reached. */
-function advanceExpedition(state: Save, ms: number, sink?: Sink): ExpeditionGrant | null {
+function advanceExpedition(state: Save, ms: number, sink?: Sink, notes?: FloatNote[]): ExpeditionGrant | null {
   const trip = state.expedition;
   if (!trip || ms <= 0) return null;
   const room = Math.max(0, trip.durationMs - trip.creditedMs);
   trip.creditedMs += Math.min(ms, room);
   if (trip.creditedMs + 1e-9 < trip.durationMs) return null;
-  const grant = grantExpedition(state, trip.routeId, trip.durationMs, sink);
+  const grant = grantExpedition(state, trip.routeId, trip.durationMs, sink, notes);
   state.expedition = null;
   return grant;
 }
 
 /** Pay the ticks already credited and end the trip. Inputs are not returned. */
-export function returnExpedition(state: Save): boolean {
+export function returnExpedition(state: Save, notes?: FloatNote[]): boolean {
   const trip = state.expedition;
   if (!trip) return false;
-  grantExpedition(state, trip.routeId, trip.creditedMs);
+  grantExpedition(state, trip.routeId, trip.creditedMs, undefined, notes);
   state.expedition = null;
   return true;
 }
@@ -1486,23 +1488,42 @@ function stopLegacyExploration(state: Save): void {
   state.progressMs = 0;
 }
 
-function expeditionItemText(items: Record<string, number>): string {
-  const parts = Object.entries(items).filter(([, qty]) => qty > 0);
-  if (parts.length === 0) return 'none';
-  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${qty}`).join(', ');
+function groupCount(value: number): string {
+  return Math.floor(value).toLocaleString('en-US');
 }
 
-function expeditionLine(name: string, ticks: number, items: Record<string, number>, xp: number, tail: string): string {
-  return `Expedition: ${name}, ${ticks}, ${expeditionItemText(items)}, ${Math.floor(xp)} XP — ${tail}`;
+function expeditionItemText(items: Record<string, number>): string {
+  const parts = Object.entries(items).filter(([, qty]) => qty > 0);
+  if (parts.length === 0) return '';
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${groupCount(qty)}`).join(', ');
+}
+
+/** Finished haul, or a trip that is still out. Nothing is listed for a trip that granted nothing yet. */
+export function expeditionReportLine(name: string, grant: { ticks: number; items: Record<string, number>; xp: number } | null, leftMs = 0): string {
+  if (!grant) return `Expedition: ${name} — out, ${expeditionClock(leftMs)} left`;
+  const parts = [`Expedition: ${name}`, `${groupCount(grant.ticks)} ticks`];
+  const items = expeditionItemText(grant.items);
+  if (items) parts.push(items);
+  if (grant.xp > 1e-9) parts.push(`${groupCount(grant.xp)} XP`);
+  return `${parts.join(', ')} — finished`;
+}
+
+/** Toast for a haul granted while the app is open. Empty when nothing was paid. */
+export function haulToast(name: string, items: Record<string, number>, xp: number): string | null {
+  const gained = expeditionItemText(items);
+  const xpText = xp > 1e-9 ? `${groupCount(xp)} XP` : '';
+  const body = [gained, xpText].filter(Boolean).join(' · ');
+  if (!body) return null;
+  return `${name} is back: ${body}`;
 }
 
 function describeExpedition(before: Save['expedition'], grant: ExpeditionGrant | null, after: Save['expedition']): string | null {
   if (!before) return null;
   const name = expeditionRouteName(before.routeId);
-  if (grant) return expeditionLine(name, grant.ticks, grant.items, grant.xp, 'finished');
+  if (grant) return expeditionReportLine(name, grant);
   const duration = after?.durationMs ?? before.durationMs;
   const credited = after?.creditedMs ?? before.creditedMs;
-  return expeditionLine(name, 0, {}, 0, `out, ${expeditionClock(Math.max(0, duration - credited))} left`);
+  return expeditionReportLine(name, null, Math.max(0, duration - credited));
 }
 
 export function advanceOpenTab(
@@ -1517,7 +1538,7 @@ export function advanceOpenTab(
     stopLegacyExploration(state);
     simulate(state, gap, undefined, notes ? { notes } : undefined);
     growPlot(state, gap);
-    advanceExpedition(state, gap);
+    advanceExpedition(state, gap, undefined, notes);
     noteTime(state, gap);
     state.lastCredited = now;
   }

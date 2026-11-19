@@ -16,7 +16,9 @@ import {
   startGather,
   startProduce,
   advanceOpenTab,
+  haulToast,
   sell,
+  type FloatNote,
   type Save,
   type StorageLike,
 } from '../src/engine';
@@ -228,12 +230,12 @@ describe('exploration expeditions', () => {
     expect(loaded.state.expedition).toBeNull();
     expect(loaded.report?.activity).toContain('Woodcutting');
     expect(loaded.report?.expeditionLine).toContain('Stream survey');
-    expect(loaded.report?.expeditionLine).toContain('8727');
+    expect(loaded.report?.expeditionLine).toContain('8,727');
     expect(loaded.report?.expeditionLine).toContain('finished');
     const html = reportHtml(loaded.report!);
     expect(html).toContain('Woodcutting');
     expect(html).toContain('Expedition: Stream survey');
-    expect(html).toContain('8727');
+    expect(html).toContain('8,727');
   });
 
   it('shows 50:00 left after 10 minutes, then Return now pays the 10 minute ticks', () => {
@@ -243,7 +245,7 @@ describe('exploration expeditions', () => {
     expect(state.bank[AGATE] ?? 0).toBe(0);
     expect(state.xp.Exploration).toBe(0);
     expect(expeditionRemainingMs(state)).toBe(50 * 60 * 1000);
-    expect(report.expeditionLine).toBe('Expedition: Stream survey, 0, none, 0 XP — out, 50:00 left');
+    expect(report.expeditionLine).toBe('Expedition: Stream survey — out, 50:00 left');
     expect(returnExpedition(state)).toBe(true);
     expect(state.bank[AGATE]).toBe(181);
     expect(state.xp.Exploration).toBe(4706);
@@ -262,7 +264,8 @@ describe('exploration expeditions', () => {
     const fitting = rowHtml(html, 'Fitting appraisal');
     expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
     expect(fitting.match(/Needs trout-and-mushroom meal/g)).toHaveLength(1);
-    expect(fitting).toContain('disabled');
+    expect(fitting).toContain('aria-label="Locked"');
+    expect(fitting).not.toContain('Pack and go');
     expect(fitting).not.toContain('data-pack=');
     const bridge = rowHtml(html, 'Bridge approach survey');
     expect(bridge).toContain('disabled');
@@ -272,7 +275,8 @@ describe('exploration expeditions', () => {
     expect(state.bank[HEMP]).toBe(2);
     const ready = mainHtml(state, view('Exploration'), 0);
     const blocked = rowHtml(ready, 'Bridge approach survey');
-    expect(blocked).toContain('no items · 0 XP');
+    expect(blocked).toContain('Haul no items');
+    expect(blocked).not.toContain('0 XP');
     expect(blocked).toContain('Exploration is maxed');
     expect(blocked).toContain('disabled');
     expect(blocked).not.toContain('data-pack=');
@@ -474,6 +478,51 @@ describe('exploration expeditions', () => {
     expect(returnExpedition(state)).toBe(true);
     expect(state.stats.actions).toBe(1);
     expect(state.bank[AGATE]).toBe(181);
+  });
+
+  it('formats a finished catch-up with separators and hides skills that did not rise', () => {
+    const state = explorer(10);
+    startExpedition(state, STREAM, HOUR, 0);
+    const report = creditOffline(state, HOUR);
+    expect(report.expeditionLine).toBe('Expedition: Stream survey, 1,090 ticks, Weathered agate ×1,090, 28,340 XP — finished');
+    const html = reportHtml(report);
+    expect(html).toContain('Exploration 10→19');
+    expect(html).not.toContain('Woodcutting 1');
+  });
+
+  it('drops the XP clause from a capped haul and from the route preview', () => {
+    const state = explorer(1);
+    state.xp.Exploration = XP_CAP;
+    const preview = mainHtml(state, view('Exploration'), 0);
+    const stream = rowHtml(preview, 'Stream survey');
+    expect(stream).toContain('Haul 272 Weathered agate');
+    expect(stream).not.toContain('XP');
+    startExpedition(state, STREAM, QUARTER, 0);
+    const notes: FloatNote[] = [];
+    for (let t = 4_000; t < QUARTER; t += 4_000) advanceOpenTab(state, t, 5_000, []);
+    advanceOpenTab(state, QUARTER, 5_000, notes);
+    expect(notes).toContainEqual({ kind: 'toast', text: 'Stream survey is back: Weathered agate ×272' });
+    expect(state.expedition).toBeNull();
+  });
+
+  it('toasts a haul that finishes in play and says nothing when the haul is empty', () => {
+    const state = explorer(1);
+    startExpedition(state, STREAM, QUARTER, 0);
+    const notes: FloatNote[] = [];
+    for (let t = 4_000; t < QUARTER; t += 4_000) advanceOpenTab(state, t, 5_000, []);
+    advanceOpenTab(state, QUARTER, 5_000, notes);
+    expect(notes).toContainEqual({ kind: 'toast', text: 'Stream survey is back: Weathered agate ×272 · 7,072 XP' });
+    expect(haulToast('Bridge approach survey', {}, 0)).toBeNull();
+    expect(haulToast('Bridge approach survey', {}, 18093)).toBe('Bridge approach survey is back: 18,093 XP');
+  });
+
+  it('locks a riverbank row with the padlock badge and no Pack button', () => {
+    const state = explorer(19);
+    const html = mainHtml(state, view('Exploration'), 0);
+    const row = rowHtml(html, 'Riverbank branch — agate');
+    expect(row).toContain('aria-label="Locked"');
+    expect(row).toContain('Lv 20');
+    expect(row).not.toContain('Pack and go');
   });
 
   it('adds the mastery 10 sell perk on an expedition output that is not a node', () => {

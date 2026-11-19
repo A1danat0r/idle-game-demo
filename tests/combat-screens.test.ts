@@ -79,7 +79,8 @@ describe('combat screens', () => {
     expect(html).toContain('data-style="Strength"');
     expect(html).toContain('data-style="Attack"');
     expect(html).toContain('>BOSS<');
-    expect(html).toContain('[lock]');
+    expect(html).toContain('aria-label="Locked"');
+    expect(html).not.toContain('[lock]');
     expect(html).not.toContain('>Enemies<');
     const beetleAt = html.indexOf('Thorn beetle');
     expect(html.slice(beetleAt, beetleAt + 500)).not.toContain('350 HP');
@@ -161,7 +162,8 @@ describe('combat screens', () => {
     const locked = fighter();
     const html = mainHtml(locked, view('ladder', 'Woodland edge', 'wood.fox'), 0);
     const card = mainHtml(locked, view('areas'), 0);
-    expect(card).toContain('[lock]');
+    expect(card).toContain('aria-label="Locked"');
+    expect(card).not.toContain('[lock]');
     expect(card).toContain('Kill the Thorn beetle to open Woodland edge.');
     for (const name of ['Forest fox', 'Berry jay', 'Root tortoise', 'Resin grub', 'Wild boar', 'Hedge poacher']) {
       expect(html).toContain(name);
@@ -178,14 +180,17 @@ describe('combat screens', () => {
     const fox = open.slice(open.indexOf('Forest fox'), open.indexOf('Berry jay'));
     expect(fox).not.toContain('Kill the Thorn beetle');
     expect(open).toContain('Kill 12 forest foxes to unlock (0/12)');
-    expect(mainHtml(locked, view('areas'), 0)).not.toContain('Woodland edge <span class="tag">[lock]</span>');
+    const openAreas = mainHtml(locked, view('areas'), 0);
+    const wood = openAreas.slice(openAreas.indexOf('Woodland edge'), openAreas.indexOf('???'));
+    expect(wood).not.toContain('aria-label="Locked"');
   });
 
   it('keeps ??? on Areas until the poacher kill, then opens an empty teaser', () => {
     const state = fighter();
     const before = mainHtml(state, view('areas'), 0);
     expect(before).toContain('Kill the Hedge poacher to open ??? (coming later)');
-    expect(before).toContain('[lock]');
+    expect(before).toContain('aria-label="Locked"');
+    expect(before).not.toContain('[lock]');
     expect(before).not.toContain('data-open-area="???"');
     startCombat(state, 'wood.poacher', 'Strength');
     expect(startCombat(state, 'wood.poacher', 'Strength')).toBe(false);
@@ -195,7 +200,8 @@ describe('combat screens', () => {
     const after = mainHtml(state, view('areas'), 0);
     expect(after).toContain('??? — coming later');
     expect(after).toContain('data-open-area="???"');
-    expect(after).toContain('[lock]');
+    expect(after).toContain('aria-label="Locked"');
+    expect(after).not.toContain('[lock]');
     const teaser = mainHtml(state, view('teaser', '???'), 0);
     expect(teaser).toContain('disabled>Fight</button>');
     expect(teaser).not.toContain('data-enemy');

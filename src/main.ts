@@ -44,8 +44,8 @@ import {
 } from './provisional';
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
-import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesWhileSheetOpen, presentNotes, type FloaterView } from './floaters';
-import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesForScreen, notesWhileSheetOpen, type FloaterView } from './floaters';
+import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatScreenFor, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -171,7 +171,7 @@ function flushNotes(): void {
   const notes = notesWhileSheetOpen(pendingNotes, sheetOpen());
   pendingNotes = [];
   if (notes.length === 0) return;
-  const views = presentNotes(notes).filter((item) => item.place === 'bar' || view.tab === 'combat');
+  const views = notesForScreen(notes, fightScreenOpen());
   for (const item of views) spawnFloater(item);
 }
 
@@ -237,9 +237,13 @@ function tick(): void {
   render();
 }
 
+function fightScreenOpen(): boolean {
+  return view.tab === 'combat' && combatScreenFor(state, view) === 'fight';
+}
+
 function render(): void {
   if (sheetOpen()) clearFloaters();
-  else if (view.tab !== 'combat') {
+  else if (!fightScreenOpen()) {
     document.querySelectorAll('#floaters .floater.anchored, #floaters [data-float-combat] .floater').forEach((el) => el.remove());
   }
   const key = renderKey(state, view, devOn ? 'dev' : '');
@@ -353,7 +357,9 @@ app.addEventListener('click', (event) => {
     view.message = packed ? '' : 'That route is not ready.';
   }
   if (target.hasAttribute('data-return-expedition')) {
-    returnExpedition(state);
+    const notes: FloatNote[] = [];
+    returnExpedition(state, notes);
+    if (notes.length) queueNotes(notes);
     view.message = '';
   }
   if (target.dataset.dismantle) {
