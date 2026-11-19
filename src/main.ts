@@ -1,6 +1,6 @@
 import './style.css';
 import { hitRateReport, killCycleReport, meadowHour, samplePoacher, survivabilityReport } from './checks';
-import { ITEMS, TEASER_AREA, ENEMY_BY_ID, countedName, teaserOpen, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
+import { ITEMS, SKILL_IDS, TEASER_AREA, ENEMY_BY_ID, countedName, teaserOpen, type CombatStyle, type EquipSlot, type SkillId, isCombatStyle } from './content';
 import {
   advanceOpenTab,
   buyNode,
@@ -18,12 +18,14 @@ import {
   startCombat,
   startForage,
   startGather,
+  buyPlot,
   stopActivity,
   cancelPlot,
   returnExpedition,
   startExpedition,
   EXPEDITION_MS,
   dismantleBuilding,
+  plantOnPlot,
   dismantleRefund,
   startProduce,
   tabLockDecision,
@@ -45,7 +47,7 @@ import {
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
 import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesForScreen, notesWhileSheetOpen, type FloaterView } from './floaters';
-import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatScreenFor, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatScreenFor, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, plotCountdown, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -287,6 +289,12 @@ function patchLive(): void {
   app.querySelectorAll('[data-live="expedition-clock"]').forEach((el) => {
     el.textContent = clock;
   });
+  app.querySelectorAll<HTMLElement>('[data-plot-left]').forEach((el) => {
+    const index = Number(el.dataset.plotLeft);
+    const plot = state.plots[index];
+    if (!plot) return;
+    el.textContent = plot.ready || plot.remainingMs <= 0 ? 'Ready' : plotCountdown(plot.remainingMs);
+  });
 }
 
 function escapeText(value: string): string {
@@ -313,16 +321,20 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-plant], [data-plant-compost], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   const openTop = target.dataset.tab === 'skill' || !!target.dataset.openSkill;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab === 'combat') openCombatTab();
   else if (target.dataset.tab) {
     view.tab = target.dataset.tab as TabId;
+    view.land = false;
     if (view.tab !== 'profile') view.resetConfirm = false;
   }
-  if (target.dataset.openSkill) openSkill(target.dataset.openSkill as SkillId);
+  if (target.dataset.openSkill) {
+    openSkill(target.dataset.openSkill as SkillId);
+    view.land = false;
+  }
   if (target.dataset.buySkill) {
     const skill = target.dataset.buySkill as SkillId;
     view.message = buySkill(state, skill) ? `Bought ${skill}.` : 'Not enough coins.';
@@ -341,7 +353,26 @@ app.addEventListener('click', (event) => {
   if (target.dataset.recipe && !target.hasAttribute('disabled')) {
     view.message = startProduce(state, target.dataset.recipe) ? '' : 'Missing inputs.';
   }
-  if (target.hasAttribute('data-cancel-plot')) cancelPlot(state);
+  if (target.dataset.cancelPlot != null) cancelPlot(state, Number(target.dataset.cancelPlot));
+  if (target.hasAttribute('data-open-land')) {
+    view.land = true;
+    view.tab = 'skill';
+  }
+  if (target.hasAttribute('data-land-close')) view.land = false;
+  if (target.hasAttribute('data-buy-plot') && !target.hasAttribute('disabled')) {
+    view.message = buyPlot(state) ? 'Plot bought.' : 'That plot is not available.';
+  }
+  if (target.dataset.plantCompost != null) {
+    const choice = target.dataset.plantCompost;
+    view.plantCompost = choice === 'compost' || choice === 'bone' ? choice : null;
+  }
+  if (target.dataset.plant && target.dataset.plot != null && !target.hasAttribute('disabled')) {
+    const compost = view.plantCompost ?? null;
+    const planted = plantOnPlot(state, Number(target.dataset.plot), target.dataset.plant, compost);
+    view.message = planted ? 'Planted.' : 'That crop cannot be planted.';
+    if (planted && compost === 'compost' && (state.bank['mat.farm.compost'] ?? 0) <= 0) view.plantCompost = null;
+    if (planted && compost === 'bone' && (state.bank['mat.farm.bone_compost'] ?? 0) <= 0) view.plantCompost = null;
+  }
   if (target.dataset.duration) {
     const ms = Number(target.dataset.duration);
     if ((EXPEDITION_MS as readonly number[]).includes(ms)) view.routeMs = ms;
@@ -561,17 +592,7 @@ function openDev(): void {
 }
 
 function isSkill(value: string): value is SkillId {
-  return (
-    value === 'Woodcutting' ||
-    value === 'Fishing' ||
-    value === 'Cooking' ||
-    value === 'Attack' ||
-    value === 'Strength' ||
-    value === 'Defence' ||
-    value === 'Mining' ||
-    value === 'Smithing' ||
-    value === 'Hitpoints'
-  );
+  return (SKILL_IDS as readonly string[]).includes(value);
 }
 
 overlay.addEventListener('click', (event) => {

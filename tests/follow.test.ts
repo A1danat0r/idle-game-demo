@@ -23,6 +23,7 @@ import {
   newGame,
   serialize,
   simulate,
+  plantOnPlot,
   startProduce,
   stepCompletion,
 } from '../src/engine';
@@ -112,35 +113,35 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     state.owned.push('Farming');
     state.xp.Farming = 0;
     state.bank['mat.seed.flax'] = 1;
-    expect(startProduce(state, 'recipe.mat.fibre.flax')).toBe(true);
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
     const screen = view('Farming');
     const planted = mainHtml(state, screen, 0);
     expect(planted).toContain('data-cancel-plot');
     expect(planted).toContain('Growing');
     expect(planted).toContain('Cancelling returns nothing');
     const growing = renderKey(state, screen);
-    const left = state.plot?.remainingMs ?? 0;
-    if (state.plot) state.plot.remainingMs = Math.max(0, left - 400);
+    const left = state.plots[0]?.remainingMs ?? 0;
+    if (state.plots[0]) state.plots[0].remainingMs = Math.max(0, left - 400);
     expect(renderKey(state, screen)).toBe(growing);
-    if (state.plot) state.plot.remainingMs = left;
-    cancelPlot(state);
+    if (state.plots[0]) state.plots[0].remainingMs = left;
+    cancelPlot(state, 0);
     expect(renderKey(state, screen)).not.toBe(growing);
     const cleared = mainHtml(state, screen, 0);
     expect(cleared).not.toContain('data-cancel-plot');
     expect(cleared).not.toContain('Growing');
-    expect(state.plot).toBeNull();
+    expect(state.plots[0]).toBeNull();
     expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
     expect(state.bank['mat.fibre.flax'] ?? 0).toBe(0);
     expect(state.xp.Farming).toBe(0);
     expect(state.mastery['recipe.mat.fibre.flax'] ?? 0).toBe(0);
 
     state.bank['mat.seed.flax'] = 2;
-    startProduce(state, 'recipe.mat.fibre.flax');
-    const duration = state.plot?.remainingMs ?? 0;
+    plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null);
+    const duration = state.plots[0]?.remainingMs ?? 0;
     advanceOpenTab(state, duration, 5_000, []);
-    expect(state.plot).toBeNull();
+    expect(state.plots[0]).toBeNull();
     expect(state.bank['mat.seed.flax']).toBe(1);
-    expect(state.bank['mat.fibre.flax']).toBe(4);
+    expect(state.bank['mat.fibre.flax']).toBe(1800);
   });
 
   it('names Exploration rows so no skill shows the same title twice', () => {

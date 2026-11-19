@@ -63,7 +63,9 @@ import {
   habitatSeconds,
   habitatTable,
   habitatTickXp,
+  ensureFarmPlots,
   formulaLevel,
+  hasInputs,
   maxHp,
   nodeUsable,
   ownsCombatSkill,
@@ -88,6 +90,13 @@ import {
   usedBy,
 } from './milestones';
 import { enemyFigure, playerFigure } from './sprites';
+import {
+  BONE_COMPOST_ITEM_ID,
+  COMPOST_ITEM_ID,
+  PLOT_COUNT,
+  PLOT_GATES,
+  isPlotCrop,
+} from './plots';
 import { deriveProfileStats, formatPlayed, formatSavedAt } from './profile';
 import {
   actionXpMultiplier,
@@ -124,6 +133,10 @@ export interface View {
   packedRoute?: string | null;
   /** Chosen expedition length. Not saved. One of 15 min, 1 h, 8 h. */
   routeMs?: number | null;
+  /** Land screen over the Activity tab. Not saved. */
+  land?: boolean;
+  /** Compost applied to the next planting. Not saved. */
+  plantCompost?: 'compost' | 'bone' | null;
 }
 
 export type CombatScreen = 'areas' | 'ladder' | 'fight' | 'teaser';
@@ -237,10 +250,15 @@ export function headerHtml(state: Save, devOn: boolean): string {
   </header>`;
 }
 
-/** One line above the activity slot. Hidden unless an expedition is out. */
+/** One line above the activity slot. Shown while an expedition is out or plots are ready. */
 export function backgroundStripHtml(state: Save): string {
-  if (!state.expedition) return '';
-  return `<div class="bgstrip" data-bgstrip>Expedition <span data-live="expedition-clock">${expeditionClock(expeditionRemainingMs(state))}</span></div>`;
+  const ready = state.plots.filter((plot) => plot?.ready).length;
+  if (!state.expedition && ready === 0) return '';
+  const trip = state.expedition
+    ? `Expedition <span data-live="expedition-clock">${expeditionClock(expeditionRemainingMs(state))}</span>`
+    : '';
+  const plots = ready > 0 ? `Plots ${ready} ready` : '';
+  return `<div class="bgstrip" data-bgstrip>${trip}${trip && plots ? ' · ' : ''}${plots}</div>`;
 }
 
 export function activityHtml(state: Save): string {
@@ -373,7 +391,8 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     enemyMastery: state.enemyMastery,
     shop: state.shop,
     purchaseCount: state.purchaseCount,
-    plot: state.plot ? `${state.plot.recipeId}:${state.plot.ready ? 1 : 0}` : '',
+    plotsBought: state.plotsBought,
+    plots: state.plots.map((plot) => (plot ? `${plot.recipeId}:${plot.compost ?? ''}:${plot.ready ? 1 : 0}` : '')).join('|'),
     expedition: state.expedition?.routeId ?? '',
   });
 }
@@ -448,7 +467,9 @@ export function tabsHtml(view: View): string {
 }
 
 export function mainHtml(state: Save, view: View, now: number, devOn = false): string {
+  ensureFarmPlots(state);
   if (view.tab === 'skills') return skillsHtml(state);
+  if (view.tab === 'skill' && view.land) return landHtml(state, view);
   if (view.tab === 'skill') return skillHtml(state, view) + milestoneSheetHtml(state, view);
   if (view.tab === 'combat') return combatHtml(state, view) + milestoneSheetHtml(state, view);
   if (view.tab === 'inventory') return inventoryHtml(state, view, now);
@@ -572,15 +593,22 @@ function skillHtml(state: Save, view: View): string {
       ? habitatCards(state)
       : [
           ...NODES.filter((node) => node.skill === skill).map((node) => nodeRow(state, node)),
-          ...RECIPES.filter((recipe) => recipe.skill === skill).map((recipe) => recipeRow(state, recipe)),
+          ...RECIPES.filter((recipe) => recipe.skill === skill && !isPlotCrop(recipe.id)).map((recipe) => recipeRow(state, recipe)),
         ].join('');
-  const plot = skill === 'Farming' && state.plot
-    ? `<p class="note">${state.plot.ready ? 'Ready' : `Growing · ${(state.plot.remainingMs / 1000).toFixed(1)}s left`} · ${esc(itemName(RECIPE_BY_ID[state.plot.recipeId]?.outputs[0]?.id ?? state.plot.recipeId))} <button type="button" class="tag btn" data-cancel-plot>Cancel</button></p><p class="note">Cancelling returns nothing.</p>`
-    : '';
+  const landButton =
+    skill === 'Farming' || skill === 'Construction'
+      ? `<button type="button" class="tag btn" data-open-land>Land</button>`
+      : '';
+  const plots =
+    skill === 'Farming'
+      ? `<div class="panel" data-activity-plots><h3>Plots ${landButton}</h3>${plotListHtml(state, view, false)}<p class="note">Cancelling returns nothing. Plots keep growing when another skill is selected.</p></div>`
+      : landButton
+        ? `<p class="landline">${landButton}</p>`
+        : '';
   return `${head}
     ${nextRow(activityNextLine(state))}
     ${scene}
-    ${plot}
+    ${plots}
     <div class="list">${rows}</div>`;
 }
 
@@ -649,6 +677,84 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
   const iconName = (outputId && ITEMS[outputId]?.icon) || 'gem';
   const haulLine = lockedRow ? '' : `<small>Haul ${esc(haul)}</small>`;
   return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small>${haulLine}${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;
+}
+
+/** Whole seconds, rounded up, so a running plot never shows 0s while time remains. */
+export function plotCountdown(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000 - 1e-9));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function landHtml(state: Save, view: View): string {
+  return `${title('Land')}
+    <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
+    <div class="panel" data-land-fields><h3>Fields</h3>${plotListHtml(state, view, true)}</div>
+    <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml()}</div>`;
+}
+
+/** 3×3 shell. PR5 fills the tiles. */
+export function yardHtml(): string {
+  const tiles = Array.from({ length: 9 }, (_, index) => `<div class="tile" data-yard-tile="${index}"><small>Coming soon</small></div>`).join('');
+  return `<div class="yard">${tiles}</div>`;
+}
+
+function plotListHtml(state: Save, view: View, compact: boolean): string {
+  const cards = Array.from({ length: PLOT_COUNT }, (_, index) => plotCardHtml(state, view, index, compact)).join('');
+  return `<div class="${compact ? 'plotgrid' : 'list'}" data-plots>${cards}</div>`;
+}
+
+function plotCardHtml(state: Save, view: View, index: number, compact: boolean): string {
+  const owned = state.owned.includes('Farming') && index < state.plots.length;
+  if (!owned) return lockedPlotCard(state, index);
+  const plot = state.plots[index];
+  if (!plot) return emptyPlotCard(state, view, index);
+  const recipe = RECIPE_BY_ID[plot.recipeId];
+  const output = recipe?.outputs[0]?.id;
+  const name = output ? itemName(output) : plot.recipeId;
+  const compost = plot.compost === 'bone' ? 'Bone compost' : plot.compost === 'compost' ? 'Compost' : '';
+  const status =
+    plot.ready || plot.remainingMs <= 0
+      ? 'Ready'
+      : `Growing · <span data-plot-left="${index}">${plotCountdown(plot.remainingMs)}</span>`;
+  const mark = compact ? '' : `<div class="ico wood">${icon(ITEMS[output ?? '']?.icon ?? 'herb', 28)}</div>`;
+  return `<div class="row" data-plot-card="${index}">${mark}<div class="grow"><b>Plot ${index + 1} · ${esc(name)}</b><small>${status}</small>${compost ? `<small>${compost}</small>` : ''}</div><button type="button" class="tag btn" data-cancel-plot="${index}">Cancel</button></div>`;
+}
+
+function lockedPlotCard(state: Save, index: number): string {
+  const gate = index === 0 ? { plot: 1, level: 1, cost: 0 } : PLOT_GATES[index - 1];
+  const next = state.owned.includes('Farming') && state.plotsBought === index - 1 && gate.cost > 0;
+  const levelOk = state.owned.includes('Farming') && skillLevel(state, 'Farming') >= gate.level;
+  const coinOk = state.coins + 1e-9 >= gate.cost;
+  const buy = next
+    ? `<button type="button" class="tag btn" data-buy-plot${levelOk && coinOk ? '' : ' disabled'}>Buy</button>`
+    : '';
+  const cost = gate.cost > 0 ? `${gate.cost.toLocaleString('en-US')} coins` : 'Free with Farming';
+  return `<div class="row locked" data-plot-card="${index}"><div class="grow"><b>Plot ${gate.plot}</b><small>Farming ${gate.level} · ${cost}</small></div><div class="price">${gate.cost > 0 ? coin(gate.cost) : ''}${buy}</div></div>`;
+}
+
+function emptyPlotCard(state: Save, view: View, index: number): string {
+  const crops = RECIPES.filter(
+    (recipe) => isPlotCrop(recipe.id) && skillLevel(state, 'Farming') >= recipe.level && hasInputs(state, recipe.id),
+  );
+  const buttons = crops.length
+    ? crops.map((recipe) => `<button type="button" class="tag btn" data-plot="${index}" data-plant="${recipe.id}">${esc(actionTitle(recipe))}</button>`).join('')
+    : '<small>No crop you can plant.</small>';
+  return `<div class="row" data-plot-card="${index}"><div class="grow"><b>Plot ${index + 1}</b><small>Empty</small>${compostChips(state, view)}<div class="chips">${buttons}</div></div></div>`;
+}
+
+function compostChips(state: Save, view: View): string {
+  const haveCompost = (state.bank[COMPOST_ITEM_ID] ?? 0) > 0;
+  const haveBone = (state.bank[BONE_COMPOST_ITEM_ID] ?? 0) > 0;
+  if (!haveCompost && !haveBone) return '';
+  const selected = view.plantCompost ?? null;
+  const chip = (id: string, label: string) =>
+    `<button type="button" class="tag ${selected === (id || null) || (id === '' && selected == null) ? 'on' : ''}" data-plant-compost="${id}">${label}</button>`;
+  return `<div class="chips">${chip('', 'None')}${haveCompost ? chip('compost', 'Compost') : ''}${haveBone ? chip('bone', 'Bone compost') : ''}</div>`;
 }
 
 function skillScene(skill: SkillId): string {
@@ -984,7 +1090,13 @@ export function milestoneSheetHtml(state: Save, view: View): string {
     ? { id: selectedRoute, skill: 'Exploration' as const, seconds: trackSeconds(selectedRoute) }
     : activityTrack(state);
   if (!track || track.seconds <= 0) return '';
-  const picked = view.milestoneTrack && trackSeconds(view.milestoneTrack) > 0 ? view.milestoneTrack : track.id;
+  const planted = state.plots.find((plot) => plot && isPlotCrop(plot.recipeId));
+  const picked =
+    view.milestoneTrack && trackSeconds(view.milestoneTrack) > 0
+      ? view.milestoneTrack
+      : !view.milestoneTrack && track.skill === 'Farming' && planted
+        ? planted.recipeId
+        : track.id;
   const groups = unlockGroups(state, track.skill)
     .map((group) => {
       const items = group.items
@@ -1174,6 +1286,7 @@ export function reportHtml(report: CatchupReport): string {
       <dt>Mastery</dt><dd>${esc(masteryText(report))}</dd>
       <dt>Perks</dt><dd>${esc((report.perksUnlocked ?? []).join('; ') || 'none')}</dd>
       ${report.expeditionLine ? `<dt>Expedition</dt><dd>${esc(report.expeditionLine)}</dd>` : ''}
+      ${(report.plotHarvests ?? []).length ? `<dt>Plots</dt><dd>${esc((report.plotHarvests ?? []).join('; '))}</dd>` : ''}
       <dt>Stopped</dt><dd>${esc(why)}</dd>
     </dl>
     <button type="button" class="tag btn" data-catchup-close>Continue</button>

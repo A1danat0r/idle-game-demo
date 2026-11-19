@@ -438,6 +438,8 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.tool.mining.iron_pickaxe', 'Smithing', 22, 5.0, 58, [{ id: 'mat.bar.iron', qty: 2 }, { id: 'mat.wood.oak', qty: 1 }], [{ id: 'tool.mining.iron_pickaxe', qty: 1 }], { skill: 'Mining', tier: 2 }),
   recipe('recipe.mat.head.iron_bolt', 'Smithing', 23, 4.5, 52, [{ id: 'mat.bar.iron', qty: 1 }], [{ id: 'mat.head.iron_bolt', qty: 10 }]),
   recipe('recipe.ammo.thrown.iron_javelin', 'Smithing', 24, 4.8, 56, [{ id: 'mat.bar.iron', qty: 1 }, { id: 'mat.wood.oak', qty: 1 }], [{ id: 'ammo.thrown.iron_javelin', qty: 5 }]),
+  recipe('recipe.farm.compost', 'Farming', 1, 3.9, 63, [{ id: 'mat.herb.meadow', qty: 2 }], [{ id: 'mat.farm.compost', qty: 1 }]),
+  recipe('recipe.farm.bone_compost', 'Farming', 10, 4.4, 71, [{ id: 'mat.bone.ordinary', qty: 1 }, { id: 'mat.farm.compost', qty: 1 }], [{ id: 'mat.farm.bone_compost', qty: 1 }]),
   ...SLICE_RECIPES.map((row): RecipeDef => ({
     id: row.id,
     skill: row.skill as RecipeDef['skill'],
@@ -810,6 +812,8 @@ function addItems(): void {
     { id: 'mat.hide.thick', name: 'Thick hide', sell: 4, icon: 'hide' },
     { id: 'mat.herb.meadow', name: 'Meadow herbs', sell: 1, icon: 'herb' },
     { id: 'mat.bone.ordinary', name: 'Ordinary bones', sell: 1, icon: 'part' },
+    { id: 'mat.farm.compost', name: 'Compost', sell: 3, icon: 'herb' },
+    { id: 'mat.farm.bone_compost', name: 'Bone compost', sell: 6, icon: 'herb' },
     { id: 'mat.reagent.spell_moss', name: 'Spell moss', sell: 1, icon: 'moss' },
     { id: 'mat.seed.potato', name: 'Seed potatoes', sell: 2, icon: 'herb' },
     { id: 'mat.cutting.meadow_herb', name: 'Meadow-herb cuttings', sell: 3, icon: 'herb' },

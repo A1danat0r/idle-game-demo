@@ -6,6 +6,7 @@ import {
   newGame,
   startCombat,
   simulate,
+  plantOnPlot,
   startProduce,
   stepCompletion,
 } from '../src/engine';
@@ -28,36 +29,37 @@ function farmer() {
 }
 
 describe('B2 production, farming, and combat styles', () => {
-  it('ships 149 actions through level 30 before the cap-40 rows', () => {
+  it('ships 151 actions through level 30 once compost and bone compost are counted', () => {
+    // 149 before these two Farming actions. Compost and bone compost bring the count to 151.
     const nodes = NODES.filter((node) => (node.skill === 'Foraging' || node.skill === 'Exploration') && node.level <= 30);
     const recipes = RECIPES.filter((recipe) =>
       ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill) && recipe.level <= 30,
     );
     expect(nodes).toHaveLength(18);
-    expect(recipes).toHaveLength(131);
-    expect(nodes.length + recipes.length).toBe(149);
+    expect(recipes).toHaveLength(133);
+    expect(nodes.length + recipes.length).toBe(151);
     expect(ENEMIES).toHaveLength(11);
   });
 
   it('grows a crop beside another activity and caps offline growth at 24h', () => {
     const state = farmer();
     state.bank['mat.seed.flax'] = 1;
-    expect(startProduce(state, 'recipe.mat.fibre.flax')).toBe(true);
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
     expect(state.activity).toBeNull();
-    expect(state.plot?.recipeId).toBe('recipe.mat.fibre.flax');
-    const duration = state.plot?.remainingMs ?? 0;
+    expect(state.plots[0]?.recipeId).toBe('recipe.mat.fibre.flax');
+    const duration = state.plots[0]?.remainingMs ?? 0;
     advanceOpenTab(state, duration, 5_000, []);
-    expect(state.bank['mat.fibre.flax']).toBe(4);
-    expect(state.xp.Farming).toBeGreaterThan(0);
-    expect(state.plot).toBeNull();
+    expect(state.bank['mat.fibre.flax']).toBe(1800);
+    expect(state.xp.Farming).toBe(26550);
+    expect(state.plots[0]).toBeNull();
 
     const away = farmer();
     away.bank['mat.seed.flax'] = 1;
-    startProduce(away, 'recipe.mat.fibre.flax');
-    const long = away.plot!;
+    plantOnPlot(away, 0, 'recipe.mat.fibre.flax', null);
+    const long = away.plots[0]!;
     long.remainingMs = 30 * 60 * 60 * 1000;
     creditOffline(away, 30 * 60 * 60 * 1000);
-    expect(away.plot?.remainingMs).toBe(6 * 60 * 60 * 1000);
+    expect(away.plots[0]?.remainingMs).toBe(6 * 60 * 60 * 1000);
     expect(away.bank['mat.fibre.flax'] ?? 0).toBe(0);
   });
 
