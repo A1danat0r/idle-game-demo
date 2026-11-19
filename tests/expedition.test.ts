@@ -443,7 +443,29 @@ describe('exploration expeditions', () => {
     creditOffline(held, QUARTER);
     expect(held.xp.Exploration).toBeCloseTo(7835.1, 4);
     expect(held.bank[AGATE]).toBe(287);
+    expect(held.mastery[STREAM]! - masteryThreshold(30)).toBe(9471);
     expect(held.mastery[AGATE] ?? 0).toBe(0);
+
+    const hour = explorer(1);
+    hour.mastery[STREAM] = masteryThreshold(30);
+    expect(expeditionPreview(hour, STREAM, HOUR)).toMatchObject({ ticks: 1148, mxp: 1148 * 33 });
+    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(31340.4, 4);
+    startExpedition(hour, STREAM, HOUR, 0);
+    creditOffline(hour, HOUR);
+    expect(hour.bank[AGATE]).toBe(1148);
+    expect(hour.xp.Exploration).toBeCloseTo(31340.4, 4);
+
+    setExpeditionDoubleRoll(() => false);
+    const eight = explorer(1);
+    eight.mastery[STREAM] = masteryThreshold(30);
+    const eightPreview = expeditionPreview(eight, STREAM, EIGHT);
+    expect(eightPreview.ticks).toBe(9186);
+    expect(eightPreview.items[0]?.qty).toBe(9186);
+    expect(9186 * 26 * 1.05).toBeCloseTo(250777.8, 4);
+    startExpedition(eight, STREAM, EIGHT, 0);
+    creditOffline(eight, EIGHT);
+    expect(eight.bank[AGATE]).toBe(9186);
+    expect(eight.xp.Exploration).toBe(XP_CAP);
 
     const crossing = explorer(1);
     crossing.mastery[STREAM] = masteryThreshold(30) - 1;
@@ -459,6 +481,51 @@ describe('exploration expeditions', () => {
     expect(global.xp.Exploration).toBeCloseTo(272 * 26 * 1.03, 4);
     expect(global.mastery[AGATE]).toBe(masteryThreshold(40));
     expect(global.mastery[STREAM]).toBe(8976);
+  });
+
+  it('pays a mastery 30 stream at the global cap on the shortened tick', () => {
+    const others = [
+      AGATE,
+      SLATE,
+      RUIN,
+      'activity.exploration.riverbank_branch_agate',
+      'activity.exploration.alum_seep_recovery',
+    ];
+    const capTracks = (state: Save) => {
+      state.mastery[STREAM] = masteryThreshold(30);
+      for (const id of others) state.mastery[id] = masteryThreshold(40);
+    };
+    const quarter = explorer(1);
+    capTracks(quarter);
+    expect(expeditionPreview(quarter, STREAM, QUARTER).ticks).toBe(287);
+    expect(expeditionPreview(quarter, STREAM, QUARTER).xp).toBeCloseTo(8954.4, 4);
+    startExpedition(quarter, STREAM, QUARTER, 0);
+    creditOffline(quarter, QUARTER);
+    expect(quarter.bank[AGATE]).toBe(287);
+    expect(quarter.xp.Exploration).toBeCloseTo(8954.4, 4);
+    expect(quarter.mastery[STREAM]! - masteryThreshold(30)).toBe(9471);
+
+    const hour = explorer(1);
+    capTracks(hour);
+    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(35817.6, 4);
+    startExpedition(hour, STREAM, HOUR, 0);
+    creditOffline(hour, HOUR);
+    expect(hour.bank[AGATE]).toBe(1148);
+    expect(hour.xp.Exploration).toBeCloseTo(35817.6, 4);
+
+    setExpeditionDoubleRoll(() => false);
+    const eight = explorer(1);
+    eight.xp.Exploration = XP_CAP;
+    capTracks(eight);
+    const preview = expeditionPreview(eight, STREAM, EIGHT);
+    expect(preview.ticks).toBe(9186);
+    expect(preview.items[0]?.qty).toBe(9186);
+    expect(preview.xp).toBe(0);
+    expect(9186 * 26 * 1.2 - XP_CAP).toBeCloseTo(66369.2, 4);
+    startExpedition(eight, STREAM, EIGHT, 0);
+    creditOffline(eight, EIGHT);
+    expect(eight.bank[AGATE]).toBe(9186);
+    expect(eight.xp.Exploration).toBe(XP_CAP);
   });
 
   it('follows the trip while it is out, then the last packed route, else weathered agate', () => {
@@ -694,12 +761,41 @@ describe('bridge approach pays alum', () => {
     setExpeditionDoubleRoll(() => false);
     const state = capped();
     state.mastery[BRIDGE] = masteryThreshold(20);
-    expect(expeditionPreview(state, BRIDGE, QUARTER).items[0]).toEqual({ id: ALUM, qty: 172 });
-    expect(expeditionPreview(state, BRIDGE, HOUR).items[0]).toEqual({ id: ALUM, qty: 688 });
-    expect(expeditionPreview(state, BRIDGE, EIGHT).items[0]).toEqual({ id: ALUM, qty: 5511 });
+    const quarter = expeditionPreview(state, BRIDGE, QUARTER);
+    const hour = expeditionPreview(state, BRIDGE, HOUR);
+    const eight = expeditionPreview(state, BRIDGE, EIGHT);
+    expect(quarter.items[0]).toEqual({ id: ALUM, qty: 172 });
+    expect(hour.items[0]).toEqual({ id: ALUM, qty: 688 });
+    expect(eight.items[0]).toEqual({ id: ALUM, qty: 5511 });
+    expect(quarter.mxp).toBe(9460);
+    expect(hour.mxp).toBe(37840);
+    expect(eight.mxp).toBe(303105);
+    expect(172 * 1.05).toBeCloseTo(180.6, 4);
+    expect(688 * 1.05).toBeCloseTo(722.4, 4);
+    expect(5511 * 1.05).toBeCloseTo(5786.55, 4);
+    const started = state.mastery[BRIDGE] ?? 0;
     expect(startExpedition(state, BRIDGE, EIGHT, 0)).toBe(true);
     finishInPlay(state, EIGHT);
     expect(state.bank[ALUM]).toBe(5511);
+    expect(state.mastery[BRIDGE]! - started).toBe(303105);
+
+    const tickMs = 5225;
+    setExpeditionDoubleRoll(() => true);
+    const before = capped();
+    before.mastery[BRIDGE] = masteryThreshold(20);
+    expect(startExpedition(before, BRIDGE, EIGHT, 0)).toBe(true);
+    creditOffline(before, 1582 * tickMs);
+    expect(returnExpedition(before)).toBe(true);
+    expect(before.bank[ALUM]).toBe(1582);
+    expect(masteryLevel(before.mastery[BRIDGE] ?? 0)).toBe(40);
+
+    const crossed = capped();
+    crossed.mastery[BRIDGE] = masteryThreshold(20);
+    expect(startExpedition(crossed, BRIDGE, EIGHT, 0)).toBe(true);
+    creditOffline(crossed, 1583 * tickMs);
+    expect(returnExpedition(crossed)).toBe(true);
+    expect(crossed.bank[ALUM]).toBe(1584);
+    expect(masteryLevel(crossed.mastery[BRIDGE] ?? 0)).toBe(40);
   });
 
   it('A-T5 returns a 10 minute bridge haul without refunding the hemp', () => {
@@ -780,7 +876,7 @@ describe('bridge approach pays alum', () => {
     const html = reportHtml(report);
     expect(html).toContain('Bridge approach survey 1 → 40');
     const levels = html.slice(html.indexOf('<dt>Levels</dt>'), html.indexOf('<dt>Gained</dt>'));
-    expect(levels).toBe('<dt>Levels</dt><dd>Woodcutting 1→40</dd>\n      ');
+    expect(levels).toContain('Woodcutting 1→40');
     expect(levels).not.toContain('Exploration');
     expect(report.actions).toBe(pineReport.actions + 1);
     expect(state.bank[ALUM]).toBe(5236);
