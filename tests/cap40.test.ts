@@ -34,7 +34,7 @@ describe('demo skill cap 40', () => {
     expect(CAP40_RECIPES).toHaveLength(76);
     expect(CAP40_NODES.length + CAP40_RECIPES.length).toBe(92);
     expect(NODES).toHaveLength(50);
-    expect(RECIPES.filter((recipe) => !recipe.comingLater)).toHaveLength(40 + 131 + 76 + 2);
+    expect(RECIPES.filter((recipe) => !recipe.comingLater)).toHaveLength(40 + 131 + 76 + 2 - 6 + 4);
     for (const [id, seconds, xp, cost] of [
       ['mat.fish.eel', 4.6, 107, 6750],
       ['mat.crystal.quartz', 4.2, 98, 6750],

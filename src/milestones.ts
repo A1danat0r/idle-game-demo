@@ -264,6 +264,13 @@ export function activityNextLine(state: Save): string | null {
   return `Next: ${skillHalf(state, track.skill)} · ${masteryHalf(state, track.id, track.skill, track.seconds)}.`;
 }
 
+/** Next row for the Enchanting screen. Mastery follows the selected mark. */
+export function enchantingNextLine(state: Save, recipeId: string): string | null {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe || recipe.skill !== 'Enchanting') return null;
+  return `Next: ${skillHalf(state, 'Enchanting')} · ${masteryHalf(state, recipeId, 'Enchanting', recipe.seconds)}.`;
+}
+
 /** Next row for one Exploration route. The running activity is a different skill. */
 export function explorationNextLine(state: Save, routeId: string): string | null {
   const seconds = trackSeconds(routeId);

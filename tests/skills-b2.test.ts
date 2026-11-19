@@ -36,8 +36,8 @@ describe('B2 production, farming, and combat styles', () => {
       ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill) && recipe.level <= 30,
     );
     expect(nodes).toHaveLength(18);
-    expect(recipes).toHaveLength(133);
-    expect(nodes.length + recipes.length).toBe(151);
+    expect(recipes).toHaveLength(132);
+    expect(nodes.length + recipes.length).toBe(150);
     expect(ENEMIES).toHaveLength(11);
   });
 
