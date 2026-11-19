@@ -244,7 +244,8 @@ describe('farming plots and the land screen', () => {
   it('loads an old 3.7s flax plot onto plot 1 and pays the old output', () => {
     const growing = legacyPlot({ recipeId: 'recipe.mat.fibre.flax', remainingMs: 3700, ready: false });
     expect(growing.saveFormat).toBe(4);
-    expect(growing.plots[0]).toMatchObject({ recipeId: 'recipe.mat.fibre.flax', remainingMs: 3700, legacy: true });
+    expect(growing.plots[0]).toMatchObject({ recipeId: 'recipe.mat.fibre.flax', remainingMs: 3700, compost: null, legacy: true });
+    expect(Object.keys(growing.plots[0] ?? {}).sort()).toEqual(['compost', 'legacy', 'recipeId', 'remainingMs']);
     expect(growing.bank['mat.fibre.flax'] ?? 0).toBe(0);
     creditOffline(growing, 3700);
     expect(growing.bank['mat.fibre.flax']).toBe(4);
@@ -316,18 +317,66 @@ describe('farming plots and the land screen', () => {
 
   it('snapshots the mastery speed perk when a crop is planted', () => {
     const state = farmer();
-    state.bank['mat.seed.flax'] = 2;
+    state.bank['mat.seed.flax'] = 3;
     state.bank['mat.farm.bone_compost'] = 1;
+    state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20) - 1;
+    expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
+    expect(state.plots[0]?.remainingMs).toBe(13_320_000);
+    expect(Object.keys(state.plots[0] ?? {}).sort()).toEqual(['compost', 'recipeId', 'remainingMs']);
+    state.plots[0] = null;
     state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
     expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
     expect(state.plots[0]?.remainingMs).toBe(12_654_000);
     expect(plotGrowMs(3.7, null, 0.05) / 1000).toBe(12654);
+    const saved = JSON.parse(serialize(state)) as { plots: Record<string, unknown>[] };
+    expect(Object.keys(saved.plots[0]).sort()).toEqual(['compost', 'recipeId', 'remainingMs']);
+    saved.plots[0].ready = true;
+    const held = deserialize(JSON.stringify(saved));
+    expect(Object.keys(held?.plots[0] ?? {}).sort()).toEqual(['compost', 'ready', 'recipeId', 'remainingMs']);
     expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', 'bone')).toBe(false);
     state.plots[0] = null;
     expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', 'bone')).toBe(true);
     const boned = state.plots[0] as { remainingMs: number } | null;
     expect(boned?.remainingMs).toBe(11_856_800);
     expect(plotGrowMs(3.7, 'bone', 0.05) / 1000).toBe(11856.8);
+  });
+
+  it('rates a full flax field at 4,096.728 fibre/h once mastery 20 shortens the grow', () => {
+    const state = farmer(35);
+    state.coins = 26_252;
+    while (state.plotsBought < 7) buyPlot(state);
+    state.bank['mat.seed.flax'] = 8;
+    state.mastery['recipe.mat.fibre.flax'] = masteryThreshold(20);
+    for (let index = 0; index < 8; index += 1) {
+      expect(plantOnPlot(state, index, 'recipe.mat.fibre.flax', null)).toBe(true);
+    }
+    const hours = (state.plots[0]?.remainingMs ?? 0) / 1000 / 3600;
+    expect(round3(hours)).toBe(3.515);
+    expect(round3((8 * 1800) / hours)).toBe(4096.728);
+    expect(round3(1800 / hours)).toBe(512.091);
+    expect(round3((3600 / (3.7 * 0.95)) * 4)).toBe(4096.728);
+    expect(round3((8 * 1800) / 3.7)).toBe(3891.892);
+  });
+
+  it('times seven replanted flax harvests at 24.975 h once plantings 3 to 7 take the speed step', () => {
+    const state = farmer();
+    const grows: number[] = [];
+    for (let harvest = 0; harvest < 7; harvest += 1) {
+      state.bank['mat.seed.flax'] = 1;
+      expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
+      const ms = state.plots[0]?.remainingMs ?? 0;
+      grows.push(ms);
+      creditOffline(state, state.lastCredited + ms);
+    }
+    expect(grows.slice(0, 2)).toEqual([13_320_000, 13_320_000]);
+    expect(grows.slice(2)).toEqual([12_654_000, 12_654_000, 12_654_000, 12_654_000, 12_654_000]);
+    expect(round3(grows.reduce((sum, ms) => sum + ms, 0) / 3_600_000)).toBe(24.975);
+    expect(round3((7 * 13_320) / 3600)).toBe(25.9);
+    expect(state.xp.Farming).toBe(189_832.5);
+    expect(levelForXp(state.xp.Farming ?? 0)).toBe(38);
+    expect(levelForXp(7 * 26550)).toBe(37);
+    expect(state.mastery['recipe.mat.fibre.flax']).toBe(7 * 16650);
+    expect(Math.floor(86_400 / 12_654)).toBe(6);
   });
 
   it('leaves the official routes and their 37,002 coin need where the repo has them', () => {

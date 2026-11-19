@@ -29,7 +29,8 @@ function farmer() {
 }
 
 describe('B2 production, farming, and combat styles', () => {
-  it('ships 149 actions through level 30 before the cap-40 rows', () => {
+  it('ships 151 actions through level 30 once compost and bone compost are counted', () => {
+    // 149 before these two Farming actions. Compost and bone compost bring the count to 151.
     const nodes = NODES.filter((node) => (node.skill === 'Foraging' || node.skill === 'Exploration') && node.level <= 30);
     const recipes = RECIPES.filter((recipe) =>
       ['Farming', 'Crafting', 'Alchemy', 'Construction', 'Enchanting', 'Exploration'].includes(recipe.skill) && recipe.level <= 30,
