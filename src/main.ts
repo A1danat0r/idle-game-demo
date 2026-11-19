@@ -19,6 +19,8 @@ import {
   startForage,
   startGather,
   buyMarkRank,
+  buyAutoReplant,
+  toggleAutoReplant,
   buyPlot,
   moveBuilding,
   placeBuilding,
@@ -51,7 +53,7 @@ import {
 import type { TabId } from './ui';
 import { formatRouteResult, runReferenceRoute } from './route';
 import { FLOAT_BATCH_MS, FLOAT_CAP, FLOAT_LIFE_MS, notesForScreen, notesWhileSheetOpen, type FloaterView } from './floaters';
-import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, combatBackScreen, combatScreenFor, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, plotCountdown, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
+import { activityDestination, activityHtml, activityPercent, backgroundStripHtml, clearedLandStatus, combatBackScreen, combatScreenFor, combatStyleChoice, devHtml, headerHtml, mainHtml, noticeHtml, plantedLine, plotCountdown, renderKey, reportHtml, shellHtml, tabsHtml, type Filter, type View } from './ui';
 
 const CLOCK_KEY = 'idle-game-demo-clock-offset';
 const TAB_KEY = 'idle-game-demo-tab';
@@ -108,7 +110,10 @@ function boot(): void {
       localStorage.setItem(TAB_KEY, JSON.stringify({ id: tabId, beat: Date.now() }));
     }
   }, 1000);
-  if (loaded.report && shouldShow(loaded.report)) showReport(loaded.report);
+  if (loaded.report) {
+    if (catchupHarvested(loaded.report)) view.message = clearedLandStatus();
+    if (shouldShow(loaded.report)) showReport(loaded.report);
+  }
   render();
   window.setInterval(tick, 200);
   document.addEventListener('visibilitychange', () => {
@@ -116,6 +121,7 @@ function boot(): void {
     else {
       const report = creditOffline(state, gameNow());
       persistSave();
+      if (catchupHarvested(report)) view.message = clearedLandStatus();
       if (shouldShow(report)) showReport(report);
       render();
     }
@@ -228,9 +234,13 @@ function tick(): void {
   const now = gameNow();
   const notes: FloatNote[] = [];
   const report = advanceOpenTab(state, now, SILENT_GAP_MS, notes);
+  if (!report && notes.some((note) => note.kind === 'toast' && note.text.startsWith('Fields harvested:'))) {
+    view.message = clearedLandStatus();
+  }
   if (!report && notes.length) queueNotes(notes);
   if (report) {
     persistSave();
+    if (catchupHarvested(report)) view.message = clearedLandStatus();
     if (shouldShow(report)) showReport(report);
   } else {
     const mark = state.stats.actions + state.stats.kills;
@@ -315,8 +325,18 @@ function fastForward(ms: number): void {
   persistClock();
   const report = creditOffline(state, gameNow());
   writeSave(localStorage, state);
+  if (catchupHarvested(report)) view.message = clearedLandStatus();
   if (shouldShow(report)) showReport(report);
   render();
+}
+
+function catchupHarvested(report: CatchupReport): boolean {
+  return (report.plotHarvests ?? []).some((line) => /^Plot \d+: /.test(line));
+}
+
+function leaveLand(): void {
+  if (view.land) view.message = clearedLandStatus();
+  view.land = false;
 }
 
 function afterChange(message = ''): void {
@@ -326,19 +346,19 @@ function afterChange(message = ''): void {
 }
 
 app.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-buy-rank], [data-mark], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
+  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-tab], [data-open-skill], [data-buy-skill], [data-node], [data-buy-node], [data-habitat], [data-recipe], [data-dismantle], [data-cancel-plot], [data-open-land], [data-land-close], [data-buy-plot], [data-buy-auto-replant], [data-auto-replant-toggle], [data-plant], [data-plant-compost], [data-yard-tile], [data-yard-arm], [data-yard-store], [data-yard-note-clear], [data-buy-rank], [data-mark], [data-pack], [data-duration], [data-return-expedition], [data-route], [data-enemy], [data-style], [data-open-area], [data-combat-back], [data-fight], [data-stop], [data-loadout], [data-food], [data-filter], [data-select], [data-sell], [data-shop-buy], [data-equip], [data-unequip], [data-resume], [data-about], [data-dev-open], [data-debug-toggle], [data-reset-ask], [data-reset-cancel], [data-reset-confirm], [data-milestone-open], [data-milestone-close], [data-milestone-track]');
   if (!target) return;
   const openTop = target.dataset.tab === 'skill' || !!target.dataset.openSkill;
   if (target.dataset.tab === 'skill') openActivityTab();
   else if (target.dataset.tab === 'combat') openCombatTab();
   else if (target.dataset.tab) {
     view.tab = target.dataset.tab as TabId;
-    view.land = false;
+    leaveLand();
     if (view.tab !== 'profile') view.resetConfirm = false;
   }
   if (target.dataset.openSkill) {
     openSkill(target.dataset.openSkill as SkillId);
-    view.land = false;
+    leaveLand();
   }
   if (target.dataset.buySkill) {
     const skill = target.dataset.buySkill as SkillId;
@@ -367,10 +387,12 @@ app.addEventListener('click', (event) => {
     view.land = true;
     view.tab = 'skill';
   }
-  if (target.hasAttribute('data-land-close')) view.land = false;
+  if (target.hasAttribute('data-land-close')) leaveLand();
   if (target.hasAttribute('data-buy-plot') && !target.hasAttribute('disabled')) {
     view.message = buyPlot(state) ? 'Plot bought.' : 'That plot is not available.';
   }
+  if (target.hasAttribute('data-buy-auto-replant') && !target.hasAttribute('disabled')) buyAutoReplant(state);
+  if (target.hasAttribute('data-auto-replant-toggle')) toggleAutoReplant(state);
   if (target.dataset.plantCompost != null) {
     const choice = target.dataset.plantCompost;
     view.plantCompost = choice === 'compost' || choice === 'bone' ? choice : null;
@@ -415,7 +437,7 @@ app.addEventListener('click', (event) => {
   if (target.dataset.plant && target.dataset.plot != null && !target.hasAttribute('disabled')) {
     const compost = view.plantCompost ?? null;
     const planted = plantOnPlot(state, Number(target.dataset.plot), target.dataset.plant, compost);
-    view.message = planted ? 'Planted.' : 'That crop cannot be planted.';
+    view.message = plantedLine(planted);
     if (planted && compost === 'compost' && (state.bank['mat.farm.compost'] ?? 0) <= 0) view.plantCompost = null;
     if (planted && compost === 'bone' && (state.bank['mat.farm.bone_compost'] ?? 0) <= 0) view.plantCompost = null;
   }

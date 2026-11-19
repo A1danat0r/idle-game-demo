@@ -92,6 +92,7 @@ import {
 } from './milestones';
 import { enemyFigure, playerFigure } from './sprites';
 import {
+  AUTO_REPLANT_COST,
   BONE_COMPOST_ITEM_ID,
   COMPOST_ITEM_ID,
   PLOT_COUNT,
@@ -401,6 +402,8 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     shop: state.shop,
     purchaseCount: state.purchaseCount,
     plotsBought: state.plotsBought,
+    autoReplant: state.autoReplant === true,
+    autoReplantOn: state.autoReplant === true && state.autoReplantOn !== false,
     plots: state.plots.map((plot) => (plot ? `${plot.recipeId}:${plot.compost ?? ''}:${plot.ready ? 1 : 0}` : '')).join('|'),
     expedition: state.expedition?.routeId ?? '',
   });
@@ -707,10 +710,30 @@ export function plotCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
+/** Hand-plant status. A failed plant keeps its own sentence. */
+export function plantedLine(ok: boolean): string {
+  return ok ? 'Planted.' : 'That crop cannot be planted.';
+}
+
+/** Harvest, leaving Land, and a catch-up harvest blank the status. The toast carries the news. */
+export function clearedLandStatus(): string {
+  return '';
+}
+
+function autoReplantRow(state: Save): string {
+  if (state.autoReplant) {
+    const on = state.autoReplantOn !== false;
+    return `<button type="button" class="row" role="switch" aria-checked="${on}" aria-label="Auto-replant" data-auto-replant-toggle><span class="grow">Auto-replant</span><span class="tag${on ? ' on' : ''}" aria-hidden="true">${on ? 'On' : 'Off'}</span></button>`;
+  }
+  const cost = AUTO_REPLANT_COST.toLocaleString('en-US');
+  const ready = state.coins + 1e-9 >= AUTO_REPLANT_COST;
+  return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant — ${cost} coins</b></div><button type="button" class="tag btn" data-buy-auto-replant${ready ? '' : ' disabled'}>Buy</button></div>`;
+}
+
 function landHtml(state: Save, view: View): string {
   return `${title('Land')}
     <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
-    <div class="panel" data-land-fields><h3>Fields</h3>${plotListHtml(state, view, true)}</div>
+    <div class="panel" data-land-fields><h3>Fields</h3>${autoReplantRow(state)}${plotListHtml(state, view, true)}</div>
     <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml(state, view)}</div>`;
 }
 
@@ -1318,20 +1341,22 @@ function awayTime(ms: number): string {
   const minutes = Math.floor(ms / 60_000);
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  if (hours <= 0) return `${rest} min`;
-  return `${hours} h ${rest} min`;
+  if (hours <= 0) return `${fmt(rest)} min`;
+  return `${fmt(hours)} h ${fmt(rest)} min`;
 }
 
 export function reportHtml(report: CatchupReport): string {
   const xp = Object.entries(report.xpGained)
     .map(([skill, amount]) => `${skill} ${fmtXp(amount)}`)
     .join(', ') || 'none';
-  const levels = Object.entries(report.levelsAfter)
-    .flatMap(([skill, level]) => {
-      const before = report.levelsBefore[skill as SkillId];
-      return before != null && before !== level ? [`${skill} ${before}→${level}`] : [];
-    })
-    .join(', ');
+  const levels =
+    Object.entries(report.levelsAfter)
+      .flatMap(([skill, level]) => {
+        const before = report.levelsBefore[skill as SkillId];
+        if (before == null || level <= before) return [];
+        return [`${skill} ${fmt(before)}→${fmt(level)}`];
+      })
+      .join(', ') || 'none';
   const gained = stackText(report.itemsGained);
   const consumed = stackText(report.itemsConsumed);
   const why =
@@ -1371,7 +1396,7 @@ export function reportHtml(report: CatchupReport): string {
 function masteryText(report: CatchupReport): string {
   const rows = report.masteryLevels ?? [];
   if (rows.length === 0) return 'none';
-  return rows.map((row) => `${row.name} ${row.before} → ${row.after}`).join(', ');
+  return rows.map((row) => `${row.name} ${fmt(row.before)} → ${fmt(row.after)}`).join(', ');
 }
 
 function stackText(stacks: Record<string, number>): string {

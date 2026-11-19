@@ -80,6 +80,7 @@ import {
 } from './mastery';
 import { REGEN_BEFORE_ATTACK_ON_TIE } from './provisional';
 import {
+  AUTO_REPLANT_COST,
   BONE_COMPOST_ITEM_ID,
   COMPOST_ITEM_ID,
   PLOT_GATES,
@@ -203,6 +204,10 @@ export interface Save {
   plots: (PlotState | null)[];
   /** Paid plots bought, 0–7. Plot 1 is free with Farming and is not counted here. */
   plotsBought: number;
+  /** Account-wide auto-replant. Missing means not bought. */
+  autoReplant?: boolean;
+  /** Switch after purchase. Missing while owned means on. Ignored when the unlock is absent. */
+  autoReplantOn?: boolean;
   /**
    * The one expedition. Null when none is out.
    * Runs beside the selected activity and the Farming plots. A missing key loads as null.
@@ -447,9 +452,24 @@ export function actionDurationMs(state: Save, id: string): number {
   return actionSeconds(state, id) * 1000;
 }
 
+/** Acceptance tests pin the base haul by turning the Lv 40 double off. */
+let suppressDouble = false;
+
+/** Run `body` with the Lv 40 double-output roll forced off. */
+export function withoutOutputDoubles<T>(body: () => T): T {
+  const previous = suppressDouble;
+  suppressDouble = true;
+  try {
+    return body();
+  } finally {
+    suppressDouble = previous;
+  }
+}
+
 /** Lv 40 mastery: 5% chance to double items. XP and mastery XP stay single. */
 function doubledOutput(state: Save, actionId: string): boolean {
   if (masteryLevel(state.mastery[actionId] ?? 0) < 40) return false;
+  if (suppressDouble) return false;
   return nextUnit(state) < 0.05;
 }
 
@@ -1434,6 +1454,29 @@ export function buyPlot(state: Save): boolean {
   return true;
 }
 
+function compostItemId(compost: CompostKind): string | null {
+  if (compost === 'bone') return BONE_COMPOST_ITEM_ID;
+  if (compost === 'compost') return COMPOST_ITEM_ID;
+  return null;
+}
+
+/** Required plant inputs, in recipe order. Compost is not required. */
+function firstMissingRequiredInput(state: Save, recipeId: string): string | null {
+  const recipe = RECIPE_BY_ID[recipeId];
+  if (!recipe) return null;
+  for (const input of recipe.inputs) {
+    if ((state.bank[input.id] ?? 0) < input.qty) return input.id;
+  }
+  return null;
+}
+
+/** Bone compost, then compost, otherwise none. One item, and only when it is in stock. */
+function replantCompost(state: Save): CompostKind {
+  if ((state.bank[BONE_COMPOST_ITEM_ID] ?? 0) >= 1) return 'bone';
+  if ((state.bank[COMPOST_ITEM_ID] ?? 0) >= 1) return 'compost';
+  return null;
+}
+
 /** Plant on an empty owned plot. This is not the selected activity, and it does not require Farming to be selected. */
 export function plantOnPlot(state: Save, index: number, recipeId: string, compost: CompostKind): boolean {
   if (!state.owned.includes('Farming')) return false;
@@ -1443,13 +1486,31 @@ export function plantOnPlot(state: Save, index: number, recipeId: string, compos
   const recipe = RECIPE_BY_ID[recipeId];
   if (!recipe || !isPlotCrop(recipeId)) return false;
   if (skillLevel(state, 'Farming') < recipe.level) return false;
-  if (!hasInputs(state, recipeId)) return false;
-  const compostId = compost === 'bone' ? BONE_COMPOST_ITEM_ID : compost === 'compost' ? COMPOST_ITEM_ID : null;
+  if (firstMissingRequiredInput(state, recipeId)) return false;
+  const compostId = compostItemId(compost);
   if (compostId && (state.bank[compostId] ?? 0) < 1) return false;
   for (const input of recipe.inputs) takeItem(state, input.id, input.qty);
   if (compostId) takeItem(state, compostId, 1);
   const speed = masteryPerks(masteryLevel(state.mastery[recipeId] ?? 0)).speed;
   state.plots[index] = { recipeId, remainingMs: plotGrowMs(recipe.seconds, compost, speed), compost };
+  return true;
+}
+
+/** One-time purchase. No Farming level gate, and it is not refunded. */
+export function buyAutoReplant(state: Save): boolean {
+  if (state.autoReplant) return false;
+  if (state.coins < AUTO_REPLANT_COST) return false;
+  state.coins = roundXp(state.coins - AUTO_REPLANT_COST);
+  noteSpent(state, AUTO_REPLANT_COST);
+  state.autoReplant = true;
+  state.autoReplantOn = true;
+  return true;
+}
+
+/** Flip the account-wide switch. Only available after the unlock is owned. */
+export function toggleAutoReplant(state: Save): boolean {
+  if (!state.autoReplant) return false;
+  state.autoReplantOn = state.autoReplantOn === false;
   return true;
 }
 
@@ -1459,18 +1520,24 @@ export function cancelPlot(state: Save, index: number): void {
   state.plots[index] = null;
 }
 
-function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[]): void {
+function harvestPlot(
+  state: Save,
+  index: number,
+  sink?: Sink,
+  lines?: string[],
+  notes?: FloatNote[],
+): { itemId: string; qty: number; replanted: boolean } | null {
   const plot = state.plots[index];
-  if (!plot) return;
+  if (!plot) return null;
   const recipe = RECIPE_BY_ID[plot.recipeId];
   if (!recipe) {
     state.plots[index] = null;
-    return;
+    return null;
   }
   if (!bankHasSpace(state)) {
     plot.ready = true;
     plot.remainingMs = 0;
-    return;
+    return null;
   }
   const legacy = plot.legacy === true;
   let qtyTotal = 0;
@@ -1498,20 +1565,79 @@ function harvestPlot(state: Save, index: number, sink?: Sink, lines?: string[]):
   if (sink) sink.actions += 1;
   state.plots[index] = null;
   if (lines) lines.push(`Plot ${index + 1}: ${itemName(itemId)} ×${qtyTotal.toLocaleString('en-US')}`);
+  const replanted = tryAutoReplant(state, index, plot.recipeId, lines, notes);
+  return { itemId, qty: qtyTotal, replanted };
 }
 
-/** Each planted plot advances by the same window and harvests at most once. */
-function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[]): void {
-  ensureFarmPlots(state);
-  for (let index = 0; index < state.plots.length; index += 1) {
-    const plot = state.plots[index];
-    if (!plot) continue;
-    if (!plot.ready && ms > 0) {
-      const factor = 1 - 0.01 * markRank(state, 'road.grow');
-      plot.remainingMs -= factor > 0 ? ms / factor : ms;
-    }
-    if (plot.remainingMs <= 0 || plot.ready) harvestPlot(state, index, sink, lines);
+function replantWanted(state: Save): boolean {
+  return state.autoReplant === true && state.autoReplantOn !== false;
+}
+
+function tryAutoReplant(state: Save, index: number, recipeId: string, lines?: string[], notes?: FloatNote[]): boolean {
+  if (!replantWanted(state)) return false;
+  const missing = firstMissingRequiredInput(state, recipeId);
+  if (missing) {
+    const line = `Plot ${index + 1} not replanted: no ${countedLabel(1, missing)}`;
+    lines?.push(line);
+    notes?.push({ kind: 'toast', text: line });
+    return false;
   }
+  return plantOnPlot(state, index, recipeId, replantCompost(state));
+}
+
+/** Plots finish in completion order. A tie goes to the lower plot number, and that replant happens before the next harvest. */
+function fieldsHarvestToast(totals: Map<string, number>, order: string[], replanted: number): string {
+  const items = order.map((id) => `${itemName(id)} ×${grouped(totals.get(id) ?? 0)}`).join(' · ');
+  const text = `Fields harvested: ${items}`;
+  return replanted > 0 ? `${text} · replanted ${grouped(replanted)}` : text;
+}
+
+function growPlots(state: Save, ms: number, sink?: Sink, lines?: string[], notes?: FloatNote[]): void {
+  ensureFarmPlots(state);
+  let left = Math.max(0, ms);
+  const held = new Set<number>();
+  const totals = new Map<string, number>();
+  const order: string[] = [];
+  let replanted = 0;
+  for (let guard = 0; guard < 10_000; guard += 1) {
+    let due = -1;
+    for (let index = 0; index < state.plots.length; index += 1) {
+      if (held.has(index)) continue;
+      const plot = state.plots[index];
+      if (plot && (plot.ready || plot.remainingMs <= 0)) {
+        due = index;
+        break;
+      }
+    }
+    if (due >= 0) {
+      const before = state.plots[due];
+      const harvested = harvestPlot(state, due, sink, lines, notes);
+      if (harvested && notes) {
+        if (!totals.has(harvested.itemId)) order.push(harvested.itemId);
+        totals.set(harvested.itemId, (totals.get(harvested.itemId) ?? 0) + harvested.qty);
+        if (harvested.replanted) replanted += 1;
+      }
+      if (state.plots[due] === before) held.add(due);
+      continue;
+    }
+    if (left <= 0) break;
+    const factor = 1 - 0.01 * markRank(state, 'road.grow');
+    let next = Infinity;
+    for (const plot of state.plots) {
+      if (!plot || plot.ready) continue;
+      const wall = factor > 0 ? plot.remainingMs * factor : plot.remainingMs;
+      if (wall < next) next = wall;
+    }
+    if (!Number.isFinite(next)) break;
+    const step = Math.min(left, next);
+    for (const plot of state.plots) {
+      if (!plot || plot.ready) continue;
+      plot.remainingMs -= factor > 0 ? step / factor : step;
+      if (plot.remainingMs < 1e-4) plot.remainingMs = 0;
+    }
+    left -= step;
+  }
+  if (notes && order.length > 0) notes.push({ kind: 'toast', text: fieldsHarvestToast(totals, order, replanted) });
 }
 
 /** 15 min, 1 h, and 8 h. An expedition stores one of these for the whole trip. */
@@ -1722,6 +1848,10 @@ function stopLegacyExploration(state: Save): void {
   state.progressMs = 0;
 }
 
+function grouped(n: number): string {
+  return Math.round(n).toLocaleString('en-US');
+}
+
 function groupCount(value: number): string {
   return Math.floor(value).toLocaleString('en-US');
 }
@@ -1777,7 +1907,7 @@ export function advanceOpenTab(
   if (gap > 0) {
     stopLegacyExploration(state);
     simulate(state, gap, undefined, notes ? { notes } : undefined);
-    growPlots(state, gap);
+    growPlots(state, gap, undefined, undefined, notes);
     advanceExpedition(state, gap, undefined, notes);
     noteTime(state, gap);
     state.lastCredited = now;
@@ -2094,6 +2224,10 @@ export function deserialize(raw: string): Save | null {
   migrateCombatScale(loaded, parsed.combatScale);
   if (!migrateEnemyKills(loaded, parsed.saveFormat as number, parsed.enemyKills)) return null;
   if (!migrateBuildings(loaded, parsed.saveFormat as number, parsed.buildings, parsed.buildingsEver)) return null;
+  if (parsed.autoReplant === true) {
+    loaded.autoReplant = true;
+    loaded.autoReplantOn = parsed.autoReplantOn === false ? false : true;
+  }
   if (!installPlots(loaded, parsed)) return null;
   loaded.expedition = readExpedition(parsed.expedition);
   migrateForaging(loaded);
