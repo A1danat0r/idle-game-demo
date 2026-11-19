@@ -269,7 +269,7 @@ describe('farming plots and the land screen', () => {
     const land = mainHtml(state, screen('Farming', true), 0);
     expect(land).toContain('Fields');
     expect(land).toContain('Yard');
-    expect(land).toContain('Coming soon');
+    expect(land).toContain('Coming later');
     expect(land.match(/data-yard-tile=/g)).toHaveLength(9);
     expect(land).toContain('data-plot-card="0"');
     expect(land).toContain('data-plot-card="7"');

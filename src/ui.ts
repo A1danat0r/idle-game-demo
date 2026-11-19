@@ -97,6 +97,7 @@ import {
   PLOT_GATES,
   isPlotCrop,
 } from './plots';
+import { YARD_BUILDINGS, YARD_NAMES, YARD_TILES, openYardTiles, yardBonus, yardTileLevel } from './yard';
 import { deriveProfileStats, formatPlayed, formatSavedAt } from './profile';
 import {
   actionXpMultiplier,
@@ -137,6 +138,10 @@ export interface View {
   land?: boolean;
   /** Compost applied to the next planting. Not saved. */
   plantCompost?: 'compost' | 'bone' | null;
+  /** Selected yard tile. Not saved. */
+  yardTile?: number | null;
+  /** Stored building waiting for an empty tile. Not saved. */
+  placeId?: string | null;
 }
 
 export type CombatScreen = 'areas' | 'ladder' | 'fight' | 'teaser';
@@ -694,13 +699,45 @@ function landHtml(state: Save, view: View): string {
   return `${title('Land')}
     <div class="landhead"><button type="button" class="tag btn ghost" data-land-close>Back</button><p class="note">Fields and the yard.</p></div>
     <div class="panel" data-land-fields><h3>Fields</h3>${plotListHtml(state, view, true)}</div>
-    <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml()}</div>`;
+    <div class="panel" data-land-yard><h3>Yard</h3>${yardHtml(state, view)}</div>`;
 }
 
-/** 3×3 shell. PR5 fills the tiles. */
-export function yardHtml(): string {
-  const tiles = Array.from({ length: 9 }, (_, index) => `<div class="tile" data-yard-tile="${index}"><small>Coming soon</small></div>`).join('');
-  return `<div class="yard">${tiles}</div>`;
+export function yardHtml(state: Save, view: View): string {
+  const open = openYardTiles(state.owned.includes('Construction') ? skillLevel(state, 'Construction') : 0);
+  const placed = state.land ?? {};
+  const tiles = Array.from({ length: YARD_TILES }, (_, index) => yardTileHtml(view, index, open, placed)).join('');
+  const stored = YARD_BUILDINGS.filter((id) => state.buildings[id] && !Object.values(placed).includes(id));
+  const store = stored.length
+    ? stored
+        .map((id) => {
+          const armed = view.placeId === id ? ' on' : '';
+          return `<div class="row" data-yard-stored="${id}"><div class="ico wood">${icon('stone', 28)}</div><div class="grow"><b>${esc(YARD_NAMES[id])}</b><small>${esc(yardBonus(id))}</small></div><button type="button" class="tag btn${armed}" data-yard-arm="${id}">Place</button></div>`;
+        })
+        .join('')
+    : '<p class="note">The store is empty.</p>';
+  const selected = view.yardTile;
+  const selectedId = selected != null ? placed[String(selected)] : undefined;
+  const actions = selectedId
+    ? `<div class="chips"><button type="button" class="tag btn" data-yard-store="${selected}">Store</button><button type="button" class="tag btn" data-dismantle="${selectedId}">Dismantle</button></div><p class="note">Tap an empty tile to move.</p>`
+    : view.placeId
+      ? '<p class="note">Tap an empty tile to place.</p>'
+      : '';
+  const note = state.yardNote ? `<p class="note" data-yard-note>${esc(state.yardNote)} <button type="button" class="tag" data-yard-note-clear>Dismiss</button></p>` : '';
+  return `${note}<div class="yard">${tiles}</div><h3>Store</h3>${store}${actions}`;
+}
+
+function yardTileHtml(view: View, index: number, open: number, placed: Record<string, string>): string {
+  const gate = yardTileLevel(index);
+  if (gate == null || index >= open) {
+    const label = gate == null ? 'Coming later' : `Construction ${gate}`;
+    return `<div class="tile" data-yard-tile="${index}"><small>${label}</small></div>`;
+  }
+  const id = placed[String(index)];
+  if (!id) {
+    return `<button type="button" class="tile" data-yard-tile="${index}"><small>Empty</small></button>`;
+  }
+  const on = view.yardTile === index ? ' on' : '';
+  return `<button type="button" class="tile${on}" data-yard-tile="${index}">${icon('stone', 22)}<b>${esc(YARD_NAMES[id as keyof typeof YARD_NAMES] ?? id)}</b><small>${esc(yardBonus(id))}</small></button>`;
 }
 
 function plotListHtml(state: Save, view: View, compact: boolean): string {
@@ -842,6 +879,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const need = recipe.locked ?? foundation ?? (missing ? needLine(missing.id) : null);
   const stats = output ? gearStatText(output.id) : '';
   const standing = !!recipe.oneTime && !!state.buildings[recipe.id];
+  const placed = standing && Object.values(state.land ?? {}).includes(recipe.id);
   const known = standing || (!!recipe.oneTime && !!state.buildingsEver?.[recipe.id]);
   const fee = recipe.rebuildFee ?? 0;
   const canPay = state.coins + 1e-9 >= fee;
@@ -871,7 +909,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
     : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${refundText}${need ? ` · ${esc(need)}` : ''}`;
-  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${standing ? ' · built' : recipe.oneTime && !known ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
+  return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${standing ? (placed ? ' · Placed' : ' · In store') : recipe.oneTime && !known ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 
 function needLine(itemId: string): string {

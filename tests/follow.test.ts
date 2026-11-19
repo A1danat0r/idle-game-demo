@@ -21,7 +21,9 @@ import {
   dismantleBuilding,
   dismantleRefund,
   newGame,
+  placeBuilding,
   serialize,
+  setSkillLevel,
   simulate,
   plantOnPlot,
   startProduce,
@@ -68,7 +70,7 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     const row = rowHtml(html, 'Build pine work area');
     expect(row).toContain('Rebuild');
     expect(row).toContain('451');
-    expect(row).toContain('built');
+    expect(row).toContain('In store');
     expect(row).toContain('0 XP');
     expect(row).not.toContain('7212');
 
@@ -239,13 +241,18 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
   it('dismantles a built structure for half its kits, rounded down, and drops the step', () => {
     const state = newGame(0);
     state.owned.push('Construction', 'Crafting', 'Cooking', 'Smithing', 'Alchemy');
-    state.xp.Construction = 500;
+    setSkillLevel(state, 'Construction', 35);
+    const constructionXp = state.xp.Construction;
     state.coins = 80;
     state.buildings['activity.construction.oak_workshop'] = true;
     state.buildings['activity.construction.pine_work_area'] = true;
     state.buildings['activity.construction.supply_racks'] = true;
     state.buildings['activity.construction.stone_foundation'] = true;
     state.buildings['activity.construction.forge_extension'] = true;
+    expect(placeBuilding(state, 'activity.construction.pine_work_area', 0)).toBe(true);
+    expect(placeBuilding(state, 'activity.construction.stone_foundation', 1)).toBe(true);
+    expect(placeBuilding(state, 'activity.construction.oak_workshop', 2)).toBe(true);
+    expect(placeBuilding(state, 'activity.construction.forge_extension', 3)).toBe(true);
     const focus = 'recipe.gear.magic.pine_focus';
     const base = RECIPES.find((recipe) => recipe.id === focus)!.seconds;
     expect(actionSeconds(state, focus)).toBeCloseTo(base * TOOL_TIME_FACTOR ** 2);
@@ -253,7 +260,7 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(dismantleBuilding(state, 'activity.construction.oak_workshop')).toBe(true);
     expect(state.bank['con.kit.oak_bench']).toBe(1);
     expect(state.buildings['activity.construction.oak_workshop']).toBeUndefined();
-    expect(state.xp.Construction).toBe(500);
+    expect(state.xp.Construction).toBe(constructionXp);
     expect(state.coins).toBe(80);
     expect(actionSeconds(state, focus)).toBeCloseTo(base * TOOL_TIME_FACTOR);
 
@@ -384,7 +391,7 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(row).toContain('451');
     expect(row).not.toContain('Dismantle');
     expect(row).not.toContain('7212');
-    expect(html).toContain('built');
+    expect(html).toContain('In store');
 
     const old = JSON.parse(serialize(newGame(0)));
     old.saveFormat = 4;

@@ -90,6 +90,7 @@ import {
   plotGrowMs,
   type CompostKind,
 } from './plots';
+import { YARD_BUILDINGS, YARD_NAMES, isYardBuilding, openYardTiles } from './yard';
 
 export const SAVE_FORMAT = 4;
 /** Format 1 has empty mastery. Format 2 has mastery and no kill ladder. Format 3 stores kills and no buildings. */
@@ -182,7 +183,7 @@ export interface Save {
   enemyMastery: Record<string, number>;
   /** Completed kills per enemy. Woodland and the meadow ladder are derived from this. */
   enemyKills: Record<string, number>;
-  /** Standing Construction structures. The ×0.937 step uses this map only. */
+  /** Standing Construction structures. Built, not dismantled. The ×0.937 step uses placement, not this map. */
   buildings: Record<string, boolean>;
   /** One-time structures completed at least once. Dismantle clears `buildings` and leaves this set. Format 4. */
   buildingsEver: Record<string, boolean>;
@@ -198,6 +199,10 @@ export interface Save {
    * Runs beside the selected activity and the Farming plots. A missing key loads as null.
    */
   expedition: { routeId: string; startedAt: number; durationMs: number; creditedMs: number } | null;
+  /** Placed yard buildings, tile index "0"–"8" to activity id. The store is everything built that is absent here. */
+  land: Record<string, string>;
+  /** Shown once after a save is migrated onto fewer tiles than it has buildings. */
+  yardNote?: string;
   /** Wall-clock time of the last write. Missing on saves from before this field. */
   savedAt?: number;
 }
@@ -324,6 +329,7 @@ export function newGame(now: number, seed = 0x1d1e_5eed): Save {
     plots: [],
     plotsBought: 0,
     expedition: null,
+    land: {},
   };
   return state;
 }
@@ -382,11 +388,16 @@ export function actionSeconds(state: Save, id: string): number {
 }
 
 function buildingSteps(state: Save, skill: string): number {
+  const placed = new Set(Object.values(state.land ?? {}));
   let steps = 0;
   for (const [id, skills] of Object.entries(BUILDING_STEPS)) {
-    if (state.buildings[id] && skills.includes(skill as SkillId)) steps += 1;
+    if (placed.has(id) && skills.includes(skill as SkillId)) steps += 1;
   }
   return steps;
+}
+
+function buildingBusy(state: Save, recipeId: string): boolean {
+  return state.activity?.kind === 'produce' && state.activity.recipeId === recipeId;
 }
 
 export function actionXp(id: string): number {
@@ -632,10 +643,58 @@ export function dismantleRefund(recipeId: string): { id: string; qty: number }[]
 export function dismantleBuilding(state: Save, recipeId: string): boolean {
   const recipe = RECIPE_BY_ID[recipeId];
   if (!recipe?.oneTime || !state.buildings[recipe.id]) return false;
-  if (state.activity?.kind === 'produce' && state.activity.recipeId === recipe.id) return false;
+  if (buildingBusy(state, recipe.id)) return false;
   for (const refund of dismantleRefund(recipe.id)) giveItem(state, refund.id, refund.qty);
   state.buildingsEver[recipe.id] = true;
   delete state.buildings[recipe.id];
+  clearLand(state, recipe.id);
+  return true;
+}
+
+function clearLand(state: Save, buildingId: string): void {
+  if (!state.land) state.land = {};
+  for (const [tile, id] of Object.entries(state.land)) {
+    if (id === buildingId) delete state.land[tile];
+  }
+}
+
+function yardLevel(state: Save): number {
+  if (!state.owned.includes('Construction')) return 0;
+  return skillLevel(state, 'Construction');
+}
+
+function tileOpen(state: Save, tile: number): boolean {
+  return Number.isInteger(tile) && tile >= 0 && tile < openYardTiles(yardLevel(state));
+}
+
+/** Put a stored building on an empty open tile. No coin, XP, or item change. */
+export function placeBuilding(state: Save, buildingId: string, tile: number): boolean {
+  if (!state.land) state.land = {};
+  if (!isYardBuilding(buildingId) || !state.buildings[buildingId]) return false;
+  if (buildingBusy(state, buildingId)) return false;
+  if (Object.values(state.land).includes(buildingId)) return false;
+  if (!tileOpen(state, tile) || state.land[String(tile)]) return false;
+  state.land[String(tile)] = buildingId;
+  return true;
+}
+
+/** Move a placed building onto another empty open tile. */
+export function moveBuilding(state: Save, from: number, to: number): boolean {
+  if (!state.land) state.land = {};
+  const id = state.land[String(from)];
+  if (!id || !tileOpen(state, to) || state.land[String(to)]) return false;
+  if (buildingBusy(state, id)) return false;
+  delete state.land[String(from)];
+  state.land[String(to)] = id;
+  return true;
+}
+
+/** Take a placed building off its tile and into the store. */
+export function storeBuilding(state: Save, tile: number): boolean {
+  if (!state.land) state.land = {};
+  const id = state.land[String(tile)];
+  if (!id || buildingBusy(state, id)) return false;
+  delete state.land[String(tile)];
   return true;
 }
 
@@ -1926,6 +1985,7 @@ export function deserialize(raw: string): Save | null {
     plots: [],
     plotsBought: 0,
     expedition: null,
+    land: {},
     savedAt: typeof parsed.savedAt === 'number' && Number.isFinite(parsed.savedAt) ? parsed.savedAt : undefined,
     combatScale: 0,
   };
@@ -1935,6 +1995,7 @@ export function deserialize(raw: string): Save | null {
   if (!installPlots(loaded, parsed)) return null;
   loaded.expedition = readExpedition(parsed.expedition);
   migrateForaging(loaded);
+  if (!installLand(loaded, parsed)) return null;
   return loaded;
 }
 
@@ -1976,6 +2037,52 @@ function migrateForaging(state: Save): void {
   if (partial && habitatTable(state, habitat.id).length > 0) {
     completeForageTick(state, habitat.id, undefined, {});
   }
+}
+
+/**
+ * A missing `land` key places standing buildings in table order onto the tiles
+ * open at this Construction level. Overflow stays in the store, with one note.
+ */
+function installLand(state: Save, parsed: Record<string, unknown>): boolean {
+  if (typeof parsed.yardNote === 'string' && parsed.yardNote.length > 0) state.yardNote = parsed.yardNote;
+  if (parsed.land !== undefined && parsed.land !== null) {
+    const land = readLand(parsed.land);
+    if (!land) return false;
+    state.land = land;
+    return true;
+  }
+  state.land = {};
+  const open = openYardTiles(yardLevel(state));
+  const overflow: string[] = [];
+  let tile = 0;
+  for (const id of YARD_BUILDINGS) {
+    if (!state.buildings[id]) continue;
+    if (tile < open) {
+      state.land[String(tile)] = id;
+      tile += 1;
+    } else {
+      overflow.push(YARD_NAMES[id]);
+    }
+  }
+  if (overflow.length > 0) {
+    const tiles = open === 1 ? '1 tile' : `${open} tiles`;
+    const verb = overflow.length === 1 ? 'is' : 'are';
+    state.yardNote = `Your yard has ${tiles}; ${overflow.join(', ')} ${verb} in the store.`;
+  }
+  return true;
+}
+
+function readLand(value: unknown): Record<string, string> | null {
+  if (!isRecord(value)) return null;
+  const land: Record<string, string> = {};
+  const seen = new Set<string>();
+  for (const [key, id] of Object.entries(value)) {
+    if (!/^[0-8]$/.test(key) || typeof id !== 'string' || !isYardBuilding(id)) return null;
+    if (seen.has(id)) return null;
+    seen.add(id);
+    land[key] = id;
+  }
+  return land;
 }
 
 /**
