@@ -1014,6 +1014,7 @@ const ACTION_NAMES: Record<string, string> = {
   'activity.exploration.shallow_ruin': 'Shallow ruin',
   'activity.exploration.riverbank_branch_slate': 'Riverbank branch — slate',
   'activity.exploration.fitting_appraisal': 'Fitting appraisal',
+  'activity.exploration.alum_seep_recovery': 'Alum seep recovery',
   'activity.exploration.bridge_approach_survey': 'Bridge approach survey',
   'recipe.mat.bar.steel.slag_flux_route': 'Steel bar (slag flux)',
   'recipe.ammo.arrow.steel.ash_route': 'Steel arrows (ash)',

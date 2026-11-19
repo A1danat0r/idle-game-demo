@@ -140,14 +140,21 @@ describe('exploration expeditions', () => {
       const state = explorer(levelFor(routeId));
       const before = state.xp.Exploration ?? 0;
       const preview = expeditionPreview(state, routeId, duration);
-      expect(preview.xp, routeId).toBe(xp);
+      const room = Math.max(0, XP_CAP - before);
+      if (routeId === BRIDGE) {
+        expect(preview.xp, routeId).toBe(0);
+        expect(preview.items.reduce((sum, item) => sum + item.qty, 0), routeId).toBe(0);
+        const hemp = state.bank[HEMP] ?? 0;
+        expect(startExpedition(state, routeId, duration, 0), routeId).toBe(false);
+        expect(state.bank[HEMP] ?? 0).toBe(hemp);
+        continue;
+      }
+      expect(preview.xp, routeId).toBeCloseTo(Math.min(xp, room), 4);
       expect(preview.items.reduce((sum, item) => sum + item.qty, 0), routeId).toBe(qty);
       expect(startExpedition(state, routeId, duration, 0), routeId).toBe(true);
       creditOffline(state, duration);
       if (itemId) expect(state.bank[itemId] ?? 0, routeId).toBe(qty);
-      else expect(state.bank[AGATE] ?? 0, routeId).toBe(0);
-      const room = Math.max(0, XP_CAP - before);
-      expect(state.xp.Exploration, routeId).toBe(before + Math.min(xp, room));
+      expect(state.xp.Exploration, routeId).toBeCloseTo(before + Math.min(xp, room), 4);
     }
   });
 
@@ -260,8 +267,14 @@ describe('exploration expeditions', () => {
     expect(bridge).toContain('disabled');
     expect(bridge).toContain('Hemp string');
     state.bank[HEMP] = 2;
-    expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(true);
-    expect(state.bank[HEMP] ?? 0).toBe(0);
+    expect(startExpedition(state, BRIDGE, QUARTER, 0)).toBe(false);
+    expect(state.bank[HEMP]).toBe(2);
+    const ready = mainHtml(state, view('Exploration'), 0);
+    const blocked = rowHtml(ready, 'Bridge approach survey');
+    expect(blocked).toContain('no items · 0 XP');
+    expect(blocked).toContain('Exploration is maxed');
+    expect(blocked).toContain('disabled');
+    expect(blocked).not.toContain('data-pack=');
   });
 
   it('stops an old selected stream survey after the legacy catch-up and keeps its agate', () => {
@@ -307,7 +320,8 @@ describe('exploration expeditions', () => {
     expect(html).toContain('Packs nothing');
     expect(html).toContain('Pack and go');
     expect(html).toContain('Haul 272 Weathered agate · 7,072 XP');
-    expect(html).toContain('Stream survey mastery');
+    expect(html).toContain('Weathered agate mastery');
+    expect(html).not.toContain('Stream survey mastery');
     const shell = shellHtml('', '', html, backgroundStripHtml(state) + activityHtml(state), '');
     expect(shell).not.toContain('data-bgstrip');
 
@@ -316,6 +330,7 @@ describe('exploration expeditions', () => {
     expect(out).toContain('data-expedition-card');
     expect(out).toContain('Return now');
     expect(out).toContain('60:00');
+    expect(out).toContain('Stream survey mastery');
     startGather(state, 'mat.wood.pine');
     const bar = shellHtml('', '', '', backgroundStripHtml(state) + activityHtml(state), '<nav class="tabs"></nav>');
     expect(bar.indexOf('data-bgstrip')).toBeLessThan(bar.indexOf('data-activity'));
@@ -354,8 +369,9 @@ describe('exploration expeditions', () => {
     creditOffline(state, QUARTER);
     expect(state.bank[AGATE]!).toBeGreaterThan(287);
     expect(state.bank[AGATE]!).toBeLessThanOrEqual(287 * 2);
-    expect(state.xp.Exploration).toBe(287 * 26);
+    expect(state.xp.Exploration).toBeCloseTo(287 * 26 * 1.08, 4);
     expect(state.mastery[STREAM]! - masteryThreshold(40)).toBe(287 * 33);
+    expect(state.mastery[AGATE] ?? 0).toBe(0);
   });
 
   it('gives items and no XP once Exploration is already at the cap', () => {
@@ -385,6 +401,78 @@ describe('exploration expeditions', () => {
     expect(out.bank[AGATE] ?? 0).toBe(0);
     expect(expeditionRemainingMs(out)).toBe(HOUR);
     expect(report.expeditionLine).toContain('out, 60:00 left');
+  });
+
+  it('names a stream survey catch-up by the route and counts the haul as one action', () => {
+    const state = explorer(1);
+    startGather(state, 'mat.wood.pine');
+    startExpedition(state, STREAM, QUARTER, 0);
+    const report = creditOffline(state, QUARTER);
+    expect(state.mastery[STREAM]).toBe(8976);
+    expect(state.mastery[AGATE] ?? 0).toBe(0);
+    expect(report.masteryLevels.find((row) => row.id === STREAM)).toMatchObject({ name: 'Stream survey', before: 1, after: 11 });
+    expect(report.perksUnlocked).toContain('Stream survey mastery 10: sell value +5%');
+    expect(report.perksUnlocked.join(' ')).not.toContain('Weathered agate mastery');
+    expect(report.actions).toBe(346 + 1);
+    const html = reportHtml(report);
+    expect(html).toContain('Stream survey 1→11');
+    expect(html).not.toContain('Weathered agate 1→11');
+  });
+
+  it('titles the alum route Alum seep recovery', () => {
+    const state = explorer(40);
+    const html = mainHtml(state, view('Exploration'), 0);
+    expect(rowHtml(html, 'Alum seep recovery')).toContain('Level 35');
+    expect(html).not.toContain('<b>Alum</b>');
+  });
+
+  it('applies mastery 30 and a maxed track per tick, including the crossing tick', () => {
+    const held = explorer(1);
+    held.mastery[STREAM] = masteryThreshold(30);
+    expect(expeditionPreview(held, STREAM, QUARTER).ticks).toBe(287);
+    expect(expeditionPreview(held, STREAM, QUARTER).xp).toBeCloseTo(287 * 26 * 1.05, 4);
+    startExpedition(held, STREAM, QUARTER, 0);
+    creditOffline(held, QUARTER);
+    expect(held.xp.Exploration).toBeCloseTo(7835.1, 4);
+    expect(held.bank[AGATE]).toBe(287);
+    expect(held.mastery[AGATE] ?? 0).toBe(0);
+
+    const crossing = explorer(1);
+    crossing.mastery[STREAM] = masteryThreshold(30) - 1;
+    startExpedition(crossing, STREAM, QUARTER, 0);
+    creditOffline(crossing, QUARTER);
+    expect(crossing.bank[AGATE]).toBe(287);
+    expect(crossing.xp.Exploration).toBeCloseTo(26 + 286 * 26 * 1.05, 4);
+
+    const global = explorer(1);
+    global.mastery[AGATE] = masteryThreshold(40);
+    startExpedition(global, STREAM, QUARTER, 0);
+    creditOffline(global, QUARTER);
+    expect(global.xp.Exploration).toBeCloseTo(272 * 26 * 1.03, 4);
+    expect(global.mastery[AGATE]).toBe(masteryThreshold(40));
+    expect(global.mastery[STREAM]).toBe(8976);
+  });
+
+  it('follows the trip while it is out, then the last packed route, else weathered agate', () => {
+    const state = explorer(1);
+    expect(mainHtml(state, view('Exploration'), 0)).toContain('Weathered agate mastery');
+    startExpedition(state, STREAM, HOUR, 0);
+    expect(mainHtml(state, view('Exploration'), 0)).toContain('Stream survey mastery');
+    returnExpedition(state);
+    const remembered = view('Exploration');
+    remembered.packedRoute = STREAM;
+    expect(mainHtml(state, remembered, 0)).toContain('Stream survey mastery');
+    expect(mainHtml(state, view('Exploration'), 0)).toContain('Weathered agate mastery');
+  });
+
+  it('counts Return now as one action', () => {
+    const state = explorer(1);
+    startExpedition(state, STREAM, HOUR, 0);
+    creditOffline(state, 10 * 60 * 1000);
+    expect(state.stats.actions).toBe(0);
+    expect(returnExpedition(state)).toBe(true);
+    expect(state.stats.actions).toBe(1);
+    expect(state.bank[AGATE]).toBe(181);
   });
 
   it('adds the mastery 10 sell perk on an expedition output that is not a node', () => {

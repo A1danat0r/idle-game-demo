@@ -348,7 +348,9 @@ app.addEventListener('click', (event) => {
   if (target.dataset.pack && !target.hasAttribute('disabled')) {
     const ms = view.routeMs != null && (EXPEDITION_MS as readonly number[]).includes(view.routeMs) ? view.routeMs : EXPEDITION_MS[0];
     view.routeId = target.dataset.pack;
-    view.message = startExpedition(state, target.dataset.pack, ms, gameNow()) ? '' : 'That route is not ready.';
+    const packed = startExpedition(state, target.dataset.pack, ms, gameNow());
+    if (packed) view.packedRoute = target.dataset.pack;
+    view.message = packed ? '' : 'That route is not ready.';
   }
   if (target.hasAttribute('data-return-expedition')) {
     returnExpedition(state);

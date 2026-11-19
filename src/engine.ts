@@ -1364,17 +1364,46 @@ export interface ExpeditionPreview {
   mxp: number;
 }
 
-/** Base haul for a duration. Double-output rolls are not included. */
+/** Stored XP for one tick, using the mastery and global bonus before this tick's MXP is added. */
+function expeditionTickXp(mastery: Record<string, number>, routeId: string, baseXp: number): number {
+  return baseXp * actionXpMultiplier(mastery, routeId, 'Exploration');
+}
+
+/** How much of `amount` the live add-XP path would keep, and the XP total after it. */
+function creditSkillXp(current: number, amount: number): { next: number; gained: number } {
+  if (current >= XP_CAP - 1e-9) return { next: current, gained: 0 };
+  const next = Math.min(XP_CAP, roundXp(current + amount));
+  return { next, gained: roundXp(next - current) };
+}
+
+/**
+ * Haul for a duration. Tick time uses mastery at the call, which is the start of the trip.
+ * XP follows §2.7 on each tick, including a mastery-30 or global-bonus change after a tick's MXP.
+ * Double-output rolls are not included.
+ */
 export function expeditionPreview(state: Save, routeId: string, durationMs: number): ExpeditionPreview {
   const route = explorationRoute(routeId);
   const ticks = expeditionTicks(state, routeId, durationMs);
-  const xp = ticks * (route?.xp ?? 0);
+  const mxpEach = actionMasteryXp(route?.seconds ?? 0);
+  const mastery = { ...state.mastery };
+  let skillXp = state.xp.Exploration ?? 0;
+  let xp = 0;
+  for (let tick = 0; tick < ticks; tick += 1) {
+    const step = creditSkillXp(skillXp, expeditionTickXp(mastery, routeId, route?.xp ?? 0));
+    skillXp = step.next;
+    xp = roundXp(xp + step.gained);
+    mastery[routeId] = (mastery[routeId] ?? 0) + mxpEach;
+  }
   return {
     ticks,
     items: (route?.outputs ?? []).map((output) => ({ id: output.id, qty: output.qty * ticks })),
     xp,
-    mxp: ticks * actionMasteryXp(route?.seconds ?? 0),
+    mxp: ticks * mxpEach,
   };
+}
+
+function haulIsEmpty(preview: ExpeditionPreview): boolean {
+  return preview.xp <= 1e-9 && preview.items.every((item) => item.qty <= 0);
 }
 
 export function startExpedition(state: Save, routeId: string, durationMs: number, now: number): boolean {
@@ -1385,6 +1414,7 @@ export function startExpedition(state: Save, routeId: string, durationMs: number
   if (!state.owned.includes('Exploration')) return false;
   if (skillLevel(state, 'Exploration') < route.level) return false;
   if (route.cost > 0 && !state.nodes.includes(routeId)) return false;
+  if (haulIsEmpty(expeditionPreview(state, routeId, durationMs))) return false;
   if (route.inputs.some((input) => (state.bank[input.id] ?? 0) < input.qty)) return false;
   for (const input of route.inputs) takeItem(state, input.id, input.qty);
   state.expedition = { routeId, startedAt: now, durationMs, creditedMs: 0 };
@@ -1402,17 +1432,20 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
   const ticks = expeditionTicks(state, routeId, elapsedMs);
   const items: Record<string, number> = {};
   const outputs = route?.outputs ?? [];
+  const mxpEach = actionMasteryXp(route?.seconds ?? 0);
+  const canDouble = masteryLevel(state.mastery[routeId] ?? 0) >= 40;
+  let xp = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
-    const doubled = outputs.length > 0 && doubledOutput(state, routeId);
+    const doubled = canDouble && outputs.length > 0 && doubledOutput(state, routeId);
     for (const output of outputs) {
       const qty = output.qty * (doubled ? 2 : 1);
       giveItem(state, output.id, qty, sink);
       items[output.id] = (items[output.id] ?? 0) + qty;
     }
+    xp = roundXp(xp + addXp(state, 'Exploration', expeditionTickXp(state.mastery, routeId, route?.xp ?? 0)));
+    if (route) state.mastery[routeId] = (state.mastery[routeId] ?? 0) + mxpEach;
   }
-  const xp = addXp(state, 'Exploration', ticks * (route?.xp ?? 0));
   if (route && ticks > 0) {
-    state.mastery[routeId] = (state.mastery[routeId] ?? 0) + ticks * actionMasteryXp(route.seconds);
     state.stats.actions += 1;
     if (sink) sink.actions += 1;
   }

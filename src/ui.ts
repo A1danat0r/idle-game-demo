@@ -55,6 +55,7 @@ import {
   expeditionPreview,
   expeditionRemainingMs,
   expeditionRouteName,
+  explorationRoute,
   explorationRoutes,
   forageEntryReady,
   habitatPace,
@@ -116,8 +117,10 @@ export interface View {
   milestoneTrack?: string | null;
   /** Combat tab screen. Not saved. */
   combatScreen?: CombatScreen;
-  /** Exploration route whose mastery the Next row follows. Not saved. */
+  /** Row last tapped. Not the Next default. Not saved. */
   routeId?: string | null;
+  /** Last route packed this session. Not saved. Weathered agate until then. */
+  packedRoute?: string | null;
   /** Chosen expedition length. Not saved. One of 15 min, 1 h, 8 h. */
   routeMs?: number | null;
 }
@@ -166,6 +169,12 @@ const lock = `<svg width="14" height="14" viewBox="0 0 20 20"><rect x="3" y="9" 
 function fmtAmount(value: number): string {
   const rounded = Math.round(value * 100) / 100;
   return String(rounded);
+}
+
+function fmtXpAmount(value: number): string {
+  const rounded = Math.round(value * 10000) / 10000;
+  if (Math.abs(rounded - Math.round(rounded)) < 1e-9) return Math.round(rounded).toLocaleString('en-US');
+  return rounded.toLocaleString('en-US', { maximumFractionDigits: 4 });
 }
 
 function masteryLine(mxp: number): string {
@@ -548,7 +557,7 @@ function skillHtml(state: Save, view: View): string {
   const head = `<div class="skillhead"><div class="emblem">${icon(SKILL_ICON[skill], 30)}</div><div class="grow"><h2>${skill}</h2><small>Lv ${xp.level} · ${xp.text}</small>${bar(xp.pct)}${bonusLine}${tier}</div></div>`;
   if (skill === 'Exploration') {
     return `${head}
-      ${nextRow(explorationNextLine(state, chosenRoute(view)))}
+      ${nextRow(explorationNextLine(state, expeditionNextId(state, view)))}
       ${scene}
       ${expeditionCard(state)}
       <div class="list">${explorationRoutes().map((route) => routeRow(state, view, route)).join('')}</div>`;
@@ -570,10 +579,14 @@ function skillHtml(state: Save, view: View): string {
     <div class="list">${rows}</div>`;
 }
 
-function chosenRoute(view: View): string {
-  const routes = explorationRoutes();
-  if (view.routeId && routes.some((route) => route.id === view.routeId)) return view.routeId;
-  return routes[0]?.id ?? '';
+const FIRST_EXPEDITION = 'mat.gem.weathered_agate';
+
+/** Trip out, else the last route packed this session, else the first table row. */
+function expeditionNextId(state: Save, view: View): string {
+  const trip = state.expedition?.routeId;
+  if (trip && explorationRoute(trip)) return trip;
+  if (view.packedRoute && explorationRoute(view.packedRoute)) return view.packedRoute;
+  return FIRST_EXPEDITION;
 }
 
 function chosenDuration(view: View): number {
@@ -599,7 +612,7 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
   const reached = level >= route.level;
   const owned = route.cost <= 0 || state.nodes.includes(route.id);
   const duration = chosenDuration(view);
-  const selected = chosenRoute(view) === route.id;
+  const selected = expeditionNextId(state, view) === route.id;
   const packs = route.inputs.length === 0
     ? 'Packs nothing'
     : `Packs ${route.inputs.map((input) => countedName(input.qty, input.id)).join(', ')}`;
@@ -608,7 +621,8 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
     .filter((item) => item.qty > 0)
     .map((item) => `${fmt(item.qty)} ${countedLabel(item.qty, item.id)}`)
     .join(', ');
-  const haul = haulItems ? `${haulItems} · ${fmt(preview.xp)} XP` : `${fmt(preview.xp)} XP`;
+  const empty = preview.xp <= 1e-9 && preview.items.every((item) => item.qty <= 0);
+  const haul = empty ? 'no items · 0 XP' : haulItems ? `${haulItems} · ${fmtXpAmount(preview.xp)} XP` : `${fmtXpAmount(preview.xp)} XP`;
   const missing = route.inputs.find((input) => (state.bank[input.id] ?? 0) < input.qty);
   const busy = state.expedition != null;
   const chips = EXPEDITION_MS.map((ms) => `<button type="button" class="tag ${duration === ms ? 'on' : ''}" data-duration="${ms}" data-route="${route.id}">${DURATION_LABEL[ms]}</button>`).join('');
@@ -619,12 +633,12 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
     right = `<span class="tag">${lock} Lv ${route.level}</span>`;
   } else if (!owned) {
     right = `<small>Unlock</small>${coin(route.cost)}<button type="button" class="tag btn" data-buy-node="${route.id}">Buy</button>`;
-  } else if (busy || missing) {
+  } else if (busy || missing || empty) {
     right = `<button type="button" class="tag btn" disabled>Pack and go</button>`;
   } else {
     right = `<button type="button" class="tag btn" data-pack="${route.id}">Pack and go</button>`;
   }
-  const note = route.locked ?? (missing ? needLine(missing.id) : '');
+  const note = [route.locked, missing ? needLine(missing.id) : '', !route.locked && empty ? 'Exploration is maxed' : ''].filter(Boolean).join(' · ');
   const outputId = route.outputs[0]?.id;
   const iconName = (outputId && ITEMS[outputId]?.icon) || 'gem';
   return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small><small>Haul ${esc(haul)}</small>${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;
@@ -959,7 +973,7 @@ export function milestoneSheetHtml(state: Save, view: View): string {
       .join('');
     return `<div class="sheet" data-milestone-sheet><div class="card"><h2>${esc(ENEMY_BY_ID[enemyId].name)}</h2><div class="list">${rows}</div><button type="button" class="tag btn" data-milestone-close>Close</button></div></div>`;
   }
-  const selectedRoute = view.tab === 'skill' && view.skill === 'Exploration' ? chosenRoute(view) : '';
+  const selectedRoute = view.tab === 'skill' && view.skill === 'Exploration' ? expeditionNextId(state, view) : '';
   const track = selectedRoute
     ? { id: selectedRoute, skill: 'Exploration' as const, seconds: trackSeconds(selectedRoute) }
     : activityTrack(state);
