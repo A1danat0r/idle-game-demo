@@ -163,11 +163,12 @@ export function combatBackScreen(view: View): CombatScreen {
   return 'areas';
 }
 
-/** The training-row chip. A set chip wins; otherwise the running fight, otherwise the first owned style. */
+/** The training-row chip. A set chip wins; otherwise the running fight, the saved style, then the first owned style. */
 export function combatStyleChoice(state: Save, view: View): CombatStyle | null {
   if (view.style && state.owned.includes(view.style)) return view.style;
   const activity = state.activity;
   if (activity?.kind === 'combat' && state.owned.includes(activity.style)) return activity.style;
+  if (state.combatStyle && state.owned.includes(state.combatStyle)) return state.combatStyle;
   return COMBAT_STYLES.find((id) => state.owned.includes(id)) ?? null;
 }
 
@@ -184,6 +185,14 @@ const esc = (value: string) =>
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const fmtCoins = (n: number) => Math.floor(n).toLocaleString('en-US');
 const fmtXp = (n: number) => Math.floor(n).toLocaleString('en-US');
+/** Bank counts of 1,000 or more use thousands separators. Smaller counts stay plain. */
+function bankCount(n: number): string {
+  const whole = Math.max(0, Math.floor(n));
+  return whole >= 1000 ? whole.toLocaleString('en-US') : String(whole);
+}
+function buyOff(affordable: boolean): string {
+  return affordable ? '' : ' disabled aria-disabled="true"';
+}
 const coin = (n: number) => `<span class="coin">${icon('coin', 16)}${fmtCoins(n)}</span>`;
 const bar = (pct: number, cls = '', live = '') =>
   `<div class="bar ${cls}"><i${live ? ` data-live="${live}"` : ''} style="width:${Math.max(0, Math.min(100, pct))}%"></i></div>`;
@@ -565,8 +574,12 @@ function skillRow(state: Save, skill: SkillId, next: number | null): string {
     return `<div class="row owned"><div class="ico gold">H</div><div class="grow"><b>Hitpoints <em>Lv ${view.level}</em></b>${bar(view.pct)}<small>Free with the first combat skill · ${view.text}</small></div></div>`;
   }
   if (!state.owned.includes(skill)) {
-    const affordable = next != null && state.coins >= next;
-    return `<div class="row locked"><div class="ico">${lock}</div><div class="grow"><b>${skill}</b><small>Locked</small></div><div class="price"><small>Unlock</small>${coin(next ?? 0)}${affordable ? `<button type="button" class="tag btn" data-buy-skill="${skill}">Buy</button>` : ''}</div></div>`;
+    const affordable = next != null && state.coins + 1e-9 >= next;
+    const buy =
+      next == null
+        ? ''
+        : `<button type="button" class="tag btn" data-buy-skill="${skill}"${buyOff(affordable)}>Buy</button>`;
+    return `<div class="row locked"><div class="ico">${lock}</div><div class="grow"><b>${skill}</b><small>Locked</small></div><div class="price"><small>Unlock</small>${coin(next ?? 0)}${buy}</div></div>`;
   }
   const view = xpView(state.xp[skill] ?? 0);
   const open = true;
@@ -685,7 +698,7 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
   if (route.locked || !reached) {
     right = lockBadge(!reached ? ` Lv ${route.level}` : '');
   } else if (!owned) {
-    right = `<small>Unlock</small>${coin(route.cost)}<button type="button" class="tag btn" data-buy-node="${route.id}">Buy</button>`;
+    right = `<small>Unlock</small>${coin(route.cost)}<button type="button" class="tag btn" data-buy-node="${route.id}"${buyOff(state.coins + 1e-9 >= route.cost)}>Buy</button>`;
   } else if (busy || missing || empty) {
     right = `<button type="button" class="tag btn" disabled>Pack and go</button>`;
   } else {
@@ -727,7 +740,7 @@ function autoReplantRow(state: Save): string {
   }
   const cost = AUTO_REPLANT_COST.toLocaleString('en-US');
   const ready = state.coins + 1e-9 >= AUTO_REPLANT_COST;
-  return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant — ${cost} coins</b></div><button type="button" class="tag btn" data-buy-auto-replant${ready ? '' : ' disabled'}>Buy</button></div>`;
+  return `<div class="row" data-auto-replant><div class="grow"><b>Auto-replant — ${cost} coins</b></div><button type="button" class="tag btn" data-buy-auto-replant${buyOff(ready)}>Buy</button></div>`;
 }
 
 function landHtml(state: Save, view: View): string {
@@ -803,7 +816,7 @@ function lockedPlotCard(state: Save, index: number): string {
   const levelOk = state.owned.includes('Farming') && skillLevel(state, 'Farming') >= gate.level;
   const coinOk = state.coins + 1e-9 >= gate.cost;
   const buy = next
-    ? `<button type="button" class="tag btn" data-buy-plot${levelOk && coinOk ? '' : ' disabled'}>Buy</button>`
+    ? `<button type="button" class="tag btn" data-buy-plot${buyOff(levelOk && coinOk)}>Buy</button>`
     : '';
   const cost = gate.cost > 0 ? `${gate.cost.toLocaleString('en-US')} coins` : 'Free with Farming';
   return `<div class="row locked" data-plot-card="${index}"><div class="grow"><b>Plot ${gate.plot}</b><small>Farming ${gate.level} · ${cost}</small></div><div class="price">${gate.cost > 0 ? coin(gate.cost) : ''}${buy}</div></div>`;
@@ -839,9 +852,11 @@ function markCardsHtml(state: Save): string {
       .map((mod) => {
         const rank = state.markRanks?.[mod.id] ?? 0;
         const pips = Array.from({ length: 5 }, (_, index) => `<i class="${index < rank ? 'on' : ''}"></i>`).join('');
+        const nextRank = rank + 1;
+        const cost = rankCost(mod.seconds, nextRank);
         const buy = locked || rank >= 5
           ? ''
-          : `<button type="button" class="tag btn" data-buy-rank="${mod.id}">Buy rank ${rank + 1} — ${fmt(rankCost(mod.seconds, rank + 1))}</button>`;
+          : `<button type="button" class="tag btn" data-buy-rank="${mod.id}"${buyOff((state.glimmer?.[mark.id] ?? 0) + 1e-9 >= cost)}>Buy rank ${nextRank} — ${fmt(cost)}</button>`;
         return `<div class="mod"><b>${esc(mod.name)}</b><span class="pips">${pips}</span>${buy}</div>`;
       })
       .join('');
@@ -875,9 +890,12 @@ function habitatCards(state: Save): string {
     const active = state.activity?.kind === 'forage' && state.activity.habitatId === habitat.id;
     const total = table.reduce((sum, entry) => sum + entry.weight, 0);
     const pace = habitatPace(state, habitat.id);
+    const gate = NODE_BY_ID[habitat.entries[0].nodeId].level;
     const time = pace
       ? `${secondsText(habitatSeconds(state, habitat.id))} · ${fmtAmount(habitatTickXp(state, habitat.id))} XP`
-      : `Foraging ${NODE_BY_ID[habitat.entries[0].nodeId].level}`;
+      : skillLevel(state, 'Foraging') >= gate
+        ? 'Buy a node below to open'
+        : `Foraging ${gate}`;
     const entries = habitat.entries
       .map((entry) => {
         const node = NODE_BY_ID[entry.nodeId];
@@ -886,7 +904,7 @@ function habitatCards(state: Save): string {
         let status = '';
         if (ready) status = `<b class="odds">${oddsText(entry.weight, total)}</b>`;
         else if (!reached || node.cost <= 0) status = `<span class="tag">${lock} Lv ${node.level}</span>`;
-        else status = `<button type="button" class="tag btn" data-buy-node="${node.id}">Buy ${fmt(node.cost)}</button>`;
+        else status = `<button type="button" class="tag btn" data-buy-node="${node.id}"${buyOff(state.coins + 1e-9 >= node.cost)}>Buy ${fmt(node.cost)}</button>`;
         return `<div class="drop ${ready ? '' : 'dim'}"><span>${esc(itemName(node.id))}</span>${status}</div>`;
       })
       .join('');
@@ -911,7 +929,7 @@ function nodeRow(state: Save, node: (typeof NODES)[number]): string {
   let right = '';
   if (!owned) {
     right = reached
-      ? `<div class="price"><small>Unlock</small>${coin(node.cost)}<button type="button" class="tag btn" data-buy-node="${node.id}">Buy</button></div>`
+      ? `<div class="price"><small>Unlock</small>${coin(node.cost)}<button type="button" class="tag btn" data-buy-node="${node.id}"${buyOff(state.coins + 1e-9 >= node.cost)}>Buy</button></div>`
       : `<div class="price"><small>Unlock</small>${coin(node.cost)}<span class="tag">${lock} Lv ${node.level}</span></div>`;
   } else if (active) {
     right = `<div class="price"><b class="free">FREE</b><span class="tag on">Active</span></div>`;
@@ -951,7 +969,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
       : active
         ? `<span class="tag on">Active</span>`
         : known
-          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled' : ''}>Rebuild</button>${standing ? `<button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button>` : ''}</div>`
+          ? `<div class="price"><small>Fee</small>${coin(fee)}<button type="button" class="tag btn" data-recipe="${recipe.id}"${need || !canPay ? ' disabled aria-disabled="true"' : ''}>Rebuild</button>${standing ? `<button type="button" class="tag btn" data-dismantle="${recipe.id}">Dismantle</button>` : ''}</div>`
           : need
             ? `<button type="button" class="tag btn" disabled>Start</button>`
             : `<button type="button" class="tag btn" data-recipe="${recipe.id}">Start</button>`;
@@ -1083,10 +1101,10 @@ function ladderHtml(state: Save, view: View): string {
 function foodPanel(state: Save): string {
   const foods = Object.keys(state.bank).filter((id) => isFood(id) && (state.bank[id] ?? 0) > 0);
   const food = state.foodSlot && (state.bank[state.foodSlot] ?? 0) > 0
-    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${state.bank[state.foodSlot]}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
+    ? `<div class="slot">${icon('food', 32)}<div><b>${esc(itemName(state.foodSlot))}</b><small>×${bankCount(state.bank[state.foodSlot] ?? 0)}${ITEMS[state.foodSlot].heal != null ? ` · heal ${ITEMS[state.foodSlot].heal}` : ''}</small></div></div>`
     : `<div class="slot"><div><b>No food slotted</b><small>Pick a cooked food below</small></div></div>`;
   const foodList = foods
-    .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${state.bank[id]}</button>`)
+    .map((id) => `<button type="button" class="tag ${state.foodSlot === id ? 'on' : ''}" data-food="${id}">${esc(itemName(id))} ×${bankCount(state.bank[id] ?? 0)}</button>`)
     .join(' ');
   return `<div class="panel"><h3>Food</h3>${food}<p class="note">Eats at or below half HP, from this stack only.</p><div class="devgrid">${foodList}</div></div>`;
 }
@@ -1105,10 +1123,10 @@ function loadoutLine(state: Save): string {
     const qty = state.bank[weapon] ?? 0;
     if (isBow(weapon)) {
       const arrow = arrowToUse(state.bank);
-      const ammo = arrow ? `${itemName(arrow)} ×${state.bank[arrow] ?? 0}` : 'No arrows';
+      const ammo = arrow ? `${itemName(arrow)} ×${bankCount(state.bank[arrow] ?? 0)}` : 'No arrows';
       text = `${itemName(weapon)} · ${ammo}`;
     } else if (weapon.startsWith('ammo.thrown.')) {
-      text = `${itemName(weapon)} ×${qty}`;
+      text = `${itemName(weapon)} ×${bankCount(qty)}`;
     } else if (qty > 0) {
       text = itemName(weapon);
     }
@@ -1231,7 +1249,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     .map((id) => {
       const item = ITEMS[id];
       const border = 't-base';
-      return `<button type="button" class="cell ${border} ${view.selected === id ? 'picked' : ''}" data-select="${id}">${icon(item.icon, 40)}<span class="qty">${state.bank[id]}</span><small>${esc(item.name)}</small></button>`;
+      return `<button type="button" class="cell ${border} ${view.selected === id ? 'picked' : ''}" data-select="${id}">${icon(item.icon, 40)}<span class="qty">${bankCount(state.bank[id] ?? 0)}</span><small>${esc(item.name)}</small></button>`;
     })
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;
@@ -1240,7 +1258,7 @@ function inventoryHtml(state: Save, view: View, now: number): string {
     : '';
   const shop = `<div class="panel"><h3>Shop</h3>${SHOP_ITEMS.map((id) => {
     const left = shopStock(state, id, now);
-    return `<div class="shoprow">${icon('meat', 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${coin(SHOP_PRICE)} · ${left} left in this 24h</small></div><button type="button" class="tag btn" data-shop-buy="${id}" ${left <= 0 || state.coins < SHOP_PRICE ? 'disabled' : ''}>Buy</button></div>`;
+    return `<div class="shoprow">${icon('meat', 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>${coin(SHOP_PRICE)} · ${left} left in this 24h</small></div><button type="button" class="tag btn" data-shop-buy="${id}"${buyOff(left > 0 && state.coins + 1e-9 >= SHOP_PRICE)}>Buy</button></div>`;
   }).join('')}</div>`;
   return `${title('Inventory')}
     <p class="note center">The bank has no item cap.</p>
@@ -1299,7 +1317,7 @@ function slotButton(state: Save, slot: 'weapon' | 'body' | 'shield', label: stri
   const id = equippedThrown ?? worn(state, slot);
   const item = id ? ITEMS[id] : null;
   const stats = id ? gearStatText(id) : '';
-  const stack = equippedThrown ? ` ×${state.bank[equippedThrown] ?? 0}` : '';
+  const stack = equippedThrown ? ` ×${bankCount(state.bank[equippedThrown] ?? 0)}` : '';
   return `<div class="eslot t-base"><button type="button" data-unequip="${slot}">${item ? icon(item.icon, 34) : ''}<small>${label}</small><em>${item ? esc(item.name) + stack : 'Empty'}</em>${stats ? `<small>${esc(stats)}</small>` : ''}</button></div>`;
 }
 
@@ -1309,7 +1327,7 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
   return ids
     .map((id) => {
       const on = state.equipped[slot] === id;
-      const stack = id.startsWith('ammo.thrown.') ? ` ×${state.bank[id] ?? 0}` : '';
+      const stack = id.startsWith('ammo.thrown.') ? ` ×${bankCount(state.bank[id] ?? 0)}` : '';
       if (gearLocked(id)) {
         return `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}${stack}</b><small>${esc(gearStatText(id))} · Locked</small></div></div>`;
       }
@@ -1321,7 +1339,7 @@ function gearList(state: Save, slot: 'weapon' | 'body' | 'shield', empty: string
 function equipmentHtml(state: Save): string {
   const tools = Object.keys(state.bank).filter((id) => ITEMS[id]?.kind === 'tool' && (state.bank[id] ?? 0) > 0);
   const toolRows = tools
-    .map((id) => `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>×${state.bank[id]} · tier applies while owned</small></div></div>`)
+    .map((id) => `<div class="gearpick">${icon(ITEMS[id].icon, 28)}<div class="grow"><b>${esc(itemName(id))}</b><small>×${bankCount(state.bank[id] ?? 0)} · tier applies while owned</small></div></div>`)
     .join('');
   return `${title('Equipment')}
     <div class="equip">
@@ -1358,7 +1376,7 @@ export function reportHtml(report: CatchupReport): string {
       })
       .join(', ') || 'none';
   const gained = stackText(report.itemsGained);
-  const consumed = stackText(report.itemsConsumed);
+  const consumed = consumedText(report.itemsConsumed);
   const why =
     report.stopped === 'backwards'
       ? 'Clock moved backwards, so nothing was credited.'
@@ -1403,6 +1421,15 @@ function stackText(stacks: Record<string, number>): string {
   const parts = Object.entries(stacks).filter(([, qty]) => qty > 0);
   if (parts.length === 0) return 'none';
   return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${fmt(qty)}`).join(', ');
+}
+
+/** Replant inputs read seed, then bone compost, then compost. Other consumption keeps its order ahead of those. */
+function consumedText(stacks: Record<string, number>): string {
+  const rank = (id: string) => (id === BONE_COMPOST_ITEM_ID ? 1 : id === COMPOST_ITEM_ID ? 2 : 0);
+  const parts = Object.entries(stacks).filter(([, qty]) => qty > 0);
+  parts.sort((a, b) => rank(a[0]) - rank(b[0]));
+  if (parts.length === 0) return 'none';
+  return parts.map(([id, qty]) => `${countedLabel(qty, id)} ×${fmt(qty)}`).join(' · ');
 }
 
 export function devHtml(): string {
