@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
   ITEMS,
@@ -367,7 +366,7 @@ describe('Trout-and-mushroom meal and Fitting appraisal', () => {
     expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' && recipe.level <= 30 && !recipe.comingLater)).toHaveLength(13);
   });
 
-  it('T10 leaves every other recipe, sell, heal and route figure where it was', () => {
+  it('T10 leaves every other recipe, sell, heal and route figure where it was', async () => {
     const bread = RECIPES.find((recipe) => recipe.id === 'recipe.food.wheat_bread');
     const ration = RECIPES.find((recipe) => recipe.id === 'recipe.food.salmon_wheat_ration');
     expect(bread).toMatchObject({ comingLater: true, locked: 'Coming later', seconds: 0, xp: 0 });
@@ -405,7 +404,8 @@ describe('Trout-and-mushroom meal and Fitting appraisal', () => {
       .map(([id, item]) => [id, id === MEAL ? null : item.sell, item.heal ?? null, item.name])
       .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
     const nodes = NODES.map((node) => [node.id, node.seconds, node.xp, node.level, node.cost]);
-    const hash = createHash('sha256').update(JSON.stringify({ rest, sells, nodes })).digest('hex');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ rest, sells, nodes })));
+    const hash = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     expect(hash).toBe('e5da6cbfc31d771a75ded96bc205b7bb90e5d6ba24f66ebc455f7065e4df02c1');
   });
 });
