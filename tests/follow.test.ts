@@ -163,7 +163,8 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(html).toContain('Riverbank branch — agate');
     expect(html).toContain('Shallow ruin');
     expect(html).toContain('Riverbank branch — slate');
-    expect(html).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(html).toContain('Needs trout-and-mushroom meal (Cooking)');
+    expect(html).not.toContain('coming later');
 
     for (const skill of SKILL_IDS) {
       const titles = [
@@ -197,45 +198,29 @@ describe('construction, crops, names, heals, and coming-later rows', () => {
     expect(isFood('mat.food.cured_boar')).toBe(false);
   });
 
-  it('shows wheat bread and the trout meal as Coming later, and locks what needs them', () => {
+  it('keeps wheat bread and the salmon ration locked', () => {
     const state = newGame(0);
-    state.owned.push('Cooking', 'Exploration');
+    state.owned.push('Cooking');
     state.xp.Cooking = XP_TABLE[40];
-    state.xp.Exploration = XP_TABLE[40];
     state.bank['mat.grain.wheat'] = 4;
-    state.bank['mat.fish.trout'] = 2;
-    state.bank['mat.fungi.mushroom'] = 2;
     state.bank['food.wheat_bread'] = 1;
-    state.bank['food.trout_mushroom_meal'] = 1;
     state.bank['mat.fish.salmon'] = 1;
     expect(startProduce(state, 'recipe.food.wheat_bread')).toBe(false);
-    expect(startProduce(state, 'recipe.food.trout_mushroom_meal')).toBe(false);
     expect(startProduce(state, 'recipe.food.salmon_wheat_ration')).toBe(false);
-    expect(startProduce(state, 'activity.exploration.fitting_appraisal')).toBe(false);
     expect(state.bank['mat.grain.wheat']).toBe(4);
     expect(state.bank['food.wheat_bread']).toBe(1);
 
     const cooking = mainHtml(state, view('Cooking'), 0);
-    for (const title of ['Wheat bread', 'Trout-and-mushroom meal']) {
-      const row = rowHtml(cooking, title);
-      expect(row).toContain('Coming later');
-      expect(row).not.toContain('XP');
-      expect(row).not.toContain('Start');
-      expect(row).not.toContain('data-recipe');
-    }
-    expect(cooking.match(/Coming later/g)).toHaveLength(2);
+    const row = rowHtml(cooking, 'Wheat bread');
+    expect(row).toContain('Coming later');
+    expect(row).not.toContain('XP');
+    expect(row).not.toContain('Start');
+    expect(row).not.toContain('data-recipe');
+    expect(cooking.match(/Coming later/g)).toHaveLength(1);
     const ration = rowHtml(cooking, 'Salmon-and-wheat ration');
     expect(ration).toContain('Needs wheat bread (coming later)');
     expect(ration).toContain('disabled');
     expect(ration).toContain('XP');
-
-    const exploration = mainHtml(state, view('Exploration'), 0);
-    const fitting = rowHtml(exploration, 'Fitting appraisal');
-    expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
-    expect(fitting).toContain('aria-label="Locked"');
-    expect(fitting).not.toContain('Haul');
-    expect(fitting).not.toContain('XP');
-    expect(fitting).not.toContain('Pack and go');
   });
 
   it('dismantles a built structure for half its kits, rounded down, and drops the step', () => {

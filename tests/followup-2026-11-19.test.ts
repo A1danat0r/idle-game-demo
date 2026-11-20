@@ -464,12 +464,14 @@ describe('woodland caption and fitting lock', () => {
     expect(head).not.toContain('Buy a node below to open');
   });
 
-  it('keeps Locked on the Fitting appraisal padlock', () => {
+  it('asks for the meal once Fitting appraisal is at level', () => {
     const state = newGame(0);
     setSkillLevel(state, 'Exploration', 40);
     const fitting = rowHtml(mainHtml(state, view({ skill: 'Exploration' }), 0), 'Fitting appraisal');
-    expect(fitting).toContain('aria-label="Locked"');
-    expect(fitting).not.toContain('Pack and go');
+    expect(fitting).not.toContain('aria-label="Locked"');
+    expect(fitting).toContain('Needs trout-and-mushroom meal (Cooking)');
+    expect(fitting).toContain('disabled');
+    expect(fitting).not.toContain('data-pack=');
     expect(FITTING).toBe('activity.exploration.fitting_appraisal');
   });
 });

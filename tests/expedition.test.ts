@@ -265,10 +265,11 @@ describe('exploration expeditions', () => {
     expect(startGather(state, AGATE)).toBe(false);
     const html = mainHtml(state, view('Exploration'), 0);
     const fitting = rowHtml(html, 'Fitting appraisal');
-    expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(fitting).toContain('Needs trout-and-mushroom meal (Cooking)');
     expect(fitting.match(/Needs trout-and-mushroom meal/g)).toHaveLength(1);
-    expect(fitting).toContain('aria-label="Locked"');
-    expect(fitting).not.toContain('Pack and go');
+    expect(fitting).not.toContain('coming later');
+    expect(fitting).toContain('disabled');
+    expect(fitting).toContain('Pack and go');
     expect(fitting).not.toContain('data-pack=');
     const bridge = rowHtml(html, 'Bridge approach survey');
     expect(bridge).toContain('disabled');
@@ -917,7 +918,8 @@ describe('bridge approach pays alum', () => {
     const fitting = rowHtml(mainHtml(explorer(19), view('Exploration'), 0), 'Fitting appraisal');
     expect(fitting).toContain('aria-label="Locked"');
     expect(fitting).toContain('Lv 30');
-    expect(fitting).toContain('Needs trout-and-mushroom meal (coming later)');
+    expect(fitting).toContain('Needs trout-and-mushroom meal (Cooking)');
+    expect(fitting).not.toContain('coming later');
     expect(fitting).not.toContain('Haul');
     expect(fitting).not.toContain('XP');
     expect(fitting).not.toContain('Pack and go');

@@ -39,7 +39,7 @@ describe('check 19 mastery', () => {
     expect(masteryLevel(114_027)).toBe(MASTERY_CAP);
     expect(masteryLevel(114_028)).toBe(MASTERY_CAP);
     expect(NODES).toHaveLength(50);
-    expect(RECIPES.filter((recipe) => (recipe.skill === 'Cooking' || recipe.skill === 'Smithing') && !recipe.comingLater)).toHaveLength(67);
+    expect(RECIPES.filter((recipe) => (recipe.skill === 'Cooking' || recipe.skill === 'Smithing') && !recipe.comingLater)).toHaveLength(68);
     const outputs = new Map<string, string>();
     for (const recipe of RECIPES) {
       if (recipe.skill !== 'Cooking' && recipe.skill !== 'Smithing') continue;
