@@ -1248,8 +1248,10 @@ function inventoryHtml(state: Save, view: View, now: number): string {
   const cells = ids
     .map((id) => {
       const item = ITEMS[id];
+      const qty = state.bank[id] ?? 0;
+      const label = id === 'food.trout_mushroom_meal' ? countedLabel(qty, id) : item.name;
       const border = 't-base';
-      return `<button type="button" class="cell ${border} ${view.selected === id ? 'picked' : ''}" data-select="${id}">${icon(item.icon, 40)}<span class="qty">${bankCount(state.bank[id] ?? 0)}</span><small>${esc(item.name)}</small></button>`;
+      return `<button type="button" class="cell ${border} ${view.selected === id ? 'picked' : ''}" data-select="${id}">${icon(item.icon, 40)}<span class="qty">${bankCount(qty)}</span><small>${esc(label)}</small></button>`;
     })
     .join('');
   const selected = view.selected && ITEMS[view.selected] ? ITEMS[view.selected] : null;

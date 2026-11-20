@@ -207,7 +207,7 @@ describe('actions', () => {
     expect(NODES.filter((node) => (node.skill === 'Woodcutting' || node.skill === 'Fishing' || node.skill === 'Mining') && node.level <= 25)).toHaveLength(16);
     expect(NODES.filter((node) => node.skill === 'Foraging' && node.level <= 30)).toHaveLength(16);
     expect(NODES.filter((node) => node.skill === 'Exploration')).toHaveLength(2);
-    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' && recipe.level <= 30 && !recipe.comingLater)).toHaveLength(12);
+    expect(RECIPES.filter((recipe) => recipe.skill === 'Cooking' && recipe.level <= 30 && !recipe.comingLater)).toHaveLength(13);
     expect(RECIPES.filter((recipe) => recipe.skill === 'Smithing' && recipe.level <= 30 && !recipe.id.includes('sickle'))).toHaveLength(28);
     expect(ENEMIES).toHaveLength(11);
     expect(TABLE).toHaveLength(56);

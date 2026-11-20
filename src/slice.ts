@@ -163,7 +163,7 @@ export const SLICE_ITEMS: SliceItem[] = [
   { id: 'seal.enchant.ward', name: 'Ward seal', sell: 3, icon: 'part', kind: 'material' },
   { id: 'seal.enchant.steady_cast', name: 'Steady-cast seal', sell: 3, icon: 'part', kind: 'material' },
   { id: 'seal.enchant.alignment', name: 'Alignment seal', sell: 2, icon: 'part', kind: 'material' },
-  { id: 'food.trout_mushroom_meal', name: 'Trout-and-mushroom meal', sell: 2, icon: 'food', kind: 'food' },
+  { id: 'food.trout_mushroom_meal', name: 'Trout-and-mushroom meal', sell: 9, icon: 'food', kind: 'food' },
 ];
 export const SLICE_RECIPES: SliceRecipe[] = [
   { id: 'recipe.mat.fibre.flax', skill: 'Farming', level: 1, seconds: 3.7, xp: 59, inputs: [{ id: 'mat.seed.flax', qty: 1 }], outputs: [{ id: 'mat.fibre.flax', qty: 4 }] },

@@ -385,17 +385,7 @@ export const RECIPES: RecipeDef[] = [
   recipe('recipe.food.roast_perch', 'Cooking', 15, 2.7, 43, [{ id: 'mat.fish.perch', qty: 1 }], [{ id: 'food.roast_perch', qty: 1 }]),
   recipe('recipe.food.tortoise_herb_soup', 'Cooking', 18, 2.9, 46, [{ id: 'mat.meat.tortoise', qty: 1 }, { id: 'mat.herb.meadow', qty: 1 }], [{ id: 'food.tortoise_herb_soup', qty: 2 }]),
   recipe('recipe.mat.farm.fish_meal', 'Cooking', 20, 3.3, 77, [{ id: 'mat.fish.minnow', qty: 3 }, { id: 'mat.fuel.charcoal', qty: 1 }], [{ id: 'mat.farm.fish_meal', qty: 2 }]),
-  {
-    id: 'recipe.food.trout_mushroom_meal',
-    skill: 'Cooking',
-    level: 20,
-    seconds: 0,
-    xp: 0,
-    inputs: [{ id: 'mat.fish.trout', qty: 1 }, { id: 'mat.fungi.mushroom', qty: 1 }],
-    outputs: [{ id: 'food.trout_mushroom_meal', qty: 1 }],
-    comingLater: true,
-    locked: 'Coming later',
-  },
+  recipe('recipe.food.trout_mushroom_meal', 'Cooking', 20, 3.3, 77, [{ id: 'mat.fish.trout', qty: 1 }, { id: 'mat.fungi.mushroom', qty: 1 }], [{ id: 'food.trout_mushroom_meal', qty: 2 }]),
   recipe('recipe.food.roast_trout', 'Cooking', 22, 2.9, 67, [{ id: 'mat.fish.trout', qty: 1 }], [{ id: 'food.roast_trout', qty: 1 }]),
   recipe('recipe.food.baked_carp', 'Cooking', 25, 3.0, 70, [{ id: 'mat.fish.carp', qty: 1 }], [{ id: 'food.baked_carp', qty: 1 }]),
   recipe('recipe.mat.food.fish_stock', 'Cooking', 26, 3.2, 74, [{ id: 'mat.fish.perch', qty: 2 }], [{ id: 'mat.food.fish_stock', qty: 2 }]),
@@ -454,7 +444,6 @@ export const RECIPES: RecipeDef[] = [
     outputs: row.outputs,
     oneTime: row.oneTime,
     rebuildFee: row.rebuildFee,
-    locked: row.id === 'activity.exploration.fitting_appraisal' ? 'Needs trout-and-mushroom meal (coming later)' : undefined,
   })),
   ...CAP40_RECIPES.filter((row) => !row.id.startsWith('recipe.seal.enchant.')).map((row): RecipeDef => ({
     id: row.id,
@@ -879,7 +868,7 @@ function addItems(): void {
   for (const [id, sell] of Object.entries(T310_SELLS)) {
     if (ITEMS[id]) ITEMS[id].sell = sell;
   }
-  // 10 × (5 + floor(recipe level / 2)), per item. The two coming-later foods use the same formula.
+  // 10 × (5 + floor(recipe level / 2)), per item.
   const foodHeals: Record<string, number> = {
     'food.perch_wheat_cakes': 200,
     'food.carp_garlic_bake': 210,
@@ -997,6 +986,8 @@ function pluralizeCounted(name: string): string {
 export function countedLabel(qty: number, id: string): string {
   const name = itemName(id);
   if (qty === 1 && SINGULAR_NAMES[id]) return SINGULAR_NAMES[id];
+  // Per item, so `meal` stays out of COUNTABLE_SINGULAR and Fish meal is unchanged.
+  if (qty !== 1 && id === 'food.trout_mushroom_meal') return 'Trout-and-mushroom meals';
   return qty === 1 ? name : pluralizeCounted(name);
 }
 
