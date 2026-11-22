@@ -1178,7 +1178,7 @@ function rollWeighted(state: Save, entries: readonly HabitatEntry[]): string {
   return entries[entries.length - 1].nodeId;
 }
 
-/** One habitat tick: roll one table item, grant its XP, and add habitat mastery. */
+/** One habitat tick, then a Grove rank% chance of one extra table item with no XP, mastery, or double. */
 function completeForageTick(state: Save, habitatId: string, sink: Sink | undefined, opts: SimOptions): void {
   const table = habitatTable(state, habitatId);
   const pace = habitatPace(state, habitatId);
@@ -1198,6 +1198,13 @@ function completeForageTick(state: Save, habitatId: string, sink: Sink | undefin
     pace.xp * actionXpMultiplier(state.mastery, track, 'Foraging') * xpFalloff(levelBefore, pace.level),
   );
   opts.notes?.push({ kind: 'action', skill: 'Foraging', xp: gained, itemId, qty });
+  // Rank 0 draws nothing, so a fresh save keeps today's seeded stream.
+  const rank = markRank(state, 'grove.forage');
+  if (rank > 0 && rollOdds(state, rank, 100)) {
+    const extraId = rollWeighted(state, table);
+    giveItem(state, extraId, 1, sink);
+    opts.notes?.push({ kind: 'action', skill: 'Foraging', xp: 0, itemId: extraId, qty: 1 });
+  }
   pushLevelToast(opts.notes, 'Foraging', levelBefore, skillLevel(state, 'Foraging'));
   grantActionMastery(state, track, 'Foraging', pace.seconds, opts);
   state.stats.actions += 1;
