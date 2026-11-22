@@ -250,7 +250,7 @@ describe('catch-up replant report', () => {
 });
 
 describe('level-up and mastery toasts', () => {
-  it('toasts the haul, then Exploration 20, then Stream survey mastery 10', () => {
+  it('toasts the haul, then Stream survey mastery 10, and stays under Exploration 20', () => {
     const state = newGame(0);
     setSkillLevel(state, 'Exploration', 19);
     state.xp.Exploration = 39_317;
@@ -258,11 +258,10 @@ describe('level-up and mastery toasts', () => {
     const notes: FloatNote[] = [];
     expect(advanceOpenTab(state, QUARTER, QUARTER + 1, notes)).toBeNull();
     expect(toasts(notes)).toEqual([
-      'Stream survey is back: Weathered agate ×272 · 7,072 XP',
-      'Exploration reached Lv 20',
+      'Stream survey is back: Weathered agate ×272 · 707 XP',
       'Stream survey mastery 10: sell value +5%',
     ]);
-    expect(state.xp.Exploration).toBe(46_389);
+    expect(state.xp.Exploration).toBeCloseTo(40_024.2, 4);
   });
 
   it('toasts the harvest, then Farming 15, then Flax fibre mastery 10', () => {
@@ -286,8 +285,8 @@ describe('level-up and mastery toasts', () => {
     expect(startExpedition(state, STREAM, QUARTER, 0)).toBe(true);
     const notes: FloatNote[] = [];
     expect(advanceOpenTab(state, QUARTER, QUARTER + 1, notes)).toBeNull();
-    expect(toasts(notes)).toEqual(['Stream survey is back: Weathered agate ×272 · 7,072 XP']);
-    expect(state.xp.Exploration).toBe((XP_TABLE[39] ?? 0) + 7_072);
+    expect(toasts(notes)).toEqual(['Stream survey is back: Weathered agate ×272 · 70 XP']);
+    expect(state.xp.Exploration).toBeCloseTo((XP_TABLE[39] ?? 0) + 70.72, 4);
   });
 
   it('shows no toast when the same trip finishes during offline catch-up', () => {
@@ -299,7 +298,7 @@ describe('level-up and mastery toasts', () => {
     const report = advanceOpenTab(state, QUARTER, 5_000, notes);
     expect(notes).toEqual([]);
     expect(report?.expeditionLine).toContain('Stream survey');
-    expect(state.xp.Exploration).toBe(46_389);
+    expect(state.xp.Exploration).toBeCloseTo(40_024.2, 4);
   });
 
   it('keeps the level-40 Return now toast without an XP clause', () => {
@@ -511,7 +510,7 @@ describe('route kit', () => {
     state.bank[KIT] = 1;
     const html = mainHtml(state, view({ skill: 'Exploration', routeMs: QUARTER }), 0);
     const ruin = rowHtml(html, 'Shallow ruin');
-    expect(ruin).toContain('Haul 243 Weathered slate · 7,290 XP');
+    expect(ruin).toContain('Haul 243 Weathered slate · 72.9 XP');
     expect(ruin).toContain(`data-pack="${RUIN}"`);
     const seep = rowHtml(html, 'Alum seep recovery');
     expect(seep).toContain('Level 35');

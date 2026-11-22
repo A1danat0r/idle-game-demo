@@ -104,16 +104,17 @@ describe('farming auto-replant', () => {
 
     const capped = planted(10);
     creditOffline(capped, 30 * 60 * 60 * 1000);
-    expect(capped.bank['mat.fibre.flax']).toBe(10_800);
-    expect(capped.plots[0]?.remainingMs).toBe(3_510_000);
-    expect(capped.bank['mat.seed.flax']).toBe(4);
+    expect(capped.bank['mat.fibre.flax']).toBe(3_600);
+    expect(capped.plots[0]?.remainingMs).toBe(10_494_000);
+    expect(capped.bank['mat.seed.flax']).toBe(8);
   });
 
   it('stops after the seeds run out and does not retry', () => {
     const state = planted(3);
+    for (const seconds of [13_320, 26_640, 39_294]) creditOffline(state, seconds * 1000);
     creditOffline(state, 51_948_000 - 1000);
     const notes: FloatNote[] = [];
-    advanceOpenTab(state, state.lastCredited + 1000, 60 * 60 * 1000, notes);
+    advanceOpenTab(state, 51_948_000, 60 * 60 * 1000, notes);
     expect(state.bank['mat.fibre.flax']).toBe(7_200);
     expect(state.xp.Farming).toBe(106_200);
     expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
@@ -177,7 +178,7 @@ describe('farming auto-replant', () => {
     expect(report.plotHarvests).toContain('Plot 1: Meadow mushrooms ×1,800 · not replanted: no Oak log');
   });
 
-  it('replants a full flax field for 24h and still credits the selected activity', () => {
+  it('replants a full flax field for the 8h demo window and still credits the selected activity', () => {
     const state = farmer(35);
     ownEight(state);
     state.bank['mat.seed.flax'] = 56;
@@ -189,11 +190,12 @@ describe('farming auto-replant', () => {
     startGather(twin, 'mat.wood.pine');
     const report = withoutOutputDoubles(() => creditOffline(state, 24 * 60 * 60 * 1000));
     const alone = withoutOutputDoubles(() => creditOffline(twin, 24 * 60 * 60 * 1000));
-    expect(state.bank['mat.fibre.flax']).toBe(86_400);
-    expect(state.bank['mat.seed.flax'] ?? 0).toBe(0);
+    expect(report.creditedMs).toBe(8 * 60 * 60 * 1000);
+    expect(state.bank['mat.fibre.flax']).toBe(28_800);
+    expect(state.bank['mat.seed.flax'] ?? 0).toBe(32);
     expect(state.plots.every((plot) => plot?.recipeId === FLAX)).toBe(true);
     expect(state.xp.Woodcutting).toBe(twin.xp.Woodcutting);
-    expect(report.actions).toBe(alone.actions + 48);
+    expect(report.actions).toBe(alone.actions + 16);
   });
 
   it('replants a migrated old plot as a new-rule flax plant', () => {
@@ -220,8 +222,9 @@ describe('farming auto-replant', () => {
     startGather(twin, 'mat.wood.pine');
     const report = creditOffline(state, 24 * 60 * 60 * 1000);
     const alone = creditOffline(twin, 24 * 60 * 60 * 1000);
-    expect(state.bank['mat.fibre.flax']).toBe(10_800);
-    expect(report.actions).toBe(alone.actions + 6);
+    expect(report.creditedMs).toBe(8 * 60 * 60 * 1000);
+    expect(state.bank['mat.fibre.flax']).toBe(3_600);
+    expect(report.actions).toBe(alone.actions + 2);
   });
 
   it('lists only skills whose level rose on the catch-up Levels line', () => {

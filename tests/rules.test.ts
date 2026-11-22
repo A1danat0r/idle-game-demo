@@ -629,16 +629,16 @@ describe('save, offline, shop', () => {
     expect(loaded!.coins).toBe(0);
   });
 
-  it('credits 24h of a 30h gap, nothing when the clock runs backwards, and never twice', () => {
+  it('credits 8h of a 30h gap, nothing when the clock runs backwards, and never twice', () => {
     const state = newGame(0);
     startGather(state, 'mat.wood.pine');
     const now = 30 * HOUR;
     const report = creditOffline(state, now);
     expect(report.capped).toBe(true);
-    expect(report.creditedMs).toBe(24 * HOUR);
+    expect(report.creditedMs).toBe(8 * HOUR);
     expect(report.awayMs).toBe(30 * HOUR);
     let mxp = 0;
-    let left = 24 * HOUR;
+    let left = 8 * HOUR;
     let expectedActions = 0;
     while (left > 0) {
       const duration = masteryLevel(mxp) >= 20 ? 2600 * 0.95 : 2600;
@@ -647,17 +647,18 @@ describe('save, offline, shop', () => {
       expectedActions += 1;
       mxp += 26;
     }
+    expect(expectedActions).toBe(11605);
     expect(report.actions).toBe(expectedActions);
     expect(masteryLevel(state.mastery['mat.wood.pine'] ?? 0)).toBe(40);
     expect(state.bank['mat.wood.pine']).toBeGreaterThanOrEqual(report.actions);
-    expect(state.xp.Woodcutting).toBe(XP_CAP);
+    expect(state.xp.Woodcutting).toBeLessThan(XP_CAP);
     expect(state.lastCredited).toBe(now);
     expect(report.stopped).toBe('window');
     expect(report.activity).toContain('Pine');
     const cappedHtml = reportHtml(report);
     expect(cappedHtml).toContain('<dt>Away</dt><dd>30 h 0 min</dd>');
-    expect(cappedHtml).toContain('<dt>Credited</dt><dd>24 h 0 min (24h cut)</dd>');
-    expect(cappedHtml).toContain('Ran the full credited window. Time past 24h was cut.');
+    expect(cappedHtml).toContain('<dt>Credited</dt><dd>8 h 0 min (8h cut)</dd>');
+    expect(cappedHtml).toContain('Ran the full credited window. Time past 8h was cut.');
     const again = creditOffline(state, now);
     expect(again.creditedMs).toBe(0);
     expect(again.actions).toBe(0);

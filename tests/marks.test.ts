@@ -50,8 +50,9 @@ describe('enchanting marks', () => {
     startProduce(hour, GROVE);
     creditOffline(hour, 60 * 60 * 1000);
     // 1,440 and 18,720 are the rate before mastery 20's speed perk. The perk starts during the hour.
+    // Falloff cuts the hour from 18,954 to 17,407. Glimmer is unchanged.
     expect(hour.glimmer.grove).toBe(1458);
-    expect(hour.xp.Enchanting).toBe(18954);
+    expect(hour.xp.Enchanting).toBe(17407);
   });
 
   it('prices every rank and totals 17,313 glimmer', () => {

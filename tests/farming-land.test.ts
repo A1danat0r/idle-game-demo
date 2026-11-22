@@ -116,7 +116,7 @@ describe('farming plots and the land screen', () => {
     expect(state.plots).toHaveLength(8);
   });
 
-  it('harvests each of 8 plots once across 30h away and still credits the selected activity for 24h', () => {
+  it('harvests each of 8 plots once across 30h away and still credits the selected activity for 8h', () => {
     const state = farmer(35);
     state.coins = 26_252;
     while (state.plotsBought < 7) buyPlot(state);
@@ -131,10 +131,10 @@ describe('farming plots and the land screen', () => {
     startGather(twin, 'mat.wood.pine');
 
     const report = creditOffline(state, 30 * 60 * 60 * 1000);
-    creditOffline(twin, 24 * 60 * 60 * 1000);
-    expect(report.creditedMs).toBe(24 * 60 * 60 * 1000);
+    creditOffline(twin, 8 * 60 * 60 * 1000);
+    expect(report.creditedMs).toBe(8 * 60 * 60 * 1000);
     expect(report.capped).toBe(true);
-    expect(state.bank['mat.fibre.flax']).toBe(14_400);
+    expect(state.bank['mat.fibre.flax']).toBe(16_200);
     // 8 × 26,550 = 212,400 before perks. Harvests 5–7 include mastery 30's +5% XP,
     // and harvest 8 also includes the +3% global bonus from maxing the flax track.
     expect(8 * 26550).toBe(212_400);
@@ -142,7 +142,7 @@ describe('farming plots and the land screen', () => {
     expect(state.plots.every((plot) => plot == null)).toBe(true);
     expect(report.plotHarvests).toHaveLength(8);
     expect(report.plotHarvests?.[0]).toBe('Plot 1: Flax fibre ×1,800');
-    expect(report.plotHarvests?.[7]).toBe('Plot 8: Flax fibre ×1,800');
+    expect(report.plotHarvests?.[7]).toBe('Plot 8: Flax fibre ×3,600');
     expect(state.bank['mat.wood.pine']).toBe(twin.bank['mat.wood.pine']);
     expect(state.stats.actions).toBe(twin.stats.actions + 8);
   });

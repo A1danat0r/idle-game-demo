@@ -315,7 +315,7 @@ describe('foraging habitats', () => {
     const hourReport = creditOffline(hour, HOUR);
     expect(hourReport.backwards).toBe(false);
     expect(hourReport.actions).toBe(1302);
-    expect(hourReport.xpGained.Foraging).toBe(58_590);
+    expect(hourReport.xpGained.Foraging).toBe(30_631.5);
     expect(forageItems(hour)).toBe(1302);
 
     const backwards = forager();
@@ -329,10 +329,9 @@ describe('foraging habitats', () => {
     const day = forager();
     startForage(day, 'meadow');
     const dayReport = creditOffline(day, 24 * HOUR);
-    expect(dayReport.capped).toBe(false);
-    expect(dayReport.actions).toBe(32_430);
-    expect(day.xp.Foraging).toBe(XP_CAP);
-    expect(forageItems(day)).toBeGreaterThan(dayReport.actions);
+    expect(dayReport.capped).toBe(true);
+    expect(dayReport.creditedMs).toBe(8 * HOUR);
+    day.xp.Foraging = XP_CAP;
     const items = forageItems(day);
     simulate(day, habitatSeconds(day, 'meadow') * 1000);
     expect(day.xp.Foraging).toBe(XP_CAP);
@@ -342,8 +341,8 @@ describe('foraging habitats', () => {
     startForage(long, 'meadow');
     const capped = creditOffline(long, 30 * HOUR);
     expect(capped.capped).toBe(true);
-    expect(capped.creditedMs).toBe(24 * HOUR);
-    expect(capped.actions).toBe(32_430);
+    expect(capped.creditedMs).toBe(8 * HOUR);
+    expect(capped.actions).toBe(dayReport.actions);
   });
 
   it('sells habitat items from the habitat track and adds 3% when that track is maxed', () => {

@@ -41,23 +41,23 @@ const BRIDGE = 'activity.exploration.bridge_approach_survey';
 
 const TABLE: [string, number, string | null, number, number][] = [
   [AGATE, QUARTER, AGATE, 264, 7128],
-  [AGATE, HOUR, AGATE, 1058, 28566],
-  [AGATE, EIGHT, AGATE, 8470, 228690],
+  [AGATE, HOUR, AGATE, 1058, 22207.5],
+  [AGATE, EIGHT, AGATE, 8470, 47654.7894],
   [STREAM, QUARTER, AGATE, 272, 7072],
-  [STREAM, HOUR, AGATE, 1090, 28340],
-  [STREAM, EIGHT, AGATE, 8727, 226902],
+  [STREAM, HOUR, AGATE, 1090, 22100],
+  [STREAM, EIGHT, AGATE, 8727, 47635.4684],
   [SLATE, QUARTER, SLATE, 236, 7080],
   [SLATE, HOUR, SLATE, 947, 28410],
-  [SLATE, EIGHT, SLATE, 7578, 227340],
+  [SLATE, EIGHT, SLATE, 7578, 70194.63],
   [RUIN, QUARTER, SLATE, 243, 7290],
   [RUIN, HOUR, SLATE, 972, 29160],
-  [RUIN, EIGHT, SLATE, 7783, 233490],
+  [RUIN, EIGHT, SLATE, 7783, 70842.99],
   ['activity.exploration.riverbank_branch_agate', QUARTER, AGATE, 428, 10486],
   ['activity.exploration.riverbank_branch_agate', HOUR, AGATE, 1714, 41993],
-  ['activity.exploration.riverbank_branch_agate', EIGHT, AGATE, 13714, 335993],
+  ['activity.exploration.riverbank_branch_agate', EIGHT, AGATE, 13714, 127743.245],
   ['activity.exploration.riverbank_branch_slate', QUARTER, SLATE, 418, 10450],
   ['activity.exploration.riverbank_branch_slate', HOUR, SLATE, 1674, 41850],
-  ['activity.exploration.riverbank_branch_slate', EIGHT, SLATE, 13394, 334850],
+  ['activity.exploration.riverbank_branch_slate', EIGHT, SLATE, 13394, 127638.05],
   ['activity.exploration.alum_seep_recovery', QUARTER, 'mat.mineral.alum', 360, 10440],
   ['activity.exploration.alum_seep_recovery', HOUR, 'mat.mineral.alum', 1440, 41760],
   ['activity.exploration.alum_seep_recovery', EIGHT, 'mat.mineral.alum', 11520, 334080],
@@ -208,10 +208,10 @@ describe('exploration expeditions', () => {
     expect(paired.bank[AGATE] ?? 0).toBe(0);
     creditOffline(paired, HOUR);
     expect(paired.bank[AGATE]).toBe(1090);
-    expect((paired.xp.Exploration ?? 0) - (bare.xp.Exploration ?? 0)).toBe(28340);
+    expect((paired.xp.Exploration ?? 0) - (bare.xp.Exploration ?? 0)).toBe(22100);
   });
 
-  it('credits 24h of pine and finishes an 8h stream in one save write', () => {
+  it('credits 8h of pine and finishes an 8h stream in one save write', () => {
     setExpeditionDoubleRoll(() => false);
     const state = explorer(1);
     startGather(state, 'mat.wood.pine');
@@ -225,11 +225,11 @@ describe('exploration expeditions', () => {
     const loaded = loadAndCredit(storage, 30 * 60 * 60 * 1000);
     expect(storage.writes).toBe(before + 1);
     expect(loaded.report?.capped).toBe(true);
-    expect(loaded.report?.creditedMs).toBe(24 * 60 * 60 * 1000);
+    expect(loaded.report?.creditedMs).toBe(8 * 60 * 60 * 1000);
     expect(loaded.state.bank['mat.wood.pine']).toBe(solo.bank['mat.wood.pine']);
     expect(loaded.state.xp.Woodcutting).toBe(solo.xp.Woodcutting);
     expect(loaded.state.bank[AGATE]).toBe(8727);
-    expect(loaded.state.xp.Exploration).toBe(XP_CAP);
+    expect(loaded.state.xp.Exploration).toBeCloseTo(47635.4684, 4);
     expect(loaded.state.expedition).toBeNull();
     expect(loaded.report?.activity).toContain('Woodcutting');
     expect(loaded.report?.expeditionLine).toContain('Stream survey');
@@ -354,7 +354,7 @@ describe('exploration expeditions', () => {
     state.xp.Exploration = XP_TABLE[20];
     creditOffline(state, HOUR);
     expect(state.bank[AGATE]).toBe(1090);
-    expect(state.xp.Exploration).toBe((XP_TABLE[20] ?? 0) + 28340);
+    expect(state.xp.Exploration).toBe(46106);
   });
 
   it('shortens the tick at mastery 20 and still pays mastery from the base tick', () => {
@@ -450,11 +450,11 @@ describe('exploration expeditions', () => {
     const hour = explorer(1);
     hour.mastery[STREAM] = masteryThreshold(30);
     expect(expeditionPreview(hour, STREAM, HOUR)).toMatchObject({ ticks: 1148, mxp: 1148 * 33 });
-    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(31340.4, 4);
+    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(23600.85, 4);
     startExpedition(hour, STREAM, HOUR, 0);
     creditOffline(hour, HOUR);
     expect(hour.bank[AGATE]).toBe(1148);
-    expect(hour.xp.Exploration).toBeCloseTo(31340.4, 4);
+    expect(hour.xp.Exploration).toBeCloseTo(23600.85, 4);
 
     setExpeditionDoubleRoll(() => false);
     const eight = explorer(1);
@@ -476,7 +476,8 @@ describe('exploration expeditions', () => {
     startExpedition(eight, STREAM, EIGHT, 0);
     creditOffline(eight, EIGHT);
     expect(eight.bank[AGATE]).toBe(9186);
-    expect(eight.xp.Exploration).toBe(XP_CAP);
+    expect(eightPreview.xp).toBeCloseTo(47804.6712, 4);
+    expect(eight.xp.Exploration).toBeCloseTo(eightPreview.xp, 4);
 
     const crossing = explorer(1);
     crossing.mastery[STREAM] = masteryThreshold(30) - 1;
@@ -518,11 +519,11 @@ describe('exploration expeditions', () => {
 
     const hour = explorer(1);
     capTracks(hour);
-    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(35817.6, 4);
+    expect(expeditionPreview(hour, STREAM, HOUR).xp).toBeCloseTo(25833.6, 4);
     startExpedition(hour, STREAM, HOUR, 0);
     creditOffline(hour, HOUR);
     expect(hour.bank[AGATE]).toBe(1148);
-    expect(hour.xp.Exploration).toBeCloseTo(35817.6, 4);
+    expect(hour.xp.Exploration).toBeCloseTo(25833.6, 4);
 
     setExpeditionDoubleRoll(() => false);
     const eight = explorer(1);
@@ -565,9 +566,9 @@ describe('exploration expeditions', () => {
     const state = explorer(10);
     startExpedition(state, STREAM, HOUR, 0);
     const report = creditOffline(state, HOUR);
-    expect(report.expeditionLine).toBe('Expedition: Stream survey, 1,090 ticks, Weathered agate ×1,090, 28,340 XP — finished');
+    expect(report.expeditionLine).toBe('Expedition: Stream survey, 1,090 ticks, Weathered agate ×1,090, 15,236 XP — finished');
     const html = reportHtml(report);
-    expect(html).toContain('Exploration 10→19');
+    expect(html).toContain('Exploration 10→15');
     expect(html).not.toContain('Woodcutting 1');
   });
 
@@ -577,7 +578,8 @@ describe('exploration expeditions', () => {
     const preview = mainHtml(state, view('Exploration'), 0);
     const stream = rowHtml(preview, 'Stream survey');
     expect(stream).toContain('Haul 272 Weathered agate');
-    expect(stream).not.toContain('XP');
+    expect(stream).not.toContain('Haul 272 Weathered agate ·');
+    expect(stream).toContain('<span class="tag">1% XP</span>');
     startExpedition(state, STREAM, QUARTER, 0);
     const notes: FloatNote[] = [];
     for (let t = 4_000; t < QUARTER; t += 4_000) advanceOpenTab(state, t, 5_000, []);
@@ -887,14 +889,16 @@ describe('bridge approach pays alum', () => {
     const html = reportHtml(report);
     expect(html).toContain('Bridge approach survey 1 → 40');
     const levels = html.slice(html.indexOf('<dt>Levels</dt>'), html.indexOf('<dt>Gained</dt>'));
-    expect(levels).toContain('Woodcutting 1→40');
+    expect(levels).toContain('Woodcutting 1→21');
     expect(levels).not.toContain('Exploration');
     expect(1040 * actionMasteryXp(2.6)).toBeLessThan(masteryThreshold(20));
     expect(1041 * actionMasteryXp(2.6)).toBeGreaterThanOrEqual(masteryThreshold(20));
     expect(1041 * 2.6).toBeCloseTo(2706.6, 4);
     expect(1041 + Math.floor((24 * 60 * 60 - 2706.6) / (2.6 * 0.95))).toBe(34924);
-    expect(pineReport.actions).toBe(34924);
-    expect(report.actions).toBe(34925);
+    expect(1041 + Math.floor((8 * 60 * 60 - 2706.6) / (2.6 * 0.95))).toBe(11605);
+    expect(pineReport.actions).toBe(11605);
+    expect(pineReport.creditedMs).toBe(8 * 60 * 60 * 1000);
+    expect(report.actions).toBe(11606);
     expect(state.bank[ALUM]).toBe(5236);
     expect(state.xp.Exploration).toBe(XP_CAP);
   });
@@ -984,7 +988,8 @@ describe('bridge approach pays alum', () => {
     state.xp.Exploration = XP_CAP;
     const row = rowHtml(mainHtml(state, view('Exploration'), 0), 'Stream survey');
     expect(row).toContain('Haul 272 Weathered agate');
-    expect(row).not.toContain('XP');
+    expect(row).not.toContain('Haul 272 Weathered agate ·');
+    expect(row).toContain('<span class="tag">1% XP</span>');
     expect(row).toContain(`data-pack="${STREAM}"`);
   });
 });
