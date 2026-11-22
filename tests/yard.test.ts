@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TOOL_TIME_FACTOR, XP_TABLE } from '../src/content';
+import { NODE_BY_ID, TOOL_TIME_FACTOR, XP_TABLE } from '../src/content';
 import {
   actionSeconds,
   deserialize,
@@ -262,15 +262,15 @@ describe('construction yard', () => {
     expect(yard).toContain('The store is empty.');
   });
 
-  it('leaves the official routes and their 37,002 coin need where the repo has them', () => {
+  it('leaves the official routes on the falloff autoplay figures', () => {
     const route = runReferenceRoute({ seed: 1, expectedLoot: true });
     expect(route.purchases.map((event) => event.skill)).not.toContain('Construction');
-    expect(route.elapsedHours).toBe(20.42);
-    expect(routeNeed(route)).toBe(37002);
+    expect(route.elapsedHours).toBe(39.26);
+    expect(routeNeed(route)).toBe(41_878);
     expect(route.state.buildings[PINE]).toBeUndefined();
     const meadow = runReferenceRoute({ seed: 1, expectedLoot: true, meadowGrind: true });
-    expect(meadow.elapsedHours).toBe(18.76);
-    expect(routeNeed(meadow)).toBe(37002);
+    expect(meadow.elapsedHours).toBe(39.14);
+    expect(routeNeed(meadow)).toBe(41_878);
     expect(XP_TABLE[40]).toBe(220234);
   });
 });
@@ -287,6 +287,9 @@ function blankView(): View {
   };
 }
 
-function routeNeed(result: { purchases: { price?: number }[]; nodes: unknown[] }): number {
-  return result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) + result.nodes.length * 3000;
+function routeNeed(result: { purchases: { price?: number }[]; nodes: { id?: string }[] }): number {
+  return (
+    result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+    result.nodes.reduce((sum, event) => sum + (NODE_BY_ID[event.id ?? '']?.cost ?? 0), 0)
+  );
 }

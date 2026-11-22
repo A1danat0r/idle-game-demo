@@ -174,6 +174,14 @@ describe('enchanting marks', () => {
     creditOffline(loaded!, 10_000);
     expect(loaded!.bank['seal.enchant.accuracy']).toBe(1);
     expect(loaded!.xp.Enchanting).toBe(14);
+
+    const high = enchanter(21);
+    high.activity = { kind: 'produce', recipeId: 'recipe.seal.enchant.accuracy' };
+    high.bank['reagent.enchant.binding'] = 1;
+    high.bank['mat.binding.flax'] = 1;
+    const before = high.xp.Enchanting ?? 0;
+    creditOffline(high, high.lastCredited + 10_000);
+    expect((high.xp.Enchanting ?? 0) - before).toBeCloseTo(0.14, 4);
     expect(loaded!.activity).toBeNull();
 
     const view: View = {

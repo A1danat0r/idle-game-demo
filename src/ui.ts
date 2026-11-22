@@ -205,7 +205,8 @@ function lockBadge(extra = ''): string {
   return `<span class="tag" aria-label="Locked">${lock}${extra}</span>`;
 }
 
-function falloffTag(level: number, actionLevel: number): string {
+function falloffTag(level: number, actionLevel: number, xp: number): string {
+  if (xp + 1e-9 >= XP_CAP) return '';
   const factor = xpFalloff(level, actionLevel);
   if (factor === 1) return '';
   if (factor === 0.5) return '<span class="tag">50% XP</span>';
@@ -719,7 +720,7 @@ function routeRow(state: Save, view: View, route: ReturnType<typeof explorationR
   const outputId = route.outputs[0]?.id;
   const iconName = (outputId && ITEMS[outputId]?.icon) || 'gem';
   const haulLine = lockedRow ? '' : `<small>Haul ${esc(haul)}</small>`;
-  return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${falloffTag(level, route.level)}${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small>${haulLine}${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;
+  return `<div class="row node ${reached && !route.locked ? '' : 'dim'} ${selected ? 'picked' : ''}" data-route="${route.id}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(expeditionRouteName(route.id))}</b><small class="${reached ? 'ok' : ''}">Level ${route.level}</small>${falloffTag(level, route.level, state.xp.Exploration ?? 0)}${masteryLine(state.mastery[route.id] ?? 0)}<small>${esc(packs)}</small>${haulLine}${note ? `<small>${esc(note)}</small>` : ''}<div class="chips">${chips}</div></div><div class="price">${right}</div></div>`;
 }
 
 /** Whole seconds, rounded up, so a running plot never shows 0s while time remains. */
@@ -906,7 +907,7 @@ function habitatCards(state: Save): string {
       : skillLevel(state, 'Foraging') >= gate
         ? 'Buy a node below to open'
         : `Foraging ${gate}`;
-    const tag = pace ? falloffTag(skillLevel(state, 'Foraging'), pace.level) : '';
+    const tag = pace ? falloffTag(skillLevel(state, 'Foraging'), pace.level, state.xp.Foraging ?? 0) : '';
     const entries = habitat.entries
       .map((entry) => {
         const node = NODE_BY_ID[entry.nodeId];
@@ -952,7 +953,7 @@ function nodeRow(state: Save, node: (typeof NODES)[number]): string {
   const click = usable ? `data-node="${node.id}"` : '';
   const xp = fmtAmount(node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
   const sell = fmtAmount((ITEMS[node.id]?.sell ?? 0) * sellMultiplier(state.mastery, node.id));
-  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small>${falloffTag(level, node.level)}${masteryLine(state.mastery[node.id] ?? 0)}<small>${timeLabel(state, node.id)} · ${xp} XP · sells ${sell}</small></div>${right}</div>`;
+  return `<div class="row node ${reached ? '' : 'dim'}" ${click}><div class="ico wood">${icon(ITEMS[node.id].icon, 34)}</div><div class="grow"><b>${esc(itemName(node.id))}</b><small class="${reached ? 'ok' : ''}">Level ${node.level}</small>${falloffTag(level, node.level, state.xp[node.skill] ?? 0)}${masteryLine(state.mastery[node.id] ?? 0)}<small>${timeLabel(state, node.id)} · ${xp} XP · sells ${sell}</small></div>${right}</div>`;
 }
 
 function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
@@ -998,7 +999,7 @@ function recipeRow(state: Save, recipe: (typeof RECIPES)[number]): string {
   const detail = later
     ? `Coming later${heal ? ` · heals ${heal}` : ''}`
     : `${timeLabel(state, recipe.id)} · ${xp} XP · sells ${sell}${heal ? ` · heals ${heal}` : ''}${refundText}${need ? ` · ${esc(need)}` : ''}`;
-  const xpTag = later || !falloffApplies(recipe.skill, 'recipe') ? '' : falloffTag(level, recipe.level);
+  const xpTag = later || !falloffApplies(recipe.skill, 'recipe') ? '' : falloffTag(level, recipe.level, state.xp[recipe.skill] ?? 0);
   return `<div class="row node ${reached && !later ? '' : 'dim'}"><div class="ico wood">${icon(iconName, 34)}</div><div class="grow"><b>${esc(title)}</b><small>Level ${recipe.level}${recipe.tool ? ' · tool' : ''}${standing ? (placed ? ' · Placed' : ' · In store') : recipe.oneTime && !known ? ' · build' : ''}${stats ? ` · ${esc(stats)}` : ''}</small>${xpTag}${later ? '' : masteryLine(state.mastery[recipe.id] ?? 0)}<small>${esc(inputs)} → ${output ? output.qty : 'structure'}</small><small>${detail}</small></div>${right}</div>`;
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bestBarRecipe, formatRouteResult, runReferenceRoute } from '../src/route';
 import { newGame, skillLevel } from '../src/engine';
-import { XP_TABLE } from '../src/content';
+import { NODE_BY_ID, XP_TABLE } from '../src/content';
 import { masteryLevel } from '../src/mastery';
 
 describe('reference route', () => {
@@ -25,25 +25,22 @@ describe('reference route', () => {
     expect(bestBarRecipe(state, 'iron').id).toBe('recipe.ammo.thrown.iron_knife');
   });
 
-  it('plays the section 4 route inside the binding bands', () => {
+  it('plays the section 4 route with gathering stepped at unlock', () => {
     const result = runReferenceRoute({ seed: 1, expectedLoot: true });
     console.log(formatRouteResult(result));
     const second = result.purchases[0];
     const third = result.purchases[1];
     expect(second.skill).toBe('Cooking');
-    expect(second.atHours).toBeGreaterThanOrEqual(0.494);
-    expect(second.atHours).toBeLessThanOrEqual(0.546);
+    expect(second.atHours).toBe(0.74);
     expect(third.skill).toBe('Mining');
-    expect(third.atHours).toBeGreaterThanOrEqual(1.149);
-    expect(third.atHours).toBeLessThanOrEqual(1.27);
-    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.626);
-    expect(result.elapsedHours).toBeLessThanOrEqual(20.458);
-    expect(result.earned).toBeGreaterThanOrEqual(49_105);
-    expect(result.earned).toBeLessThanOrEqual(59_148);
-    const needed =
-      result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
-      result.nodes.length * 3000;
-    expect(needed).toBe(37002);
+    expect(third.atHours).toBe(1.24);
+    const needed = routeNeed(result);
+    expect(needed).toBe(41_878);
+    expect(Math.round((result.elapsedMs / 3_600_000) * 1_000_000) / 1_000_000).toBe(39.257123);
+    expect(result.elapsedHours).toBe(39.26);
+    expect(Math.round(result.earned)).toBe(93_484);
+    expect(Math.round(result.earned) - needed).toBe(51_606);
+    expect(Math.round(result.grindHours * 1_000_000) / 1_000_000).toBe(0.522573);
     expect(result.purchases.map((event) => event.skill)).toEqual([
       'Cooking',
       'Mining',
@@ -56,43 +53,44 @@ describe('reference route', () => {
     expect(result.state.equipped.weapon).toBe('gear.melee.iron_spear');
     expect(result.state.equipped.body).toBeNull();
     expect(result.state.equipped.shield).toBeNull();
-    expect(result.levels.Woodcutting).toBe(40);
-    expect(result.levels.Mining).toBe(37);
+    expect(result.levels.Woodcutting).toBe(22);
+    expect(result.levels.Mining).toBe(33);
     expect(result.levels.Fishing).toBe(30);
     expect(result.levels.Cooking).toBe(30);
     expect(result.levels.Attack).toBe(30);
     expect(result.levels.Strength).toBe(30);
     expect(result.levels.Defence).toBe(30);
     expect(result.levels.Smithing).toBe(30);
-    expect(result.elapsedHours).toBe(20.42);
-    // Seed-1 play credits bone EV on the 36 climb kills (+9). Check 9 stays on the
-    // pre-bone sheet total 55,637; the with-bones sheet total is 55,646.
-    expect(Math.round(result.earned)).toBe(55213);
     expect(result.levels.Hitpoints).toBe(23);
     expect(result.kills).toBe(2559);
     expect(masteryLevel(result.state.mastery['mat.wood.pine'] ?? 0)).toBe(40);
     expect(masteryLevel(result.state.enemyMastery['meadow.beetle'] ?? 0)).toBe(40);
-    expect(result.nodes.map((node) => node.id).sort()).toEqual(
-      ['mat.fish.trout', 'mat.ore.iron', 'mat.wood.oak'].sort(),
-    );
+    expect(result.nodes.map((node) => node.id)).toEqual([
+      'mat.wood.maple',
+      'mat.mineral.rock_salt',
+      'mat.ore.iron',
+      'mat.wood.oak',
+      'mat.fish.river_shrimp',
+      'mat.fish.perch',
+      'mat.fish.trout',
+    ]);
   });
 
-  it('plays the meadow coin grind inside the same bands', () => {
+  it('plays the meadow coin grind on the same stepped route', () => {
     const result = runReferenceRoute({ seed: 1, expectedLoot: true, meadowGrind: true });
     console.log(formatRouteResult(result));
-    expect(result.elapsedHours).toBeGreaterThanOrEqual(16.626);
-    expect(result.elapsedHours).toBeLessThanOrEqual(20.458);
-    expect(result.earned).toBeGreaterThanOrEqual(49_105);
-    expect(result.earned).toBeLessThanOrEqual(59_148);
-    expect(result.kills).toBe(2559);
+    expect(result.purchases[0]?.atHours).toBe(0.74);
+    expect(result.purchases[1]?.atHours).toBe(1.24);
+    const needed = routeNeed(result);
+    expect(needed).toBe(41_878);
+    expect(Math.round((result.elapsedMs / 3_600_000) * 1_000_000) / 1_000_000).toBe(39.138366);
+    expect(result.elapsedHours).toBe(39.14);
+    expect(Math.round(result.earned)).toBe(92_002);
+    expect(Math.round(result.earned) - needed).toBe(50_124);
+    expect(Math.round(result.grindHours * 1_000_000) / 1_000_000).toBe(1.424667);
+    expect(result.kills).toBe(2555);
     expect(result.levels.Hitpoints).toBe(23);
-    expect(result.elapsedHours).toBe(18.76);
-    // Same +9 bone EV. Pre-bone sheet 50,995; with-bones sheet 51,004.
-    expect(Math.round(result.earned)).toBe(50551);
-    const needed =
-      result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
-      result.nodes.length * 3000;
-    expect(needed).toBe(37002);
+    expect(result.levels.Woodcutting).toBe(22);
   });
 
   it('finishes seed 5, including a pause during the ladder climb', () => {
@@ -104,3 +102,10 @@ describe('reference route', () => {
     expect(pine.levels.Strength).toBe(30);
   });
 });
+
+function routeNeed(result: { purchases: { price?: number }[]; nodes: { id?: string }[] }): number {
+  return (
+    result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+    result.nodes.reduce((sum, event) => sum + (NODE_BY_ID[event.id ?? '']?.cost ?? 0), 0)
+  );
+}

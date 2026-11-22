@@ -114,11 +114,11 @@ describe('T1–T8 stepped XP falloff and the demo 8h offline cap', () => {
     }
     for (const level of [11, 15]) expect(tagFor(level)).toContain('<span class="tag">50% XP</span>');
     for (const level of [16, 20]) expect(tagFor(level)).toContain('<span class="tag">10% XP</span>');
-    for (const level of [21, 40]) {
-      expect(tagFor(level)).toContain('<span class="tag">1% XP</span>');
-      expect(tagFor(level)).toContain('42 XP');
-      expect(tagFor(level)).not.toContain('0.42');
-    }
+    expect(tagFor(21)).toContain('<span class="tag">1% XP</span>');
+    expect(tagFor(21)).toContain('42 XP');
+    expect(tagFor(21)).not.toContain('0.42');
+    expect(tagFor(40)).toContain('42 XP');
+    expect(tagFor(40)).not.toContain('% XP');
 
     const cookXp = (level: number) => {
       const state = newGame(0);

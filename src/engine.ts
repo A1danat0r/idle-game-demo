@@ -1258,7 +1258,9 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     const skill = recipe?.skill ?? 'Enchanting';
     const xpFactor = recipe && hearthAppliesToRecipe(recipe) ? 1 + 0.01 * markRank(state, 'hearth.xp') : 1;
     const levelBefore = skillLevel(state, skill);
-    const falloff = recipe && falloffApplies(skill, 'recipe') ? xpFalloff(levelBefore, recipe.level) : 1;
+    const actionLevel = recipe?.level ?? retired?.level;
+    const falloff =
+      actionLevel != null && falloffApplies(skill, 'recipe') ? xpFalloff(levelBefore, actionLevel) : 1;
     const gained = rebuilding
       ? 0
       : addXp(state, skill, active.xp * actionXpMultiplier(state.mastery, active.id, skill) * xpFactor * falloff);

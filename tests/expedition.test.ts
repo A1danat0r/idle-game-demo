@@ -579,7 +579,7 @@ describe('exploration expeditions', () => {
     const stream = rowHtml(preview, 'Stream survey');
     expect(stream).toContain('Haul 272 Weathered agate');
     expect(stream).not.toContain('Haul 272 Weathered agate ·');
-    expect(stream).toContain('<span class="tag">1% XP</span>');
+    expect(stream).not.toContain('% XP');
     startExpedition(state, STREAM, QUARTER, 0);
     const notes: FloatNote[] = [];
     for (let t = 4_000; t < QUARTER; t += 4_000) advanceOpenTab(state, t, 5_000, []);
@@ -989,7 +989,7 @@ describe('bridge approach pays alum', () => {
     const row = rowHtml(mainHtml(state, view('Exploration'), 0), 'Stream survey');
     expect(row).toContain('Haul 272 Weathered agate');
     expect(row).not.toContain('Haul 272 Weathered agate ·');
-    expect(row).toContain('<span class="tag">1% XP</span>');
+    expect(row).not.toContain('% XP');
     expect(row).toContain(`data-pack="${STREAM}"`);
   });
 });
