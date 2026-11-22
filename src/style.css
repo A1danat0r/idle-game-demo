@@ -250,6 +250,8 @@ body:has(.sheet) #floaters { display: none; }
 .pips i.on { background: var(--gold); }
 .mod { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
 .mod > .tag.btn { flex: 1 0 100%; }
+.modline { min-width: 0; max-width: 100%; white-space: normal; overflow: visible; text-overflow: clip; }
+.modnow { white-space: nowrap; }
 .tile small { font-size: 10px; }
 h3 .tag.btn { text-transform: none; letter-spacing: 0; font-family: system-ui, sans-serif; }
 

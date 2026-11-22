@@ -18,6 +18,7 @@ import {
 import { formatActionNotes } from '../src/floaters';
 import { actionMasteryXp, masteryThreshold } from '../src/mastery';
 import { runReferenceRoute } from '../src/route';
+import { mainHtml, type View } from '../src/ui';
 
 const HOUR = 3_600_000;
 const TICKS = 10_000;
@@ -239,5 +240,59 @@ describe('grove second roll', () => {
     expect(Math.round(meadowGrind.earned)).toBe(92_002);
     expect(Math.round(meadowGrind.earned) - meadowNeeded).toBe(50_124);
     expect(meadowGrind.state.owned.includes('Foraging')).toBe(false);
+  });
+});
+
+describe('grove mark second-roll label', () => {
+  const view: View = {
+    tab: 'skill',
+    skill: 'Enchanting',
+    filter: 'all',
+    selected: null,
+    area: 'Meadow verge',
+    style: null,
+    message: '',
+  };
+
+  function groveCard(html: string): string {
+    const start = html.indexOf('data-mark-card="grove"');
+    const end = html.indexOf('data-mark-card="hearth"');
+    return html.slice(start, end);
+  }
+
+  function forageMod(html: string): string {
+    const card = groveCard(html);
+    const at = card.indexOf('Foraging second roll:');
+    const start = card.lastIndexOf('<div class="mod">', at);
+    const end = card.indexOf('</div>', at);
+    return card.slice(start, end === -1 ? undefined : end + '</div>'.length);
+  }
+
+  function visible(html: string): string {
+    return html.replace(/<[^>]+>/g, '');
+  }
+
+  it('reads the percent label at rank 0 and rank 5, then the same pips', () => {
+    const rank0 = forager();
+    rank0.owned.push('Enchanting');
+    rank0.xp.Enchanting = 0;
+    const row0 = forageMod(mainHtml(rank0, view, 0));
+    expect(visible(row0).startsWith('Foraging second roll: 1% per rank (now 0%)')).toBe(true);
+    expect(row0).toContain('Foraging second roll: 1% per rank <span class="modnow">(now 0%)</span>');
+    expect(row0).toContain('<span class="pips"><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></span>');
+
+    const rank5 = forager();
+    rank5.owned.push('Enchanting');
+    rank5.xp.Enchanting = 0;
+    rank5.markRanks['grove.forage'] = 5;
+    const row5 = forageMod(mainHtml(rank5, view, 0));
+    expect(visible(row5).startsWith('Foraging second roll: 1% per rank (now 5%)')).toBe(true);
+    expect(row5).toContain('Foraging second roll: 1% per rank <span class="modnow">(now 5%)</span>');
+    expect(row5).toContain('<span class="pips"><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i><i class="on"></i></span>');
+
+    const card0 = groveCard(mainHtml(rank0, view, 0));
+    expect(card0).toContain('>Gathering time</b>');
+    expect(card0).toContain('>Gathering sell</b>');
+    expect(card0.match(/1% per rank/g)).toEqual(['1% per rank']);
   });
 });
