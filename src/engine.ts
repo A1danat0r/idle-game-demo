@@ -490,6 +490,39 @@ function expeditionDoubled(state: Save): boolean {
   return nextUnit(state) < 0.05;
 }
 
+const GATHER_FALLOFF: ReadonlySet<SkillId> = new Set([
+  'Woodcutting',
+  'Fishing',
+  'Mining',
+  'Foraging',
+  'Exploration',
+]);
+const PRODUCE_FALLOFF: ReadonlySet<SkillId> = new Set([
+  'Cooking',
+  'Smithing',
+  'Crafting',
+  'Alchemy',
+  'Construction',
+  'Enchanting',
+]);
+
+/**
+ * Skill-XP multiplier from d = current whole level minus the action level.
+ * 1, then 0.5, 0.1, and 0.01. Never zero.
+ */
+export function xpFalloff(level: number, actionLevel: number): number {
+  const d = level - actionLevel;
+  if (d <= 9) return 1;
+  if (d <= 14) return 0.5;
+  if (d <= 19) return 0.1;
+  return 0.01;
+}
+
+/** Gathering nodes use the node level. Production uses the recipe level. Farming and combat do not. */
+export function falloffApplies(skill: SkillId, kind: 'node' | 'recipe'): boolean {
+  return (kind === 'node' ? GATHER_FALLOFF : PRODUCE_FALLOFF).has(skill);
+}
+
 function roundXp(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
@@ -1159,7 +1192,11 @@ function completeForageTick(state: Save, habitatId: string, sink: Sink | undefin
   const qty = doubledOutput(state, track) ? 2 : 1;
   giveItem(state, itemId, qty, sink);
   const levelBefore = skillLevel(state, 'Foraging');
-  const gained = addXp(state, 'Foraging', pace.xp * actionXpMultiplier(state.mastery, track, 'Foraging'));
+  const gained = addXp(
+    state,
+    'Foraging',
+    pace.xp * actionXpMultiplier(state.mastery, track, 'Foraging') * xpFalloff(levelBefore, pace.level),
+  );
   opts.notes?.push({ kind: 'action', skill: 'Foraging', xp: gained, itemId, qty });
   pushLevelToast(opts.notes, 'Foraging', levelBefore, skillLevel(state, 'Foraging'));
   grantActionMastery(state, track, 'Foraging', pace.seconds, opts);
@@ -1180,7 +1217,11 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     const qty = doubledOutput(state, node.id) ? 2 : 1;
     giveItem(state, node.id, qty, sink);
     const levelBefore = skillLevel(state, node.skill);
-    const gained = addXp(state, node.skill, node.xp * actionXpMultiplier(state.mastery, node.id, node.skill));
+    const gained = addXp(
+      state,
+      node.skill,
+      node.xp * actionXpMultiplier(state.mastery, node.id, node.skill) * xpFalloff(levelBefore, node.level),
+    );
     opts.notes?.push({ kind: 'action', skill: node.skill, xp: gained, itemId: node.id, qty });
     pushLevelToast(opts.notes, node.skill, levelBefore, skillLevel(state, node.skill));
     grantActionMastery(state, node.id, node.skill, node.seconds, opts);
@@ -1217,9 +1258,12 @@ function resolveDue(state: Save, sink: Sink | undefined, opts: SimOptions): void
     const skill = recipe?.skill ?? 'Enchanting';
     const xpFactor = recipe && hearthAppliesToRecipe(recipe) ? 1 + 0.01 * markRank(state, 'hearth.xp') : 1;
     const levelBefore = skillLevel(state, skill);
+    const actionLevel = recipe?.level ?? retired?.level;
+    const falloff =
+      actionLevel != null && falloffApplies(skill, 'recipe') ? xpFalloff(levelBefore, actionLevel) : 1;
     const gained = rebuilding
       ? 0
-      : addXp(state, skill, active.xp * actionXpMultiplier(state.mastery, active.id, skill) * xpFactor);
+      : addXp(state, skill, active.xp * actionXpMultiplier(state.mastery, active.id, skill) * xpFactor * falloff);
     pushLevelToast(opts.notes, skill, levelBefore, skillLevel(state, skill));
     grantActionMastery(state, active.id, skill, active.seconds, opts);
     const markId = recipe ? markIdFromRecipe(recipe.id) : null;
@@ -1770,8 +1814,14 @@ export interface ExpeditionPreview {
 }
 
 /** Stored XP for one tick, using the mastery and global bonus before this tick's MXP is added. */
-function expeditionTickXp(mastery: Record<string, number>, routeId: string, baseXp: number): number {
-  return baseXp * actionXpMultiplier(mastery, routeId, 'Exploration');
+function expeditionTickXp(
+  mastery: Record<string, number>,
+  routeId: string,
+  baseXp: number,
+  skillXp: number,
+  routeLevel: number,
+): number {
+  return baseXp * actionXpMultiplier(mastery, routeId, 'Exploration') * xpFalloff(levelForXp(skillXp), routeLevel);
 }
 
 /** How much of `amount` the live add-XP path would keep, and the XP total after it. */
@@ -1794,7 +1844,10 @@ export function expeditionPreview(state: Save, routeId: string, durationMs: numb
   let skillXp = state.xp.Exploration ?? 0;
   let xp = 0;
   for (let tick = 0; tick < ticks; tick += 1) {
-    const step = creditSkillXp(skillXp, expeditionTickXp(mastery, routeId, route?.xp ?? 0));
+    const step = creditSkillXp(
+      skillXp,
+      expeditionTickXp(mastery, routeId, route?.xp ?? 0, skillXp, route?.level ?? 0),
+    );
     skillXp = step.next;
     xp = roundXp(xp + step.gained);
     mastery[routeId] = (mastery[routeId] ?? 0) + mxpEach;
@@ -1849,7 +1902,14 @@ function grantExpedition(state: Save, routeId: string, elapsedMs: number, sink?:
       giveItem(state, output.id, qty, sink);
       items[output.id] = (items[output.id] ?? 0) + qty;
     }
-    xp = roundXp(xp + addXp(state, 'Exploration', expeditionTickXp(state.mastery, routeId, route?.xp ?? 0)));
+    xp = roundXp(
+      xp +
+        addXp(
+          state,
+          'Exploration',
+          expeditionTickXp(state.mastery, routeId, route?.xp ?? 0, state.xp.Exploration ?? 0, route?.level ?? 0),
+        ),
+    );
     if (route) state.mastery[routeId] = (state.mastery[routeId] ?? 0) + mxpEach;
   }
   const haul = 1 + 0.01 * markRank(state, 'road.haul');

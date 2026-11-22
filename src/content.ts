@@ -501,7 +501,10 @@ export const COMBAT_HP_SCALE = 10;
 /** Every landed hit is multiplied by a factor in [1 − spread, 1 + spread]. */
 export const DAMAGE_SPREAD = 0.05;
 export const AUTO_EAT_FRACTION = 0.5;
-export const OFFLINE_CAP_MS = 24 * 60 * 60 * 1000;
+/** Full-game offline window. OPEN as a 24h placeholder; the demo does not credit it. */
+export const FULL_GAME_OFFLINE_CAP_MS = 24 * 60 * 60 * 1000;
+/** Demo credit window. A longer absence is cut here. */
+export const OFFLINE_CAP_MS = 8 * 60 * 60 * 1000;
 
 export const STYLE_XP_PER_KILL = 120;
 export const HITPOINTS_XP_PER_KILL = 24;

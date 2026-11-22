@@ -187,7 +187,7 @@ describe('profile rules', () => {
     expect(deriveProfileStats(state).killsByEnemy).toEqual([{ id: 'meadow.hare', name: 'Burrowing hare', kills: 2 }]);
   });
 
-  it('credits tick time and caps offline time at 24 hours', () => {
+  it('credits tick time and caps offline time at 8 hours', () => {
     const online = newGame(1_000);
     online.lastCredited = 1_000;
     advanceOpenTab(online, 1_000 + 2_000, SILENT_GAP_MS);

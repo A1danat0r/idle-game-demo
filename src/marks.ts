@@ -80,13 +80,13 @@ export function hearthAppliesToRecipe(recipe: { skill: string; outputs: { id: st
 }
 
 /** Seal recipes retired from the shipped tables. Kept so one old catch-up can still resolve them. */
-export const RETIRED_SEALS: Record<string, { id: string; seconds: number; xp: number; inputs: { id: string; qty: number }[]; outputs: { id: string; qty: number }[] }> = {
-  'recipe.seal.enchant.accuracy': { id: 'recipe.seal.enchant.accuracy', seconds: 2.7, xp: 14, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.binding.flax', qty: 1 }], outputs: [{ id: 'seal.enchant.accuracy', qty: 1 }] },
-  'recipe.seal.enchant.guard': { id: 'recipe.seal.enchant.guard', seconds: 3.0, xp: 16, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.relic.weathered_slate', qty: 1 }], outputs: [{ id: 'seal.enchant.guard', qty: 1 }] },
-  'recipe.seal.enchant.ward': { id: 'recipe.seal.enchant.ward', seconds: 3.2, xp: 17, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.enchant.agate_dust', qty: 1 }, { id: 'mat.reagent.spell_moss', qty: 1 }], outputs: [{ id: 'seal.enchant.ward', qty: 1 }] },
-  'recipe.seal.enchant.steady_cast': { id: 'recipe.seal.enchant.steady_cast', seconds: 3.5, xp: 27, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.tree.resin', qty: 1 }, { id: 'mat.enchant.agate_dust', qty: 1 }], outputs: [{ id: 'seal.enchant.steady_cast', qty: 1 }] },
-  'recipe.seal.enchant.alignment': { id: 'recipe.seal.enchant.alignment', seconds: 3.8, xp: 29, inputs: [{ id: 'mat.crystal.quartz', qty: 1 }, { id: 'reagent.enchant.binding', qty: 1 }], outputs: [{ id: 'seal.enchant.alignment', qty: 1 }] },
-  'recipe.seal.enchant.scorch': { id: 'recipe.seal.enchant.scorch', seconds: 4.4, xp: 59, inputs: [{ id: 'mat.herb.emberleaf', qty: 1 }, { id: 'mat.fuel.charcoal', qty: 1 }, { id: 'reagent.enchant.binding', qty: 1 }], outputs: [{ id: 'seal.enchant.scorch', qty: 1 }] },
+export const RETIRED_SEALS: Record<string, { id: string; level: number; seconds: number; xp: number; inputs: { id: string; qty: number }[]; outputs: { id: string; qty: number }[] }> = {
+  'recipe.seal.enchant.accuracy': { id: 'recipe.seal.enchant.accuracy', level: 1, seconds: 2.7, xp: 14, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.binding.flax', qty: 1 }], outputs: [{ id: 'seal.enchant.accuracy', qty: 1 }] },
+  'recipe.seal.enchant.guard': { id: 'recipe.seal.enchant.guard', level: 10, seconds: 3.0, xp: 16, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.relic.weathered_slate', qty: 1 }], outputs: [{ id: 'seal.enchant.guard', qty: 1 }] },
+  'recipe.seal.enchant.ward': { id: 'recipe.seal.enchant.ward', level: 12, seconds: 3.2, xp: 17, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.enchant.agate_dust', qty: 1 }, { id: 'mat.reagent.spell_moss', qty: 1 }], outputs: [{ id: 'seal.enchant.ward', qty: 1 }] },
+  'recipe.seal.enchant.steady_cast': { id: 'recipe.seal.enchant.steady_cast', level: 20, seconds: 3.5, xp: 27, inputs: [{ id: 'reagent.enchant.binding', qty: 1 }, { id: 'mat.tree.resin', qty: 1 }, { id: 'mat.enchant.agate_dust', qty: 1 }], outputs: [{ id: 'seal.enchant.steady_cast', qty: 1 }] },
+  'recipe.seal.enchant.alignment': { id: 'recipe.seal.enchant.alignment', level: 30, seconds: 3.8, xp: 29, inputs: [{ id: 'mat.crystal.quartz', qty: 1 }, { id: 'reagent.enchant.binding', qty: 1 }], outputs: [{ id: 'seal.enchant.alignment', qty: 1 }] },
+  'recipe.seal.enchant.scorch': { id: 'recipe.seal.enchant.scorch', level: 40, seconds: 4.4, xp: 59, inputs: [{ id: 'mat.herb.emberleaf', qty: 1 }, { id: 'mat.fuel.charcoal', qty: 1 }, { id: 'reagent.enchant.binding', qty: 1 }], outputs: [{ id: 'seal.enchant.scorch', qty: 1 }] },
 };
 
 export function retiredSeal(id: string) {

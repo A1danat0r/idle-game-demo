@@ -41,7 +41,7 @@ describe('B2 production, farming, and combat styles', () => {
     expect(ENEMIES).toHaveLength(11);
   });
 
-  it('grows a crop beside another activity and caps offline growth at 24h', () => {
+  it('grows a crop beside another activity and caps offline growth at 8h', () => {
     const state = farmer();
     state.bank['mat.seed.flax'] = 1;
     expect(plantOnPlot(state, 0, 'recipe.mat.fibre.flax', null)).toBe(true);
@@ -59,7 +59,7 @@ describe('B2 production, farming, and combat styles', () => {
     const long = away.plots[0]!;
     long.remainingMs = 30 * 60 * 60 * 1000;
     creditOffline(away, 30 * 60 * 60 * 1000);
-    expect(away.plots[0]?.remainingMs).toBe(6 * 60 * 60 * 1000);
+    expect(away.plots[0]?.remainingMs).toBe(22 * 60 * 60 * 1000);
     expect(away.bank['mat.fibre.flax'] ?? 0).toBe(0);
   });
 

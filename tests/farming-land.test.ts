@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ITEMS,
+  NODE_BY_ID,
   RECIPES,
   XP_TABLE,
   levelForXp,
@@ -116,7 +117,7 @@ describe('farming plots and the land screen', () => {
     expect(state.plots).toHaveLength(8);
   });
 
-  it('harvests each of 8 plots once across 30h away and still credits the selected activity for 24h', () => {
+  it('harvests each of 8 plots once across 30h away and still credits the selected activity for 8h', () => {
     const state = farmer(35);
     state.coins = 26_252;
     while (state.plotsBought < 7) buyPlot(state);
@@ -131,10 +132,10 @@ describe('farming plots and the land screen', () => {
     startGather(twin, 'mat.wood.pine');
 
     const report = creditOffline(state, 30 * 60 * 60 * 1000);
-    creditOffline(twin, 24 * 60 * 60 * 1000);
-    expect(report.creditedMs).toBe(24 * 60 * 60 * 1000);
+    creditOffline(twin, 8 * 60 * 60 * 1000);
+    expect(report.creditedMs).toBe(8 * 60 * 60 * 1000);
     expect(report.capped).toBe(true);
-    expect(state.bank['mat.fibre.flax']).toBe(14_400);
+    expect(state.bank['mat.fibre.flax']).toBe(16_200);
     // 8 × 26,550 = 212,400 before perks. Harvests 5–7 include mastery 30's +5% XP,
     // and harvest 8 also includes the +3% global bonus from maxing the flax track.
     expect(8 * 26550).toBe(212_400);
@@ -142,7 +143,7 @@ describe('farming plots and the land screen', () => {
     expect(state.plots.every((plot) => plot == null)).toBe(true);
     expect(report.plotHarvests).toHaveLength(8);
     expect(report.plotHarvests?.[0]).toBe('Plot 1: Flax fibre ×1,800');
-    expect(report.plotHarvests?.[7]).toBe('Plot 8: Flax fibre ×1,800');
+    expect(report.plotHarvests?.[7]).toBe('Plot 8: Flax fibre ×3,600');
     expect(state.bank['mat.wood.pine']).toBe(twin.bank['mat.wood.pine']);
     expect(state.stats.actions).toBe(twin.stats.actions + 8);
   });
@@ -380,21 +381,22 @@ describe('farming plots and the land screen', () => {
     expect(Math.floor(86_400 / 12_654)).toBe(6);
   });
 
-  it('leaves the official routes and their 37,002 coin need where the repo has them', () => {
-    // Lv-30 waypoint: sheet 20.4536 h / 18.4703 h, repo autoplay 20.42 h / 18.76 h.
-    // Rough Lv-40 sheet times are 36.4116 h / 34.4283 h. Needed coins stay 37,002.
+  it('leaves the official routes on the falloff autoplay figures', () => {
     const route = runReferenceRoute({ seed: 1, expectedLoot: true });
     expect(route.purchases.map((event) => event.skill)).not.toContain('Farming');
-    expect(route.elapsedHours).toBe(20.42);
-    expect(routeNeed(route)).toBe(37002);
+    expect(route.elapsedHours).toBe(39.26);
+    expect(routeNeed(route)).toBe(41_878);
     const meadow = runReferenceRoute({ seed: 1, expectedLoot: true, meadowGrind: true });
-    expect(meadow.elapsedHours).toBe(18.76);
-    expect(routeNeed(meadow)).toBe(37002);
+    expect(meadow.elapsedHours).toBe(39.14);
+    expect(routeNeed(meadow)).toBe(41_878);
   });
 });
 
-function routeNeed(result: { purchases: { price?: number }[]; nodes: unknown[] }): number {
-  return result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) + result.nodes.length * 3000;
+function routeNeed(result: { purchases: { price?: number }[]; nodes: { id?: string }[] }): number {
+  return (
+    result.purchases.reduce((sum, event) => sum + (event.price ?? 0), 0) +
+    result.nodes.reduce((sum, event) => sum + (NODE_BY_ID[event.id ?? '']?.cost ?? 0), 0)
+  );
 }
 
 function legacyPlot(plot: { recipeId: string; remainingMs: number; ready: boolean }): Save {

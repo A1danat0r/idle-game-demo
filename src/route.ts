@@ -69,6 +69,8 @@ export interface RouteEvent {
 
 export interface RouteResult {
   elapsedHours: number;
+  /** Unrounded clock, so tests can check hours to 6 decimal places. */
+  elapsedMs: number;
   coins: number;
   earned: number;
   kills: number;
@@ -436,18 +438,37 @@ function troutMeal(state: Save, clock: Clock, opts: SimOptions): void {
   liquidate(state);
 }
 
-type Act = 'pine' | 'minnow' | 'meadow' | 'charcoal' | 'bronze' | 'iron' | 'cook2030' | 'trout';
+type Act = 'pine' | 'minnow' | 'meadow' | 'charcoal' | 'bronze' | 'iron' | 'cook2030' | 'trout' | 'mining';
+
+/** Highest gathering node whose level is still inside the full-XP window. */
+function steppedNode(skill: 'Woodcutting' | 'Mining' | 'Fishing', level: number): string {
+  if (skill === 'Woodcutting') {
+    if (level >= 20) return 'mat.wood.oak';
+    if (level >= 10) return 'mat.wood.maple';
+    return 'mat.wood.pine';
+  }
+  if (skill === 'Mining') {
+    if (level >= 20) return 'mat.ore.iron';
+    if (level >= 15) return 'mat.mineral.rock_salt';
+    if (level >= 10) return 'mat.stone.limestone';
+    return 'mat.ore.copper';
+  }
+  if (level >= 30) return 'mat.fish.eel';
+  if (level >= 20) return 'mat.fish.trout';
+  if (level >= 15) return 'mat.fish.perch';
+  if (level >= 10) return 'mat.fish.river_shrimp';
+  return 'mat.fish.minnow';
+}
 
 function doCycle(state: Save, act: Act, train: SkillId, clock: Clock, opts: SimOptions): void {
   if (act === 'pine') {
-    gather(state, 'mat.wood.pine', 1, clock, opts);
+    gather(state, steppedNode('Woodcutting', skillLevel(state, 'Woodcutting')), 1, clock, opts);
     liquidate(state);
-  } else if (act === 'minnow') {
-    gather(state, 'mat.fish.minnow', 1, clock, opts);
+  } else if (act === 'minnow' || act === 'trout') {
+    gather(state, steppedNode('Fishing', skillLevel(state, 'Fishing')), 1, clock, opts);
     liquidate(state);
-  } else if (act === 'trout') {
-    ensureNode(state, 'mat.fish.trout', clock, opts);
-    gather(state, 'mat.fish.trout', 1, clock, opts);
+  } else if (act === 'mining') {
+    gather(state, steppedNode('Mining', skillLevel(state, 'Mining')), 1, clock, opts);
     liquidate(state);
   } else if (act === 'meadow') {
     fightMeadow(state, train, clock, opts);
@@ -489,8 +510,10 @@ export function runReferenceRoute(options: { seed?: number; expectedLoot?: boole
   const state = newGame(0, options.seed ?? 1);
   const clock: Clock = { ms: 0, grindMs: 0, purchases: [], nodes: [], segments: [] };
   train(state, 'Woodcutting', 20, 'pine', clock, opts);
+  // No Cooking recipe above charcoal uses only wood. Roast trout at 22 is the first step up.
   train(state, 'Cooking', 20, 'charcoal', clock, opts);
   train(state, 'Smithing', 20, 'bronze', clock, opts);
+  train(state, 'Mining', 20, 'mining', clock, opts);
   train(state, 'Smithing', 22, 'iron', clock, opts);
   forgeIronSpear(state, clock, opts);
   train(state, 'Strength', 30, 'meadow', clock, opts);
@@ -509,6 +532,7 @@ export function runReferenceRoute(options: { seed?: number; expectedLoot?: boole
   }
   return {
     elapsedHours: hours(clock.ms),
+    elapsedMs: clock.ms,
     coins: state.coins,
     earned: state.coins + spent,
     kills: state.stats.kills,

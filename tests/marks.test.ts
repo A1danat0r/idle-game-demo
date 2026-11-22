@@ -50,8 +50,9 @@ describe('enchanting marks', () => {
     startProduce(hour, GROVE);
     creditOffline(hour, 60 * 60 * 1000);
     // 1,440 and 18,720 are the rate before mastery 20's speed perk. The perk starts during the hour.
+    // Falloff cuts the hour from 18,954 to 17,407. Glimmer is unchanged.
     expect(hour.glimmer.grove).toBe(1458);
-    expect(hour.xp.Enchanting).toBe(18954);
+    expect(hour.xp.Enchanting).toBe(17407);
   });
 
   it('prices every rank and totals 17,313 glimmer', () => {
@@ -173,6 +174,14 @@ describe('enchanting marks', () => {
     creditOffline(loaded!, 10_000);
     expect(loaded!.bank['seal.enchant.accuracy']).toBe(1);
     expect(loaded!.xp.Enchanting).toBe(14);
+
+    const high = enchanter(21);
+    high.activity = { kind: 'produce', recipeId: 'recipe.seal.enchant.accuracy' };
+    high.bank['reagent.enchant.binding'] = 1;
+    high.bank['mat.binding.flax'] = 1;
+    const before = high.xp.Enchanting ?? 0;
+    creditOffline(high, high.lastCredited + 10_000);
+    expect((high.xp.Enchanting ?? 0) - before).toBeCloseTo(0.14, 4);
     expect(loaded!.activity).toBeNull();
 
     const view: View = {
