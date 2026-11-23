@@ -868,7 +868,13 @@ function markCardsHtml(state: Save): string {
         const buy = locked || rank >= 5
           ? ''
           : `<button type="button" class="tag btn" data-buy-rank="${mod.id}"${buyOff((state.glimmer?.[mark.id] ?? 0) + 1e-9 >= cost)}>Buy rank ${nextRank} — ${fmt(cost)}</button>`;
-        return `<div class="mod"><b>${esc(mod.name)}</b><span class="pips">${pips}</span>${buy}</div>`;
+        const name = mod.id === 'grove.forage'
+          ? `Foraging second roll: 1% per rank <span class="modnow">(now ${rank}%)</span>`
+          : esc(mod.name);
+        const body = mod.id === 'grove.forage'
+          ? `<span class="modline"><b>${name}</b><span class="pips">${pips}</span></span>`
+          : `<b>${name}</b><span class="pips">${pips}</span>`;
+        return `<div class="mod">${body}${buy}</div>`;
       })
       .join('');
     const action = locked
