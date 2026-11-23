@@ -21,7 +21,7 @@ import {
 } from '../src/engine';
 import { MARKS, MODIFIERS, hearthAppliesToRecipe, rankCost } from '../src/marks';
 import { actionMasteryXp, masteryThreshold } from '../src/mastery';
-import { mainHtml, plotCountdown, type View } from '../src/ui';
+import { mainHtml, plotCountdown, renderKey, type View } from '../src/ui';
 
 const GROVE = 'recipe.mark.grove';
 const BOW = 'recipe.gear.ranged.pine_shortbow';
@@ -317,7 +317,84 @@ describe('enchanting marks', () => {
     expect(growing.bank['mat.fibre.flax']).toBe(1800);
     expect(growing.plots[0]).toBeNull();
   });
+
+  it('redraws the open mark card after Buy rank without leaving Enchanting', () => {
+    const state = enchanter(30);
+    state.glimmer = { grove: 9999, hearth: 500, hunt: 500, road: 500 };
+    const screen: View = {
+      tab: 'skill',
+      skill: 'Enchanting',
+      filter: 'all',
+      selected: null,
+      area: 'Meadow verge',
+      style: null,
+      message: 'Rank bought.',
+      markId: 'grove',
+    };
+    let key = renderKey(state, screen);
+    let glimmer = 9999;
+    for (let rank = 1; rank <= 5; rank += 1) {
+      glimmer -= rankCost(2.5, rank);
+      expect(buyMarkRank(state, 'grove.forage')).toBe(true);
+      expect(state.markRanks['grove.forage']).toBe(rank);
+      expect(state.glimmer.grove).toBe(glimmer);
+      const nextKey = renderKey(state, screen);
+      expect(nextKey).not.toBe(key);
+      key = nextKey;
+      expect(screen.tab).toBe('skill');
+      expect(screen.skill).toBe('Enchanting');
+      const card = markCard(mainHtml(state, screen, 0), 'grove');
+      expect(card).toContain(`Foraging second roll: 1% per rank <span class="modnow">(now ${rank}%)</span>`);
+      expect(card).toContain(`<span class="pips">${'<i class="on"></i>'.repeat(rank)}${'<i class=""></i>'.repeat(5 - rank)}</span>`);
+      expect(card).toContain(`Glimmer ${glimmer.toLocaleString('en-US')}`);
+      if (rank < 5) {
+        const nextCost = rankCost(2.5, rank + 1);
+        expect(card).toContain(`data-buy-rank="grove.forage">Buy rank ${rank + 1} — ${nextCost.toLocaleString('en-US')}`);
+      } else {
+        expect(card).not.toContain('data-buy-rank="grove.forage"');
+      }
+    }
+
+    const others = [
+      ['grove.time', 'grove', 'Gathering time'],
+      ['grove.sell', 'grove', 'Gathering sell'],
+      ['hearth.time', 'hearth', 'Production time'],
+      ['hearth.xp', 'hearth', 'Production XP'],
+      ['hearth.free', 'hearth', 'Inputs kept'],
+      ['hunt.acc', 'hunt', 'Accuracy'],
+      ['hunt.pow', 'hunt', 'Power'],
+      ['hunt.grd', 'hunt', 'Guard'],
+      ['road.grow', 'road', 'Farming grow'],
+      ['road.yield', 'road', 'Farming yield'],
+      ['road.haul', 'road', 'Expedition haul'],
+    ] as const;
+    for (const [id, mark, name] of others) {
+      const before = renderKey(state, screen);
+      const mod = MODIFIERS.find((entry) => entry.id === id);
+      if (!mod) throw new Error(id);
+      expect(buyMarkRank(state, id)).toBe(true);
+      expect(renderKey(state, screen)).not.toBe(before);
+      expect(screen.skill).toBe('Enchanting');
+      expect(screen.tab).toBe('skill');
+      const card = markCard(mainHtml(state, screen, 0), mark);
+      const next = rankCost(mod.seconds, 2);
+      expect(card).toContain(`<b>${name}</b><span class="pips"><i class="on"></i><i class=""></i>`);
+      expect(card).toContain(`data-buy-rank="${id}">Buy rank 2 — ${next.toLocaleString('en-US')}`);
+      expect(card).toContain(`Glimmer ${(state.glimmer[mark] ?? 0).toLocaleString('en-US')}`);
+    }
+
+    state.progressMs = 400;
+    const ticking = renderKey(state, screen);
+    state.progressMs = 0;
+    expect(renderKey(state, screen)).toBe(ticking);
+  });
 });
+
+function markCard(html: string, id: string): string {
+  const start = html.indexOf(`data-mark-card="${id}"`);
+  const next = html.indexOf('data-mark-card=', start + 1);
+  return html.slice(start, next === -1 ? undefined : next);
+}
 
 function flaxYield(rank: number, compost: boolean, rngState?: number): number {
   const state = newGame(0);

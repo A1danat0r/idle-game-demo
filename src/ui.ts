@@ -426,6 +426,8 @@ export function renderKey(state: Save, view: View, extra = ''): string {
     autoReplantOn: state.autoReplant === true && state.autoReplantOn !== false,
     plots: state.plots.map((plot) => (plot ? `${plot.recipeId}:${plot.compost ?? ''}:${plot.ready ? 1 : 0}` : '')).join('|'),
     expedition: state.expedition?.routeId ?? '',
+    glimmer: state.glimmer ?? {},
+    markRanks: state.markRanks ?? {},
   });
 }
 
